@@ -54,10 +54,15 @@ Before any browser automation, ensure the CDP bridge is alive:
 
 ### 3.2. Scriptwriting & Storyboards (`storyboards/scenes.json`)
 - Use `skills/faceless-script-writer.md` for high-retention English storytelling (Hook/Anomaly -> Mechanism -> Resolution/Turn).
-- For a 30-second Short:
-  - 3 scenes x 10 seconds.
-  - Total voiceover word count: 70–85 words (~140–160 wpm for dynamic YouTube Shorts pacing).
-  - Prompts must follow `skills/omni-video-prompts.md` format (Shot framing, Motivated Action, Physical Lighting, and `AUDIO: SFX ONLY — ... NO MUSIC`).
+- **Canonical Pacing & Word Count Formula (Standing Captain Rule):**
+  - **30s Short (Baseline):** Exactly **80–85 words** (~2.75 words/sec, ~165 WPM).
+  - **Scaling for longer videos:** Scale linearly using the 2.75 words/sec ratio:
+    - **45s Video:** 120–125 words
+    - **60s Video (1 min):** 160–170 words
+    - **90s Video:** 245–255 words
+    - **120s Video (2 min):** 325–335 words
+    - **300s Video (5 min):** 800–850 words
+- Prompts must follow `skills/omni-video-prompts.md` format (Shot framing, Motivated Action, Physical Lighting, and `AUDIO: SFX ONLY — ... NO MUSIC`).
 
 ### 3.3. Video Generation (Google Flow)
 - Operated via `scripts/flow_operator.sh`.

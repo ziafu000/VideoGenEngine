@@ -14,7 +14,14 @@ Collect before writing (ask once, in one message, only for what's missing):
 
 1. **Niche** — one of: `explainer` (educational), `documentary` (storytelling / deep dive), `crime` (true crime / mystery).
 2. **Topic** — or "pick one for me". If picking, apply the Topic Rules below and propose 3 candidates with one-line hooks; let the user choose.
-3. **Target length** — default 5–8 minutes (≈750–1,200 words of VO at 145 wpm). Scale block counts proportionally for longer videos.
+3. **Target length & Pacing Standard** — Canonical pacing is **~2.75 words/second** (~165 WPM):
+   - **30s Short (Baseline):** Exactly **80–85 words**.
+   - **45s Short:** 120–125 words.
+   - **60s Short:** 160–170 words.
+   - **90s Short/Reel:** 245–255 words.
+   - **2 minutes:** 325–335 words.
+   - **5 minutes:** 800–850 words.
+   Scale block counts and word targets strictly using this ratio.
 4. **Language** — default English.
 
 ## Topic Rules
