@@ -84,3 +84,30 @@ Tuyệt đối cấm nhạc nền (NO MUSIC) để không lấn át giọng thuy
   ]
 }
 ```
+
+---
+
+## 6. Quy Chuẩn Timeline Prompting cho Series Anime 3D CGI (16:9)
+
+Dành riêng cho series dài tập (như *"Ashel: Mã Nguồn Tái Sinh"*), clip luôn generate ở mốc **10 giây** (tiết kiệm credit nhất: 15 credits/10s), nhưng bên trong prompt chia thành **2 đến 3 nhịp điện ảnh (2s–4s/nhịp)** để góc máy và động tác liên tục biến chuyển, không bị đơ hoặc kéo dài lê thê:
+
+### Cấu trúc Timeline Anime 10s Chuẩn:
+- **`[00:00 - 00:03]` (3s):** Góc máy toàn cảnh/trung cảnh thiết lập tư thế và bối cảnh không gian (`Wide/Medium shot`).
+- **`[00:03 - 00:07]` (4s):** Cú máy động (`Camera push-in / Pan / Tilt`) kết hợp hành động then chốt hoặc tương tác năng lượng/chiêu thức.
+- **`[00:07 - 00:10]` (3s):** Góc cận cảnh (`Close-up`) bắt trọn biểu cảm mắt/khuôn mặt, hiệu ứng hạt và điểm chốt cao trào của cảnh.
+
+---
+
+## 7. Bảng Từ Vựng Né Vi Phạm Chính Sách Google Flow (Safety Filter Hygiene)
+
+Google Flow kiểm duyệt cực kỳ gắt gao các từ ngữ mô tả máu me, thương tích và bạo lực trực diện. Vi phạm sẽ bị báo lỗi `Không thành công / vi phạm chính sách`. Luôn dùng bộ từ vựng điện ảnh / CGI thay thế sau:
+
+| Từ Bị Cấm / Rủi Ro Cao | Từ Thay Thế Chuẩn Điện Ảnh / CGI |
+| :--- | :--- |
+| `blood`, `bleed`, `dripping blood` | `purple/crimson cosmic particles`, `energy residue`, `shattered crystal sparks` |
+| `severely injured`, `wounded`, `dying` | `exhausted battle stance`, `kneeling in fatigue`, `battle-worn posture` |
+| `dagger`, `knife stabbing`, `slash throat` | `shattered crystalline blade`, `blade hilt`, `energy saber`, `defensive stance` |
+| `piercing chest`, `impaling` | `thrusting glowing rapier close to chest`, `impact shockwave`, `energy burst` |
+| `kill`, `murder`, `corpse` | `vanquish`, `fallen warrior`, `motionless silhouette in dark void` |
+| `screaming in agony` | `gasp of shock`, `sharp intake of breath`, `fierce determined glare` |
+

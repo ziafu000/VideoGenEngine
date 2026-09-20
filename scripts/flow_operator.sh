@@ -183,6 +183,9 @@ cmd_submit_prompt() {
       document.execCommand('selectAll', false, null);
       document.execCommand('delete', false, null);
       document.execCommand('insertText', false, $escaped_prompt);
+      pm.dispatchEvent(new Event('input', { bubbles: true }));
+      pm.dispatchEvent(new Event('change', { bubbles: true }));
+      pm.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
       
       const genBtn = document.querySelector('button.generate-icon-button, button[aria-label=\"Start generation\"], button[aria-label=\"Bắt đầu tạo\"]');
       return {

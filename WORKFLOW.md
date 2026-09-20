@@ -165,6 +165,7 @@ Production pipeline for the 16-episode story-driven 3D CGI anime series adapting
 - **Shot Formula:** Exactly **30 shots x 10 seconds** per episode.
 - **Credit Economics:** Google Flow costs **15 credits per 10s video clip** (Omni 1.1 Flash 720p).
   - 1 episode (30 shots) = **450 credits total**.
+- **Default Generation Duration:** Always set Flow duration setting to **10s** (`10 giây`). Never drop the generation duration to 4s or 6s in settings because 10s maximizes duration per 15 credits (most economical). Pacing is controlled internally via **Timeline Prompting**.
 - **Aspect Ratio:** **16:9** widescreen for main episodes (`configure 16:9 10s`). Climax scenes can be reformatted to **9:16** for auxiliary YouTube Shorts / TikTok teasers (30s–60s).
 
 ### 8.2. Character Asset Binding System (Google Flow)
@@ -197,3 +198,31 @@ Google Flow maintains character visual consistency via **Ingredient Chips** (`<f
   - Only clean cinematic cuts aligned with seiyuu breath pauses, orchestral swells, or heavy combat impacts.
   - Video clips retain embedded diegetic ambient sounds (`AUDIO: SFX ONLY — ... NO MUSIC`).
   - Soundtrack and dialogue are mixed with broadcast cinema dynamics (dialogue 100%, background OST 25–35%, diegetic SFX 40%).
+
+### 8.4. Timeline Prompting Formula (Pacing Inside 10s Clips)
+To prevent shots from lingering, dragging, or freezing for 8–10 seconds, every 10-second clip prompt must be subdivided into **2 to 3 dynamic micro-scenes (2–4 seconds each)** using explicit bracketed timecodes:
+
+```text
+[00:00 - 00:03] <Micro-Scene 1: Establishing framing & initial character stance (3s)>
+[00:03 - 00:07] <Micro-Scene 2: Dynamic camera motion (push-in/pan/tilt) & motivated action beat (4s)>
+[00:07 - 00:10] <Micro-Scene 3: Dramatic close-up / reaction / climax expression (3s)>.
+<Lighting, Rendering Aesthetics, Engine>.
+AUDIO: SFX ONLY — <diegetic sounds>. NO MUSIC.
+```
+
+**Benefits:**
+- Forces the Omni 1.1 Flash diffusion model to execute sequential camera moves and action beats within one generation pass.
+- Yields 60 to 90 cinematic angles across a 30-shot (5-minute) episode without spending extra credits.
+
+### 8.5. Policy & Safety Filter Hygiene (Zero-Flag Guarantee)
+Google Flow strictly filters violent and harmful terms, rejecting prompts and aborting generations with `Không thành công / Câu lệnh này có thể vi phạm chính sách`. To ensure 100% first-pass generation success, apply the following vocabulary replacements:
+
+| Prohibited / High-Risk Term | Safe Cinematic Alternative |
+| :--- | :--- |
+| `blood`, `bleeding`, `blood dripping` | `purple/crimson cosmic particles`, `energy residue`, `shattered crystal sparks` |
+| `severely injured`, `wounded`, `dying` | `exhausted battle stance`, `kneeling in fatigue`, `battle-worn posture` |
+| `dagger`, `knife stabbing`, `slash throat` | `shattered crystalline blade`, `blade hilt`, `energy saber`, `defensive stance` |
+| `piercing chest`, `impaling` | `thrusting glowing rapier close to chest`, `impact shockwave`, `energy burst` |
+| `kill`, `murder`, `corpse` | `vanquish`, `fallen warrior`, `motionless silhouette in dark void` |
+| `screaming in agony` | `gasp of shock`, `sharp intake of breath`, `fierce determined glare` |
+
