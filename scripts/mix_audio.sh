@@ -25,9 +25,20 @@ echo "[-] Thời lượng video: ${VIDEO_DUR}s | Thời lượng audio: ${AUDIO_
 RATIO=$(python3 -c "print(round($AUDIO_DUR / $VIDEO_DUR, 4))")
 echo "[-] Hệ số căn chỉnh tốc độ audio (tempo): ${RATIO}x"
 
+# Xây dựng bộ lọc atempo an toàn (giới hạn 0.5 đến 2.0 của ffmpeg)
+ATEMPO_FILTER=$(python3 -c "
+r = $RATIO
+if r < 0.5:
+    print(f'atempo=0.5,atempo={round(r/0.5, 4)}')
+elif r > 2.0:
+    print(f'atempo=2.0,atempo={round(r/2.0, 4)}')
+else:
+    print(f'atempo={r}')
+")
+
 # Trộn voiceover (volume 1.0) và âm thanh SFX gốc của video (volume 0.25)
 ffmpeg -y -i "$VIDEO_INPUT" -i "$VOICE_INPUT" -filter_complex \
-    "[1:a]atempo=${RATIO},volume=1.0[voice]; \
+    "[1:a]${ATEMPO_FILTER},volume=1.0[voice]; \
      [0:a]volume=0.25[sfx]; \
      [voice][sfx]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
     -map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k "$OUTPUT_FINAL"

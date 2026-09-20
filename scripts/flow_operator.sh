@@ -167,6 +167,9 @@ cmd_download_latest() {
     mkdir -p "$(dirname "$target_file")"
 
     echo "[-] Đang kích hoạt tải về video (720p gốc)..."
+    touch /tmp/flow_dl_marker
+    sleep 0.5
+
     chrome-devtools-axi eval '() => {
       const tile = document.querySelector("flow-video-tile");
       if (!tile) return "LỖI: Không tìm thấy video tile nào";
@@ -194,18 +197,22 @@ cmd_download_latest() {
     echo "[-] Chờ tệp hoàn tất tải về tại $DOWNLOADS_DIR..."
     local downloaded_file=""
     for i in {1..60}; do
-        # Kiểm tra xem có file .crdownload đang tải không
+        # Đợi các file tạm .crdownload tải xong
         if ls "$DOWNLOADS_DIR"/*.crdownload >/dev/null 2>&1; then
             sleep 1
             continue
         fi
 
-        # Tìm file mp4 mới nhất xuất hiện trong 2 phút qua
+        # Tìm file mp4 mới được tạo sau mốc touch /tmp/flow_dl_marker
         local newest
-        newest=$(ls -t "$DOWNLOADS_DIR"/*.mp4 2>/dev/null | head -n 1 || true)
+        newest=$(find "$DOWNLOADS_DIR" -maxdepth 1 -name "*.mp4" -newer /tmp/flow_dl_marker 2>/dev/null | head -n 1 || true)
         if [ -n "$newest" ] && [ -f "$newest" ]; then
-            downloaded_file="$newest"
-            break
+            local sz
+            sz=$(stat -c %s "$newest" 2>/dev/null || echo 0)
+            if [ "$sz" -gt 100000 ]; then
+                downloaded_file="$newest"
+                break
+            fi
         fi
         sleep 1
     done

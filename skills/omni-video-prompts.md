@@ -1,83 +1,85 @@
 ---
 name: omni-video-prompts
 description: |
-  Hệ thống viết prompt video tối ưu hóa cho Google Omni 1.1 qua gflow/Google Flow. Chuyển đổi từng phân cảnh kịch bản (storyboard/scene beat dài 5–8 giây) thành một câu lệnh prompt duy nhất, tập trung vào hành động thực tế, không gian cụ thể, ánh sáng tự nhiên và bố cục khung hình chuẩn điện ảnh, loại bỏ hoàn toàn các từ ngữ sáo rỗng (AI slop). Tự động kích hoạt khi người dùng hoặc Firstmate yêu cầu tạo prompt cho video, render cảnh, hoặc đưa vào danh sách cảnh trong scenes.json.
+  Hệ thống viết prompt video tối ưu hóa cho Google Omni 1.1 Flash qua Google Flow (gflow). Hỗ trợ kỹ thuật Timeline Prompting đa phân cảnh (multi-cut timeline prompts) tạo chuyển cảnh dồn dập 1.5s–2s chuẩn YouTube Shorts và cú máy điện ảnh đơn lẻ cho video dài. Tập trung vào hành động thực tế, góc máy vật lý, ánh sáng tự nhiên và âm thanh hiện trường SFX, loại bỏ hoàn toàn từ ngữ sáo rỗng (AI slop).
 ---
 
 # Google Omni 1.1 Video Prompt Engineer
 
-Bạn tạo ra **MỘT prompt duy nhất, hoàn chỉnh và sẵn sàng để gửi trực tiếp cho Google Omni 1.1 qua gflow** cho mỗi phân cảnh. 
+Bạn tạo ra **MỘT prompt duy nhất, hoàn chỉnh và sẵn sàng để gửi trực tiếp cho Google Omni 1.1 qua Google Flow** cho mỗi lần sinh video (10s).
 
-Mục tiêu cốt lõi: Tận dụng khả năng thấu hiểu ngữ cảnh và tính nhất quán vật thể của Omni 1.1, triệt tiêu hoàn toàn **hình ảnh giả tạo (AI slop)** và **những góc máy bất động, nhàm chán**[cite: 2].
+Mục tiêu cốt lõi: Tận dụng khả năng thấu hiểu thời gian (temporal understanding) và tính nhất quán vật thể của Omni 1.1 Flash, áp dụng **kỹ thuật Timeline Prompting** để tạo nhịp chuyển cảnh dồn dập (1.5s–2s mỗi cảnh) cho YouTube Shorts, triệt tiêu hoàn toàn góc máy tĩnh buồn ngủ và hình ảnh giả tạo (AI slop).
 
 ---
 
 ## 1. Nguyên tắc cốt lõi: Mô tả những gì nhìn thấy (Show, Don't Tell)
 
-Chỉ mô tả những gì ống kính camera thực sự ghi lại: hành động vật lý, chất liệu bề mặt, tương tác không gian và nguồn sáng cụ thể[cite: 2].
+Chỉ mô tả những gì ống kính camera thực sự ghi lại: hành động vật lý, chất liệu bề mặt, tương tác không gian và nguồn sáng cụ thể.
 
-- **Nói KHÔNG với tính từ cảm xúc sáo rỗng:** Cấm tiệt các từ như "cinematic", "epic", "stunning", "hyperrealistic", "masterpiece"[cite: 2]. Chất lượng điện ảnh phải đến từ ánh sáng, kết cấu và bố cục[cite: 2].
-- **Mô tả hành động có động lực:** Vật thể chuyển động vì có lực tác động, camera di chuyển vì đi theo chủ thể[cite: 2].
-- **Ví dụ so sánh:**
-  - ❌ *"Một cảnh quay cyberpunk hoành tráng, cinematic về chiếc điện thoại scan tài liệu."*
-  - ✅ *"Góc nhìn thứ nhất từ trên xuống: một bàn tay cầm chiếc smartphone di chuyển chậm qua tờ hóa đơn nhăn trên bàn gỗ tối màu, chùm sáng xanh lam phát ra từ camera quét đều qua các dòng chữ, ánh sáng đèn bàn vàng nhạt tạo bóng mờ phía sau."*
+- **Nói KHÔNG với tính từ cảm xúc sáo rỗng:** Cấm tiệt các từ như "cinematic", "epic", "stunning", "hyperrealistic", "masterpiece". Độ sắc nét và chất lượng điện ảnh phải đến từ nguồn sáng cụ thể, bề mặt vật liệu và bố cục khung hình.
+- **Mô tả hành động có động lực:** Vật thể chuyển động vì có lực tác động, camera di chuyển vì bám theo chủ thể.
+- **Nguyên tắc khẳng định (Positive-only):** Không dùng câu phủ định ("không có bóng người", "không có xe"). Luôn mô tả trực tiếp những gì ĐANG XUẤT HIỆN trong khung hình.
 
 ---
 
-## 2. Nguyên tắc tạo câu lệnh khẳng định (Positive-only Prompting)
+## 2. Kỹ Thuật Timeline Prompting (Dành riêng cho YouTube Shorts & Video Nhịp Nhanh)
 
-Mô hình AI xem mọi danh từ trong prompt là yêu cầu tạo hình[cite: 2]. Nếu bạn viết "không có người", mô hình sẽ vẽ người[cite: 2].
+Trong YouTube Shorts, giữ 1 góc máy quá 2 giây là quá dài và khiến người xem lướt đi. Omni 1.1 Flash có khả năng hiểu các mốc thời gian trong prompt và thực hiện chuyển cảnh trực tiếp trong clip 10 giây.
 
-- Luôn mô tả **những gì ĐANG CÓ** trong khung hình[cite: 2].
-- Định hình môi trường bằng trạng thái khẳng định[cite: 2]: 
-  - Thay vì: *"Không có bóng người, không có xe cộ"*
-  - Hãy viết: *"Căn phòng làm việc trống trải chỉ gồm một màn hình máy tính đang chạy mã lệnh, rèm cửa khẽ đung đưa theo gió, không gian tĩnh lặng dưới ánh sáng màn hình hắt ra."*
+### 2.1. Cấu trúc một Timeline Prompt (10 Giây = 4 đến 5 Cú Cắt Cảnh)
+Mỗi clip 10 giây được chia thành các nhịp nhỏ từ **1.5s đến 2.5s**:
 
----
+```
+[Khung hình & Phong cách tổng quan]
+[00:00 - 00:02] Cảnh 1: [Góc máy 1] + [Hành động dồn dập 1]
+[00:02 - 00:05] Cảnh 2: [Từ khóa chuyển cảnh] + [Góc máy 2] + [Chi tiết tương phản 2]
+[00:05 - 00:07] Cảnh 3: [Từ khóa chuyển cảnh] + [Góc máy 3] + [Hành động then chốt 3]
+[00:07 - 00:10] Cảnh 4: [Từ khóa chuyển cảnh] + [Góc máy 4] + [Điểm chốt thị giác 4]
+AUDIO: SFX ONLY — [Mô tả âm thanh hiện trường đồng bộ với các hành động trên]. NO MUSIC.
+```
 
-## 3. Cấu trúc chuẩn của một Prompt (Omni 1.1)
-
-Mỗi prompt cho phân cảnh (thời lượng 5–8 giây) được viết thành một đoạn văn liền mạch theo đúng 4 thành phần[cite: 1]:
-
-1. **Góc máy & Bố cục (Camera Framing & Movement):**
-   - Định nghĩa rõ góc nhìn: Góc cận cảnh (Close-up), góc trung (Medium shot), góc rộng toàn cảnh (Wide shot), góc nhìn thứ nhất (POV), góc nhìn từ trên cao (Top-down)[cite: 2].
-   - Chuyển động máy quay mượt mà: Di chuyển tịnh tiến chậm (slow push-in), lia máy theo chiều ngang (smooth pan left to right), nâng máy quay lên từ từ (tilt up), hoặc camera cố định quan sát hành động[cite: 2].
-2. **Chủ thể & Chuỗi hành động (Subject & Concrete Action):**
-   - Ai/cái gì đang làm gì? Trọng tâm là sự thay đổi vị trí hoặc tương tác thực tế giữa các vật thể[cite: 2].
-3. **Môi trường & Ánh sáng (Environment & Practical Lighting):**
-   - Nguồn sáng tự nhiên đến từ đâu (ánh sáng cửa sổ ban ngày, đèn huỳnh quang văn phòng, ánh đèn xe lướt qua, ánh sáng màn hình phát ra)[cite: 2].
-   - Chất liệu và bề mặt: kim loại xước, mặt kính phản chiếu, mặt gỗ sần, khói mờ nhẹ[cite: 2].
-4. **Quy chuẩn âm thanh hiện trường (Diegetic Audio / SFX Only):**
-   - Đính kèm dòng định dạng âm thanh thực tế ở cuối prompt:  
-     `AUDIO: SFX ONLY — [Mô tả 2-3 âm thanh thực tế: tiếng gõ bàn phím, tiếng giấy sột soạt, tiếng gió thổi]. NO MUSIC.`[cite: 2]
+### 2.2. Từ vựng chuyển cảnh kỹ thuật điện ảnh (Cinematic Cut Keywords)
+Sử dụng các từ khóa điều hướng camera rõ ràng để mô hình thực hiện cắt cảnh:
+- **`Rapid cut to:`** / **`Hard cut to:`** Cắt cảnh đột ngột sang một góc nhìn mới hoặc chủ thể cận cảnh.
+- **`Whip pan to:`** Lia máy cực nhanh sang một hướng khác tạo vệt mờ chuyển động.
+- **`Snap zoom in on:`** / **`Fast push-in to:`** Phóng nhanh vào một chi tiết gây tò mò (nhãn mác, ổ khóa, giọt nước).
+- **`Match cut to:`** Cắt cảnh nối tiếp hình dạng hoặc hướng chuyển động tương đồng giữa 2 vật thể.
+- **`Smash cut to:`** Chuyển cảnh đối lập mạnh mẽ giữa tĩnh sang động, hoặc tối sang sáng.
 
 ---
 
-## 4. Quy chuẩn thời lượng, Tỷ lệ khung hình & Mô hình Google Flow
+## 3. Quy Chuẩn Âm Thanh Hiện Trường (Diegetic Audio / SFX Only)
 
-- **Mô hình mục tiêu:** Luôn chọn **`Omni 1.1 Flash`** trong số 4 mô hình của Google Flow (`Omni 1.1 Flash`, `Veo 3.1 - Lite`, `Veo 3.1 - Fast`, `Veo 3.1 - Quality`) để tối ưu tốc độ và độ nhất quán vật thể.
-- **Thời lượng chuẩn:** Mỗi phân cảnh được thiết lập mặc định **10 giây (10s)** cho mỗi lần generate (khớp với tùy chọn 10s trên giao diện Google Flow).
-- **Tỷ lệ khung hình (Aspect Ratio):**
-  - **Ngang (16:9 - `crop_16_9`):** Dành cho video YouTube chuẩn / Long-form.
-  - **Dọc (9:16 - `crop_9_16`):** Dành cho YouTube Shorts / Reels / TikTok.
-- **1 Scene = 1 Prompt độc lập:** Mỗi câu prompt đại diện cho một cú máy duy nhất kéo dài 10 giây. Không ép Omni tự cắt cảnh (cuts), việc nối ghép do `ffmpeg` đảm nhiệm.
-- **Bố cục chủ thể:** Luôn đặt trọng tâm lệch nhẹ theo quy tắc một phần ba hoặc tập trung ở nửa dưới khung hình để tạo chiều sâu thị giác.
+Omni 1.1 Flash tự động tạo âm thanh đồng bộ với video. Đặt dòng này ở cuối prompt:
+`AUDIO: SFX ONLY — [Mô tả chi tiết 3–4 âm thanh tương ứng với từng giai đoạn chuyển cảnh]. NO MUSIC.`
+
+Tuyệt đối cấm nhạc nền (NO MUSIC) để không lấn át giọng thuyết minh (voiceover) và cho phép hậu kỳ hòa âm chuẩn xác.
 
 ---
 
-## 5. Mẫu Output chuẩn cho Agent
+## 4. Quy chuẩn thông số kỹ thuật (Google Flow)
 
-Khi nhận yêu cầu phân cảnh từ kịch bản của Firstmate, xuất dữ liệu theo định dạng JSON để Pi Worker có thể đưa thẳng vào lệnh điều khiển Google Flow:
+- **Mô hình:** Luôn dùng **`Omni 1.1 Flash`** (ưu tiên số 1 về tốc độ render và tính nhất quán).
+- **Thời lượng:** Chuẩn **10 giây (10s)** cho mỗi lần generate.
+- **Tỷ lệ khung hình:**
+  - **Dọc `9:16` (`crop_9_16`):** Chuẩn bắt buộc cho YouTube Shorts, TikTok, Instagram Reels.
+  - **Ngang `16:9` (`crop_16_9`):** Dành cho video dài chuẩn YouTube.
+
+---
+
+## 5. Ví Dụ Mẫu Timeline Prompt (Video 30s = 3 Scene x 10s Timeline)
 
 ```json
 {
-  "aspect_ratio": "16:9",
+  "aspect_ratio": "9:16",
   "model": "Omni 1.1 Flash",
   "scenes": [
     {
       "scene_id": "scene_01",
       "duration_seconds": 10,
-      "prompt": "Góc nhìn cận cảnh từ trên cao xuống bàn làm việc bằng gỗ: một chiếc smartphone được cầm trên tay đang lia chậm qua một tập tài liệu có viền nét mực xanh. Ánh đèn bàn vàng ấm chiếu từ góc trái tạo bóng nghiêng tự nhiên, màn hình điện thoại hiển thị khung quét màu xanh lá cây bám sát mép giấy theo thời gian thực. Camera hạ thấp dần về phía màn hình. AUDIO: SFX ONLY — tiếng giấy cọ xát nhẹ trên mặt bàn, tiếng chạm màn hình tinh chỉnh góc. NO MUSIC."
+      "timecode": "00:00 - 00:10",
+      "voiceover": "For 138 years, people thought Coca-Cola's secret formula was locked in an Atlanta vault. The truth is far stranger. Only one company in America has a federal license to import raw coca leaves:",
+      "prompt": "Vertical 9:16 fast-paced sequence with rapid cuts: [00:00 - 00:02] Low-angle extreme close-up of heavy steel bank vault door locking bolts spinning shut. [00:02 - 00:05] Rapid hard cut to high-angle medium shot: an unmarked white truck speeds through open barbed-wire security gates with official US federal warning signs under harsh sun. [00:05 - 00:08] Whip pan to concrete loading dock: gloved workers haul rough burlap sacks stamped 'COCA LEAVES' from truck. [00:08 - 00:10] Snap zoom in on burlap texture and stencil text as a sack drops with dust puff. AUDIO: SFX ONLY — heavy vault clank, accelerating diesel truck engine, rattling chain link fence, heavy burlap thud on concrete. NO MUSIC."
     }
   ]
 }

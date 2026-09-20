@@ -71,6 +71,15 @@ echo ""
 echo "[-] Đang tiến hành ghép nối toàn bộ các phân cảnh bằng FFmpeg..."
 "$SCRIPT_DIR/stitch_video.sh"
 
+# 4. Tự động hòa âm nếu có file voiceover
+VOICE_EN="$PROJECT_DIR/audio/voiceover_en.mp3"
+if [ -f "$VOICE_EN" ]; then
+    echo ""
+    echo "[-] Phát hiện file voiceover tiếng Anh: $VOICE_EN"
+    echo "[-] Đang tiến hành hòa âm thông minh (Voiceover + SFX hiện trường)..."
+    "$SCRIPT_DIR/mix_audio.sh" "$(ls -t "$OUTPUT_DIR"/final_video_*.mp4 | head -n 1)" "$VOICE_EN"
+fi
+
 echo ""
 echo "============================================================"
 echo "          HOÀN THÀNH TOÀN BỘ QUY TRÌNH TỪ A ĐẾN Z!          "
