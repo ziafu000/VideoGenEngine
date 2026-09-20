@@ -78,7 +78,7 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 | Script | Function | Command / Usage |
 | :--- | :--- | :--- |
 | `scripts/start_bridge.sh` | Verifies and starts Chrome & CDP proxy on Windows | `./scripts/start_bridge.sh` |
-| `scripts/flow_operator.sh` | Google Flow automation (status, configure, submit, wait, download) | `./scripts/flow_operator.sh status`<br>`./scripts/flow_operator.sh configure 9:16 10s`<br>`./scripts/flow_operator.sh submit "<prompt>"`<br>`./scripts/flow_operator.sh wait 180`<br>`./scripts/flow_operator.sh download renders/scene_01.mp4` |
+| `scripts/flow_operator.sh` | Google Flow automation (status, configure, character binding, submit, wait, download) | `./scripts/flow_operator.sh status`<br>`./scripts/flow_operator.sh configure 16:9 10s`<br>`./scripts/flow_operator.sh add-character "Ashel" ["Selena"]`<br>`./scripts/flow_operator.sh clear-characters`<br>`./scripts/flow_operator.sh submit "<prompt>"`<br>`./scripts/flow_operator.sh wait 180`<br>`./scripts/flow_operator.sh download renders/scene_01.mp4` |
 | `scripts/elevenlabs_operator.sh` | ElevenLabs TTS automation (preserves active voice, generates speech, downloads MP3) | `./scripts/elevenlabs_operator.sh generate "<text>" [output_path]` |
 | `scripts/stitch_video.sh` | Concatenates rendered MP4 scene clips via FFmpeg | `./scripts/stitch_video.sh` |
 | `scripts/generate_subtitles.js` | Generates dynamic ASS captions (Whisper timestamps + script alignment) | `node ./scripts/generate_subtitles.js [voice_path] [output_ass] [dur]` |
@@ -153,3 +153,47 @@ To prevent Git repository bloat and ensure all high-resolution video assets are 
    - The `VideoGen` repository must **never** retain heavy media assets in working tree.
    - `renders/`, `audio/`, and `output/` must only hold `.gitkeep`.
    - `archive_and_cleanup.sh` is executed after every production run so `git status` always stays clean.
+
+---
+
+## 8. Mode 2: Original AI Anime Series Production Pipeline ("Ashel: Mã Nguồn Tái Sinh")
+
+Production pipeline for the 16-episode story-driven 3D CGI anime series adapting `ASHEL_SERIES_BIBLE.md`.
+
+### 8.1. Episode Architecture & Budgeting
+- **Episode Duration:** 5 minutes (300 seconds) per episode.
+- **Shot Formula:** Exactly **30 shots x 10 seconds** per episode.
+- **Credit Economics:** Google Flow costs **15 credits per 10s video clip** (Omni 1.1 Flash 720p).
+  - 1 episode (30 shots) = **450 credits total**.
+- **Aspect Ratio:** **16:9** widescreen for main episodes (`configure 16:9 10s`). Climax scenes can be reformatted to **9:16** for auxiliary YouTube Shorts / TikTok teasers (30s–60s).
+
+### 8.2. Character Asset Binding System (Google Flow)
+Google Flow maintains character visual consistency via **Ingredient Chips** (`<flow-character-ingredient-chip>`):
+- **Pre-saved Characters in Project `Main series`:**
+  - `Ashel` (Male protagonist, dark hair, blue terminal eyes)
+  - `Valerie` (Female technomancer, teal glow accents)
+  - `Kiran` (Agile blade-wielder, crimson energy)
+  - `Selena` (High-tier duelist, dark rapier, cold demeanor)
+  - `Master Eldrin` (Elder guild master)
+- **Character Attachment Mechanics:**
+  - **Programmatic (CLI):**
+    ```bash
+    ./scripts/flow_operator.sh add-character "Ashel"
+    # Multi-character scene (e.g. betrayal scene):
+    ./scripts/flow_operator.sh add-character "Ashel" "Selena"
+    ```
+  - **Manual / Hotkey in Flow UI:**
+    - Type `@` in the prompt input field to summon the "Thêm thành phần" menu.
+    - Switch to tab **Nhân vật** and click the character name.
+    - Flow automatically attaches the visual reference chip above the prompt and inserts the character name at the cursor.
+  - **Prompting Rule:** Never re-describe baseline physical features (hair, eyes, face structure) if the character chip is attached. Prompts must focus strictly on **Action, Expression, Lighting, Camera Framing, and Environment**.
+  - **Multi-Character Scenes:** Flow supports attaching 2 or more character chips simultaneously. The Omni 1.1 Flash model references all attached visual anchors and binds them to the respective character names mentioned in the prompt text.
+
+### 8.3. Dual-Scripting & Cinematic Audio Standard
+- **Voiceover Language:** **Japanese** (narrative monologue & sharp seiyuu dialogue), generating authentic anime dramatic tension via ElevenLabs.
+- **Subtitles:** **Vietnamese** with manhwa/anime cultivation & RPG terminologies (Tái sinh, Giao diện Cội Nguồn, Rank F, Khế ước, Bị phản bội).
+- **Cinematic Pacing (Anti-Shorts Aesthetic):**
+  - **NO** rapid Shorts transition sound effects (whooshes, pops, braams, camera shutters).
+  - Only clean cinematic cuts aligned with seiyuu breath pauses, orchestral swells, or heavy combat impacts.
+  - Video clips retain embedded diegetic ambient sounds (`AUDIO: SFX ONLY — ... NO MUSIC`).
+  - Soundtrack and dialogue are mixed with broadcast cinema dynamics (dialogue 100%, background OST 25–35%, diegetic SFX 40%).

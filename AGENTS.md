@@ -71,7 +71,8 @@ Before any browser automation, ensure the CDP bridge is alive:
 - Operated via `scripts/flow_operator.sh`.
 - Default model: **Omni 1.1 Flash** (highest visual detail and fastest generation).
 - Default duration: **10s**.
-- Aspect ratio: `9:16` for Shorts (`crop_9_16`), `16:9` for long-form (`crop_16_9`).
+- Aspect ratio: `9:16` for Shorts (`crop_9_16`), `16:9` for long-form / anime series (`crop_16_9`).
+- Character consistency: Attach character ingredient chips via `scripts/flow_operator.sh add-character "<Name>"` or by typing `@` in Flow prompt UI. Clear via `scripts/flow_operator.sh clear-characters`.
 - Downloads are triggered natively through UI menu: "Tuỳ chọn khác" -> "Tải xuống" -> "720p Kích thước gốc" (direct CDN curl links return 403).
 
 ### 3.4. Voiceover (ElevenLabs)
@@ -98,3 +99,27 @@ Before any browser automation, ensure the CDP bridge is alive:
 - **Master Video Migration:** Copies/moves the final master video to:
   `D:\Billy\Work\Editing\File video after edit\<Video_Title>.mp4` (WSL: `/mnt/d/Billy/Work/Editing/File video after edit/...`).
 - **Repo Cleanup:** Purges all files in `renders/`, `audio/`, and `output/` except `.gitkeep`, keeping repo size minimal (<200KB) and eliminating git bloat across video productions.
+
+---
+
+## 4. Mode 2: Original AI Anime Series Production ("Ashel: Mã Nguồn Tái Sinh")
+
+Operating standard for the 16-episode 3D CGI anime series adapting `ASHEL_SERIES_BIBLE.md`.
+
+### 4.1. Core Production Specifications
+- **Episode Duration:** 5 minutes (300 seconds) per episode.
+- **Shot Count:** Exactly **30 shots x 10 seconds** per episode.
+- **Credit Budget:** 15 credits per shot x 30 shots = **450 credits per 5-min episode** on Google Flow.
+- **Aspect Ratio:** **16:9** (Omni 1.1 Flash 720p).
+- **Audio Language:** **Japanese Voiceover** (authentic seiyuu narrative & battle dialogue) with **Vietnamese Subtitles**.
+
+### 4.2. Character Ingredient Attachment
+- 5 main character assets are pre-saved in Google Flow project `Main series`: `Ashel`, `Valerie`, `Kiran`, `Selena`, and `Master Eldrin`.
+- When generating shots:
+  1. Call `./scripts/flow_operator.sh add-character "<CharName>"` (supports multiple characters: `./scripts/flow_operator.sh add-character "Ashel" "Selena"`).
+  2. In the prompt, do NOT re-describe baseline hair, eye color, or costume details. Reference character names directly in actions and camera angles.
+  3. Clear character chips when transitioning to environmental or non-character cutaways (`./scripts/flow_operator.sh clear-characters`).
+
+### 4.3. Cinematic Pacing & Audio Rules
+- **Anti-Shorts Aesthetic:** Strictly NO fast-cut transition SFX (whooshes, pops, braams).
+- Pacing relies on cinematic camera movement, atmospheric lighting, Japanese voice acting timing, and diegetic ambient sound effects embedded in clips (`AUDIO: SFX ONLY — ... NO MUSIC`).

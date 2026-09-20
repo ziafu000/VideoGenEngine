@@ -1,9 +1,28 @@
 # VideoGenAgent
 
-Autonomous, production-grade faceless YouTube video generation pipeline (Director-Worker architecture) leveraging:
-- **Visuals & Ambient SFX:** Google Flow (Omni 1.1 Flash / Veo 3.1) via Chrome DevTools Protocol (CDP) on Google AI Pro.
+Autonomous, production-grade video generation pipeline (Director-Worker architecture) supporting two production modes:
+1. **Mode 1: Faceless English Explainer & Shorts** (Rapid pacing, dynamic yellow animated captions, sound design).
+2. **Mode 2: Original AI Anime Series ("Ashel: Mã Nguồn Tái Sinh / Protocol: Root")** (16-episode 3D CGI anime, 5-minute episodes = 30 clips x 10s in 16:9, character consistency via Google Flow Ingredient Chips, Japanese voiceover with Vietnamese subtitles).
+
+Powered by:
+- **Visuals & Ambient SFX:** Google Flow (Omni 1.1 Flash / Veo 3.1) via Chrome DevTools Protocol (CDP) on Google AI Pro with character asset binding.
 - **Voiceover & Narration:** ElevenLabs Text-to-Speech via CDP browser automation (zero paid API keys).
 - **Post-production & Audio Mixing:** FFmpeg for multi-track video stitching, tempo alignment, and audio ducking (voiceover + ambient SFX).
+
+---
+
+## Production Modes
+
+### Mode 1: Faceless Explainer Shorts (English)
+- **Ratio:** 9:16 vertical.
+- **Pacing:** Rapid 2.75 words/second (~80–85 words per 30s Short).
+- **Styling:** Dynamic word-by-word highlighted captions (Impact/Arial Black font, neon yellow highlight), hook impacts, and transition swooshes.
+
+### Mode 2: Original AI Anime Series ("Ashel: Mã Nguồn Tái Sinh")
+- **Ratio:** 16:9 widescreen cinematic (720p Omni 1.1 Flash).
+- **Format:** 5 minutes per episode (30 shots @ 10s each = 450 credits/episode).
+- **Character Consistency:** Pre-saved character assets (`Ashel`, `Valerie`, `Kiran`, `Selena`, `Master Eldrin`) attached programmatically or via `@` mention chips. Supports multi-character scenes.
+- **Audio:** Japanese narrative voice acting + Vietnamese subtitles. Pure cinematic pacing without fast-paced Shorts SFX.
 
 ---
 

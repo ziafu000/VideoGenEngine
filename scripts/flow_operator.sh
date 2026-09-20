@@ -23,39 +23,124 @@ cmd_configure() {
     ensure_connection
     echo "[-] Cấu hình Google Flow: Tỷ lệ $aspect, Thời lượng ${duration}s, Model Omni 1.1 Flash..."
     chrome-devtools-axi eval "() => {
-      let overlay = document.querySelector('.cdk-overlay-container');
-      const hasToggles = overlay && overlay.querySelectorAll('button.mat-button-toggle-button').length > 0;
-      if (!hasToggles) {
-        const settingsBtn = document.querySelector('button.settings-trigger-button, button[aria-label=\"Điều kiện kích hoạt cài đặt\"], button[aria-label=\"Settings trigger\"]');
-        if (settingsBtn) settingsBtn.click();
-      }
-      return 'OPENED';
+      // Mở cài đặt nếu chưa mở
+      const trigger = Array.from(document.querySelectorAll('button')).find(b => 
+        (b.innerText && b.innerText.includes('Điều kiện kích hoạt cài đặt')) || 
+        (b.getAttribute('aria-label') && b.getAttribute('aria-label').includes('cài đặt')) ||
+        b.classList.contains('settings-trigger-button')
+      );
+      if (trigger) trigger.click();
+      return 'TRIGGERED';
     }"
     sleep 1
     chrome-devtools-axi eval "() => {
-      const overlay = document.querySelector('.cdk-overlay-container');
-      if (!overlay) return 'NO_OVERLAY';
+      // Hỗ trợ cả giao diện mới (role=radio) và giao diện cũ (mat-button-toggle)
+      const radios = Array.from(document.querySelectorAll('[role=\"radio\"]'));
+      if (radios.length > 0) {
+        // 1. Chuyển sang Video nếu đang ở Image
+        const videoRadio = radios.find(r => r.innerText.includes('Video') || r.innerText.includes('videocam'));
+        if (videoRadio && videoRadio.getAttribute('aria-checked') !== 'true') {
+          videoRadio.click();
+        }
 
-      // 1. Chuyển sang Video nếu đang ở Image
+        // 2. Chọn tỷ lệ: 16:9 hoặc 9:16
+        const targetAspect = '$aspect' === '9:16' ? '9:16' : '16:9';
+        const aspectRadio = radios.find(r => r.innerText.includes(targetAspect));
+        if (aspectRadio && aspectRadio.getAttribute('aria-checked') !== 'true') {
+          aspectRadio.click();
+        }
+
+        // 3. Chọn thời lượng: 10 giây
+        const durText = '$duration' === '10' || '$duration' === '10s' ? '10 giây' : '$duration' + ' giây';
+        const durRadio = radios.find(r => r.innerText.includes(durText));
+        if (durRadio && durRadio.getAttribute('aria-checked') !== 'true') {
+          durRadio.click();
+        }
+        return 'CONFIGURED_RADIO';
+      }
+
+      // Fallback: Giao diện cũ cdk-overlay
+      const overlay = document.querySelector('.cdk-overlay-container');
+      if (!overlay) return 'NO_SETTINGS_PANEL';
+
       const videoBtn = Array.from(overlay.querySelectorAll('button.mat-button-toggle-button')).find(b => b.innerText.includes('Video'));
       if (videoBtn && !videoBtn.parentElement.classList.contains('mat-button-toggle-checked')) {
         videoBtn.click();
       }
 
-      // 2. Chọn tỷ lệ: 9:16 (dọc) hoặc 16:9 (ngang)
       const targetAspect = '$aspect' === '9:16' ? '9:16' : '16:9';
       const aspectBtn = Array.from(overlay.querySelectorAll('button.mat-button-toggle-button')).find(b => b.innerText.includes(targetAspect));
       if (aspectBtn) aspectBtn.click();
 
-      // 3. Chọn thời lượng: 10 giây
       const durText = '$duration' === '10' || '$duration' === '10s' ? '10 giây' : '$duration' + ' giây';
       const durBtn = Array.from(overlay.querySelectorAll('button.mat-button-toggle-button')).find(b => b.innerText.includes(durText));
       if (durBtn) durBtn.click();
 
-      return 'CONFIGURED';
+      return 'CONFIGURED_TOGGLE';
     }"
     sleep 1
     chrome-devtools-axi press Escape >/dev/null 2>&1 || true
+}
+
+cmd_add_character() {
+    local char_name="${1:-}"
+    if [ -z "$char_name" ]; then
+        echo "Lỗi: Vui lòng cung cấp tên nhân vật (ví dụ: Ashel, Selena, Kiran, Valerie, Master Eldrin)."
+        exit 1
+    fi
+    ensure_connection
+    echo "[-] Đang gắn thẻ nhân vật: $char_name vào ô prompt Google Flow..."
+
+    local escaped_name
+    escaped_name=$(node -e 'console.log(JSON.stringify(process.argv[1]))' "$char_name")
+
+    chrome-devtools-axi eval "() => {
+      const addBtn = document.querySelector('button[aria-label*=\"Thêm thành phần\"], flow-add-menu button');
+      if (!addBtn) return { error: 'Không tìm thấy nút Thêm thành phần' };
+      addBtn.click();
+      
+      setTimeout(() => {
+        const tabs = Array.from(document.querySelectorAll('[role=\"tab\"]'));
+        const charTab = tabs.find(t => t.innerText.includes('Nhân vật'));
+        if (charTab) charTab.click();
+        
+        setTimeout(() => {
+          const options = Array.from(document.querySelectorAll('[role=\"option\"]'));
+          const opt = options.find(o => o.innerText.toLowerCase().includes($escaped_name.toLowerCase()) || 
+                                       (o.getAttribute('value')||'').toLowerCase().includes($escaped_name.toLowerCase()));
+          if (!opt) return;
+          opt.click();
+          
+          setTimeout(() => {
+            const insertBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Thêm vào câu lệnh'));
+            if (insertBtn) insertBtn.click();
+          }, 150);
+        }, 150);
+      }, 150);
+      return { ok: true, character: $escaped_name };
+    }"
+    sleep 1
+    echo "✓ Đã gắn nhân vật: $char_name"
+}
+
+cmd_clear_characters() {
+    ensure_connection
+    echo "[-] Đang dọn dẹp các thẻ nhân vật / thành phần trong ô prompt..."
+    chrome-devtools-axi eval "() => {
+      const clearBtn = Array.from(document.querySelectorAll('button')).find(b => b.innerText && b.innerText.includes('Xoá câu lệnh'));
+      if (clearBtn) {
+        clearBtn.click();
+        return 'CLEARED_VIA_BUTTON';
+      }
+      const chips = Array.from(document.querySelectorAll('flow-character-ingredient-chip'));
+      chips.forEach(chip => {
+        const btn = chip.querySelector('button, mat-icon');
+        if (btn) btn.click();
+      });
+      return 'CLEARED_CHIPS';
+    }"
+    sleep 0.5
+    echo "✓ Đã dọn dẹp xong thẻ nhân vật."
 }
 
 cmd_status() {
@@ -67,8 +152,10 @@ cmd_status() {
       const genBtn = document.querySelector("button.generate-icon-button, button[aria-label=\"Start generation\"], button[aria-label=\"Bắt đầu tạo\"]");
       const videoTiles = document.querySelectorAll("flow-video-tile");
       const loading = document.querySelectorAll("mat-progress-spinner, mat-progress-bar, .loading, .spinner");
+      const charChips = Array.from(document.querySelectorAll("flow-character-ingredient-chip"));
       return {
         promptValue: pm ? pm.innerText.trim() : "(không tìm thấy input)",
+        attachedCharactersCount: charChips.length,
         generateBtnReady: genBtn ? !genBtn.disabled : false,
         totalVideoTiles: videoTiles.length,
         isGenerating: loading.length > 0
@@ -234,6 +321,15 @@ case "${1:-status}" in
     configure)
         cmd_configure "${2:-16:9}" "${3:-10}"
         ;;
+    add-character|character|add-char)
+        shift
+        for char in "$@"; do
+            cmd_add_character "$char"
+        done
+        ;;
+    clear-characters|clear-chars)
+        cmd_clear_characters
+        ;;
     submit)
         cmd_submit_prompt "${2:-}"
         ;;
@@ -244,7 +340,7 @@ case "${1:-status}" in
         cmd_download_latest "${2:-}"
         ;;
     *)
-        echo "Cách dùng: $0 {status | submit <prompt> | download <output_path>}"
+        echo "Cách dùng: $0 {status | configure [aspect] [dur] | add-character <name...> | clear-characters | submit <prompt> | wait [timeout] | download <output_path>}"
         exit 1
         ;;
 esac
