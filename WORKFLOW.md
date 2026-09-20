@@ -82,7 +82,8 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 | `scripts/elevenlabs_operator.sh` | ElevenLabs TTS automation (preserves active voice, generates speech, downloads MP3) | `./scripts/elevenlabs_operator.sh generate "<text>" [output_path]` |
 | `scripts/stitch_video.sh` | Concatenates rendered MP4 scene clips via FFmpeg | `./scripts/stitch_video.sh` |
 | `scripts/mix_audio.sh` | Syncs voiceover tempo with video duration & mixes with background SFX | `./scripts/mix_audio.sh [video_path] [voice_path]` |
-| `scripts/render_pipeline.sh` | Master end-to-end runner (renders all scenes in `scenes.json` & stitches) | `./scripts/render_pipeline.sh` |
+| `scripts/archive_and_cleanup.sh` | Migrates raw materials & master product to D: drive, cleans repo | `./scripts/archive_and_cleanup.sh` |
+| `scripts/render_pipeline.sh` | Master end-to-end runner (renders all scenes in `scenes.json`, stitches, mixes & archives) | `./scripts/render_pipeline.sh` |
 
 ---
 
@@ -93,4 +94,34 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 3. **Render Scenes:** Execute `./scripts/render_pipeline.sh` to configure Flow, submit each scene prompt, wait for rendering, and download clips to `renders/`.
 4. **Generate Voiceover:** Run `./scripts/elevenlabs_operator.sh generate "$SCRIPT_EN"` to generate voiceover via ElevenLabs and download to `audio/voiceover_en.mp3`.
 5. **Mix & Master:** Run `./scripts/mix_audio.sh` to mix the stitched video with the voiceover and ambient SFX.
-6. **Delivery:** The final master video is automatically copied to Windows Downloads (`C:\Users\ASUS\Downloads`) for instant review.
+6. **Archive & Clean Repo:** Execute `./scripts/archive_and_cleanup.sh` (or let `render_pipeline.sh` trigger it automatically):
+   - Migrates raw scene clips, voiceover files, intermediate drafts, and `storyboard_backup.json` to:  
+     `D:\Billy\Work\Editing\File video original\<Project_Name>_materials_<Timestamp>/`
+   - Migrates the final master video to:  
+     `D:\Billy\Work\Editing\File video after edit\<Project_Name>.mp4`
+   - Purges all temporary binary files inside `renders/`, `audio/`, and `output/` (leaving only `.gitkeep`), keeping the repository ultra-lightweight (<200KB) and eliminating repetitive large binary git pushes.
+
+---
+
+## 6. Post-Production Archival & Storage Policy (D: Drive)
+
+To prevent Git repository bloat and ensure all high-resolution video assets are organized permanently for video editors:
+
+1. **Raw Assets & Materials Directory (`File video original`):**
+   - **Path:** `D:\Billy\Work\Editing\File video original` (WSL: `/mnt/d/Billy/Work/Editing/File video original`)
+   - **Structure:** Each video production gets a dedicated subfolder:
+     `D:\Billy\Work\Editing\File video original\<Video_Title>_materials_<Timestamp>\`
+   - **Contents:**
+     - `scene_01.mp4`, `scene_02.mp4`, ... (uncompressed 720p clips from Google Flow).
+     - `voiceover_en.mp3` (native ElevenLabs voice recording).
+     - `storyboard_backup.json` (exact prompts, timeline cuts, and full narration script).
+     - Intermediate draft concatenations and mixing iterations.
+
+2. **Master Video Delivery Directory (`File video after edit`):**
+   - **Path:** `D:\Billy\Work\Editing\File video after edit` (WSL: `/mnt/d/Billy/Work/Editing/File video after edit`)
+   - **Contents:** Final master MP4 videos with tempo-synced voiceover and ambient SFX, named cleanly after the video topic (e.g. `Why_Nobody_Can_Copy_Coca-Colas_138-Year_Formula.mp4`).
+
+3. **Repository Cleanliness Standard:**
+   - The `VideoGen` repository must **never** retain heavy media assets in working tree.
+   - `renders/`, `audio/`, and `output/` must only hold `.gitkeep`.
+   - `archive_and_cleanup.sh` is executed after every production run so `git status` always stays clean.

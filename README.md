@@ -53,4 +53,10 @@ Autonomous, production-grade faceless YouTube video generation pipeline (Directo
 - `renders/`: Downloaded scene clips from Google Flow (`scene_01.mp4`, etc. - gitignored).
 - `audio/`: Generated voiceover files (`voiceover_en.mp3` - gitignored).
 - `output/`: Master rendered and mixed videos (gitignored).
-- `scripts/`: Toolchain for CDP bridge, Flow control, ElevenLabs control, and FFmpeg processing.
+- `scripts/`: Toolchain for CDP bridge, Flow control, ElevenLabs control, FFmpeg processing, and automated D: drive archival (`archive_and_cleanup.sh`).
+
+## Storage & Archival Policy (Windows D: Drive)
+To maintain an ultra-lightweight Git repository (<200KB) and prevent binary file bloat, all completed production runs automatically migrate assets to the editor's permanent drive:
+- **Raw Materials:** `D:\Billy\Work\Editing\File video original\<Video_Title>_materials_<Timestamp>\`
+- **Finished Videos:** `D:\Billy\Work\Editing\File video after edit\<Video_Title>.mp4`
+- **Cleanup:** `renders/`, `audio/`, and `output/` are kept clean with only `.gitkeep` tracked in Git.

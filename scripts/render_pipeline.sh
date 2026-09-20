@@ -80,6 +80,11 @@ if [ -f "$VOICE_EN" ]; then
     "$SCRIPT_DIR/mix_audio.sh" "$(ls -t "$OUTPUT_DIR"/final_video_*.mp4 | head -n 1)" "$VOICE_EN"
 fi
 
+# 5. Tự động lưu trữ materials sang D: drive và dọn dẹp repo
+echo ""
+echo "[-] Kích hoạt lưu trữ materials & dọn dẹp repo..."
+"$SCRIPT_DIR/archive_and_cleanup.sh"
+
 echo ""
 echo "============================================================"
 echo "          HOÀN THÀNH TOÀN BỘ QUY TRÌNH TỪ A ĐẾN Z!          "

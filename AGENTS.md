@@ -29,6 +29,7 @@ This file provides instructions for coding agents and automated supervisors work
 │   ├── elevenlabs_operator.sh# CDP automation for ElevenLabs TTS
 │   ├── stitch_video.sh       # FFmpeg scene concatenation
 │   ├── mix_audio.sh          # Multi-track audio mixing & tempo sync
+│   ├── archive_and_cleanup.sh# Migrates assets to D: drive & purges temp binaries
 │   └── render_pipeline.sh    # Automated end-to-end render runner
 ├── renders/                  # Downloaded raw clips (gitignored)
 ├── audio/                    # Voiceover MP3s (gitignored)
@@ -83,3 +84,11 @@ Before any browser automation, ensure the CDP bridge is alive:
   - Ambient SFX volume: `0.25` (25% background presence).
   - Automatic `atempo` calculation to match exact video duration.
 - Automatically copies the final master video to Windows Downloads (`C:\Users\ASUS\Downloads`) for user review.
+
+### 3.6. Post-Production Archival & Repo Cleanup (`scripts/archive_and_cleanup.sh`)
+- Executed automatically at the end of `render_pipeline.sh` or standalone.
+- **Materials Archive:** Moves all raw clips from `renders/`, voiceover MP3s from `audio/`, intermediate drafts, and `storyboard_backup.json` to:
+  `D:\Billy\Work\Editing\File video original\<Video_Title>_materials_<Timestamp>\` (WSL: `/mnt/d/Billy/Work/Editing/File video original/...`).
+- **Master Video Migration:** Copies/moves the final master video to:
+  `D:\Billy\Work\Editing\File video after edit\<Video_Title>.mp4` (WSL: `/mnt/d/Billy/Work/Editing/File video after edit/...`).
+- **Repo Cleanup:** Purges all files in `renders/`, `audio/`, and `output/` except `.gitkeep`, keeping repo size minimal (<200KB) and eliminating git bloat across video productions.
