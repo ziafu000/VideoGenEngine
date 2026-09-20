@@ -60,7 +60,12 @@ cmd_generate() {
     echo "[-] Kích hoạt sinh giọng đọc (Generate speech)..."
     chrome-devtools-axi eval "() => {
       const genBtn = document.querySelector('button[aria-label=\"Generate speech Ctrl+Enter\"]') ||
-        Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Generate speech'));
+        document.querySelector('button[aria-label=\"Regenerate speech Ctrl+Enter\"]') ||
+        Array.from(document.querySelectorAll('button')).find(b => 
+          b.innerText.includes('Generate speech') || 
+          b.innerText.includes('Regenerate speech') ||
+          (b.getAttribute('aria-label') && (b.getAttribute('aria-label').includes('Generate') || b.getAttribute('aria-label').includes('Regenerate')))
+        );
       if (genBtn && !genBtn.disabled) {
         genBtn.click();
         return 'CLICKED';
@@ -87,10 +92,15 @@ cmd_generate() {
 
     echo "[-] Kích hoạt tải về file MP3..."
     chrome-devtools-axi eval '() => {
-      const btns = Array.from(document.querySelectorAll("button"));
-      const dlBtn = btns.find(b => b.innerText.includes("Download") || (b.getAttribute("aria-label") && b.getAttribute("aria-label").toLowerCase().includes("download")));
-      if (dlBtn) dlBtn.click();
-      return "CLICKED_DOWNLOAD";
+      const btn = document.querySelector("button[aria-label=\"Download Audio\"]") ||
+        document.querySelector("button[aria-label=\"Download latest\"]");
+      if (btn) {
+        btn.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        btn.click();
+        return "CLICKED_DOWNLOAD";
+      }
+      return "NOT_FOUND";
     }' >/dev/null 2>&1
 
     sleep 3
