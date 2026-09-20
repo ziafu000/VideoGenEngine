@@ -1,0 +1,12 @@
+# Media & temporary generated files
+renders/*
+!renders/.gitkeep
+audio/*
+!audio/.gitkeep
+output/*
+!output/.gitkeep
+
+# OS & Logs
+.DS_Store
+Thumbs.db
+*.log
