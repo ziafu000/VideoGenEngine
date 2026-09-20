@@ -84,9 +84,9 @@ fi
 
 # 5. Dọn dẹp sạch sẽ bên trong repo VideoGen (chỉ giữ lại .gitkeep)
 echo "[-] Dọn dẹp sạch các thư mục tạm trong repo VideoGen..."
-find "$PROJECT_DIR/renders" -type f ! -name '.gitkeep' -delete
-find "$PROJECT_DIR/audio" -type f ! -name '.gitkeep' -delete
-find "$PROJECT_DIR/output" -type f ! -name '.gitkeep' -delete
+find "$PROJECT_DIR/renders" -mindepth 1 ! -name '.gitkeep' -delete
+find "$PROJECT_DIR/audio" -mindepth 1 ! -name '.gitkeep' -delete
+find "$PROJECT_DIR/output" -mindepth 1 ! -name '.gitkeep' -delete
 
 echo "✓ Đã dọn dẹp xong: renders/, audio/, output/ hoàn toàn sạch sẽ!"
 echo "✓ Repo VideoGen hiện tại chỉ chứa code, tools và docs — không bị phình dung lượng!"
