@@ -81,9 +81,11 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 | `scripts/flow_operator.sh` | Google Flow automation (status, configure, submit, wait, download) | `./scripts/flow_operator.sh status`<br>`./scripts/flow_operator.sh configure 9:16 10s`<br>`./scripts/flow_operator.sh submit "<prompt>"`<br>`./scripts/flow_operator.sh wait 180`<br>`./scripts/flow_operator.sh download renders/scene_01.mp4` |
 | `scripts/elevenlabs_operator.sh` | ElevenLabs TTS automation (preserves active voice, generates speech, downloads MP3) | `./scripts/elevenlabs_operator.sh generate "<text>" [output_path]` |
 | `scripts/stitch_video.sh` | Concatenates rendered MP4 scene clips via FFmpeg | `./scripts/stitch_video.sh` |
-| `scripts/mix_audio.sh` | Syncs voiceover tempo with video duration & mixes with background SFX | `./scripts/mix_audio.sh [video_path] [voice_path]` |
+| `scripts/generate_subtitles.js` | Generates dynamic ASS captions (Whisper timestamps + script alignment) | `node ./scripts/generate_subtitles.js [voice_path] [output_ass] [dur]` |
+| `scripts/edit_video.sh` | Full Auto-Edit Mode 1: burns dynamic captions, layers SFX & syncs voice | `./scripts/edit_video.sh [video_path] [voice_path]` |
+| `scripts/mix_audio.sh` | Basic multi-track audio mixer & tempo sync | `./scripts/mix_audio.sh [video_path] [voice_path]` |
 | `scripts/archive_and_cleanup.sh` | Migrates raw materials & master product to D: drive, cleans repo | `./scripts/archive_and_cleanup.sh` |
-| `scripts/render_pipeline.sh` | Master end-to-end runner (renders all scenes in `scenes.json`, stitches, mixes & archives) | `./scripts/render_pipeline.sh` |
+| `scripts/render_pipeline.sh` | Master end-to-end runner (renders all scenes in `scenes.json`, stitches, edits & archives) | `./scripts/render_pipeline.sh` |
 
 ---
 
@@ -93,8 +95,12 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 2. **Draft Storyboard:** Write the English script & visual prompts into `storyboards/scenes.json` following `skills/faceless-script-writer.md` and `skills/omni-video-prompts.md`.
 3. **Render Scenes:** Execute `./scripts/render_pipeline.sh` to configure Flow, submit each scene prompt, wait for rendering, and download clips to `renders/`.
 4. **Generate Voiceover:** Run `./scripts/elevenlabs_operator.sh generate "$SCRIPT_EN"` to generate voiceover via ElevenLabs and download to `audio/voiceover_en.mp3`.
-5. **Mix & Master:** Run `./scripts/mix_audio.sh` to mix the stitched video with the voiceover and ambient SFX.
-6. **Archive & Clean Repo:** Execute `./scripts/archive_and_cleanup.sh` (or let `render_pipeline.sh` trigger it automatically):
+5. **Auto-Edit Mode 1 (Subtitles & SFX):** Run `./scripts/edit_video.sh` (or let `render_pipeline.sh` run it automatically):
+   - Transcribes voiceover with Whisper and aligns with approved script into rapid 2–3 word ASS subtitles.
+   - Highlights active words in vibrant neon yellow with bold Arial Black font, thick black stroke, and drop shadow.
+   - Layers opening sub-bass impact (0.0s), scene transition whooshes (at ~10s and ~20s cuts), and accent pops.
+   - Burns subtitles and mixes audio tracks into a master MP4 video in a single GPU-accelerated FFmpeg pass.
+6. **Archive & Clean Repo:** Execute `./scripts/archive_and_cleanup.sh` (triggered automatically at pipeline end):
    - Migrates raw scene clips, voiceover files, intermediate drafts, and `storyboard_backup.json` to:  
      `D:\Billy\Work\Editing\File video original\<Project_Name>_materials_<Timestamp>/`
    - Migrates the final master video to:  
@@ -103,7 +109,29 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 
 ---
 
-## 6. Post-Production Archival & Storage Policy (D: Drive)
+## 6. Auto-Edit Mode 1: Technical Specifications
+
+### 6.1. Dynamic Subtitle Specifications
+- **Format:** Advanced SubStation Alpha (`.ass`) rendered via `libass`.
+- **Timing & Alignment:** Transcribed with local Whisper model (`ggml-tiny.en.bin`), aligned against the ground-truth text in `storyboards/scenes.json` to guarantee 100% spelling and grammar accuracy.
+- **Pacing:** Micro-chunks of 2 to 3 words each (~0.8s to 1.5s display time) matching high-retention YouTube Shorts pacing.
+- **Visual Styling:**
+  - **Font:** `Arial Black` / `Impact`, all-caps.
+  - **Font Size:** `50` (proportional to 720x1280 resolution).
+  - **Base Text Color:** Pure White (`&H00FFFFFF&`).
+  - **Highlight Color:** Vibrant Neon Yellow (`&H0000FFFF&`).
+  - **Border & Shadow:** 4.5px solid black outline (`&H00000000&`) + 2.0px drop shadow for 100% contrast on dark and light backgrounds.
+  - **Screen Position:** Lower-third center (`MarginV=280`), safe from YouTube Shorts bottom channel title and right-side interactive buttons.
+
+### 6.2. Sound Effects (SFX) Layering
+- **Opening Hook Impact (00:00 – 00:01):** Deep cinematic sub-bass drop (`impact.mp3`, 50% volume) at second 0.0 to immediately grab viewer attention.
+- **Scene Transition Swishes (~10.0s, ~20.0s):** Crisp swoosh sound (`whoosh.mp3`, 40% volume) placed at the exact boundary of scene changes.
+- **Emphasis Pop (~05.5s):** Subtle UI accent pop (`pop.mp3`, 35% volume) emphasizing key story pivots.
+- **Voiceover & Ambient Balance:** Voiceover at 100% volume with tempo alignment; video background SFX at 20% volume.
+
+---
+
+## 7. Post-Production Archival & Storage Policy (D: Drive)
 
 To prevent Git repository bloat and ensure all high-resolution video assets are organized permanently for video editors:
 

@@ -28,6 +28,8 @@ This file provides instructions for coding agents and automated supervisors work
 │   ├── flow_operator.sh      # CDP automation for Google Flow
 │   ├── elevenlabs_operator.sh# CDP automation for ElevenLabs TTS
 │   ├── stitch_video.sh       # FFmpeg scene concatenation
+│   ├── generate_subtitles.js # Dynamic ASS subtitles (Whisper + script alignment)
+│   ├── edit_video.sh         # Auto-Edit Mode 1 (burns subtitles, layers SFX & audio)
 │   ├── mix_audio.sh          # Multi-track audio mixing & tempo sync
 │   ├── archive_and_cleanup.sh# Migrates assets to D: drive & purges temp binaries
 │   └── render_pipeline.sh    # Automated end-to-end render runner
@@ -77,13 +79,17 @@ Before any browser automation, ensure the CDP bridge is alive:
 - Preserves the active voice selected by the user on ElevenLabs (default: **Alistair** – Clear, Neutral, Informative).
 - Does NOT override or reset user voice preferences.
 
-### 3.5. Audio Mixing & Final Delivery (`scripts/mix_audio.sh`)
+### 3.5. Video Editing Mode 1: Dynamic Captions & SFX (`scripts/edit_video.sh`)
 - Stitches clips into a single video stream using `scripts/stitch_video.sh`.
-- Mixes voiceover with video's native ambient SFX:
-  - Voiceover volume: `1.0` (100%).
-  - Ambient SFX volume: `0.25` (25% background presence).
-  - Automatic `atempo` calculation to match exact video duration.
-- Automatically copies the final master video to Windows Downloads (`C:\Users\ASUS\Downloads`) for user review.
+- Transcribes voiceover with Whisper and generates dynamic ASS subtitles using `scripts/generate_subtitles.js`. Subtitles use all-caps Arial Black/Impact font, neon yellow highlighting on active words, thick black outline, and lower-third center placement (`MarginV=280`).
+- Layers multi-track audio:
+  - Voiceover: `1.0` (100% volume, tempo-aligned).
+  - Opening Hook Sub-bass Impact: `0.50` at 0.0s.
+  - Scene Transition Swishes: `0.40` at scene cuts (~10s, ~20s).
+  - Accent Pop: `0.35` at story pivot points (~5.5s).
+  - Ambient Video Audio: `0.20` (20% background presence).
+- Burns dynamic subtitles and renders the edited master video in a single FFmpeg pass.
+- Automatically copies the final master video to Windows Downloads (`C:\Users\ASUS\Downloads`) for instant review.
 
 ### 3.6. Post-Production Archival & Repo Cleanup (`scripts/archive_and_cleanup.sh`)
 - Executed automatically at the end of `render_pipeline.sh` or standalone.

@@ -33,14 +33,16 @@ Autonomous, production-grade faceless YouTube video generation pipeline (Directo
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 3. Audio Worker (ElevenLabs Voiceover & SFX Mixing)         │
+│ 3. Audio & Auto-Edit Worker (Mode 1: Dynamic Captions + SFX)│
 │    - ElevenLabs Operator: scripts/elevenlabs_operator.sh    │
 │      ├── Uses active default voice (e.g. Alistair)          │
 │      └── Generates & saves MP3 to audio/voiceover_en.mp3    │
-│    - Stitcher: scripts/stitch_video.sh                      │
-│    - Audio Mixer: scripts/mix_audio.sh                      │
-│      ├── Multi-track mixing: Voice (100%) + SFX (25%)       │
-│      └── Automatic tempo alignment to match video length    │
+│    - Subtitle Generator: scripts/generate_subtitles.js      │
+│      └── Whisper transcription + ground-truth alignment     │
+│    - Master Video Editor: scripts/edit_video.sh             │
+│      ├── Burns dynamic ASS animated subtitles (libass)      │
+│      ├── Layers opening impact, transition swishes & pops   │
+│      └── Multi-track mixing: Voice (100%) + Ambient (20%)   │
 │    - Final Master Output: output/final_with_voice_*.mp4     │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -53,7 +55,8 @@ Autonomous, production-grade faceless YouTube video generation pipeline (Directo
 - `renders/`: Downloaded scene clips from Google Flow (`scene_01.mp4`, etc. - gitignored).
 - `audio/`: Generated voiceover files (`voiceover_en.mp3` - gitignored).
 - `output/`: Master rendered and mixed videos (gitignored).
-- `scripts/`: Toolchain for CDP bridge, Flow control, ElevenLabs control, FFmpeg processing, and automated D: drive archival (`archive_and_cleanup.sh`).
+- `assets/sfx/`: Bundled cinematic sound effects (impact, whoosh, pop).
+- `scripts/`: Toolchain for CDP bridge, Flow control, ElevenLabs control, Subtitle generation, Auto-editing (`edit_video.sh`), and automated D: drive archival (`archive_and_cleanup.sh`).
 
 ## Storage & Archival Policy (Windows D: Drive)
 To maintain an ultra-lightweight Git repository (<200KB) and prevent binary file bloat, all completed production runs automatically migrate assets to the editor's permanent drive:
