@@ -13,6 +13,14 @@ STORYBOARD="$PROJECT_DIR/storyboards/scenes.json"
 VIDEO_INPUT="${1:-$(ls -t "$PROJECT_DIR"/output/final_video_*.mp4 2>/dev/null | head -n 1 || true)}"
 VOICE_INPUT="${2:-$PROJECT_DIR/audio/voiceover_en.mp3}"
 
+if [ ! -f "$VIDEO_INPUT" ]; then
+    if ls "$PROJECT_DIR"/renders/scene_*.mp4 >/dev/null 2>&1; then
+        echo "[-] Đang tự động ghép các cảnh video trong renders/..."
+        "$PROJECT_DIR/scripts/stitch_video.sh"
+        VIDEO_INPUT="$(ls -t "$PROJECT_DIR"/output/final_video_*.mp4 2>/dev/null | head -n 1 || true)"
+    fi
+fi
+
 if [ ! -f "$VIDEO_INPUT" ] || [ ! -f "$VOICE_INPUT" ]; then
     echo "[!] Lỗi: Không tìm thấy video gốc ($VIDEO_INPUT) hoặc file voice ($VOICE_INPUT)."
     exit 1
@@ -31,13 +39,7 @@ echo "[-] Voiceover đầu vào: $VOICE_INPUT"
 
 to_win_path() {
     local p="$1"
-    if [[ "$p" =~ ^/mnt/([a-z])/(.*) ]]; then
-        local drive="${BASH_REMATCH[1]}"
-        local rest="${BASH_REMATCH[2]}"
-        echo "${drive^^}:/$rest"
-    else
-        echo "$p"
-    fi
+    wslpath -m "$p" 2>/dev/null || echo "$p"
 }
 
 VIDEO_WIN=$(to_win_path "$VIDEO_INPUT")
