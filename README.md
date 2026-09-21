@@ -5,7 +5,8 @@ Autonomous, production-grade video generation pipeline (Director-Worker architec
 2. **Mode 2: Original AI Anime Series ("Ashel: Mã Nguồn Tái Sinh / Protocol: Root")** (16-episode 3D CGI anime, 5-minute episodes = 30 clips x 10s in 16:9, character consistency via Google Flow Ingredient Chips, Japanese voiceover with Vietnamese subtitles).
 
 Powered by:
-- **Visuals & Ambient SFX:** Google Flow (Omni 1.1 Flash / Veo 3.1) via Chrome DevTools Protocol (CDP) on Google AI Pro with character asset binding.
+- **System One AI Decider:** TypeSafe Jev (`scripts/jev_decider.py`) for sub-second semantic evaluation (pre-flight prompt screening, real-time render tile classification, fast policy refusal interrupts, and ElevenLabs audio readiness verification).
+- **Visuals & Ambient SFX:** Google Flow (Omni 1.1 Flash / Veo 3.1) via Chrome DevTools Protocol (CDP) on Google AI Pro with automated character asset binding.
 - **Voiceover & Narration:** ElevenLabs Text-to-Speech via CDP browser automation (zero paid API keys).
 - **Post-production & Audio Mixing:** FFmpeg for multi-track video stitching, tempo alignment, and audio ducking (voiceover + ambient SFX).
 
@@ -41,13 +42,17 @@ Powered by:
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. Video Worker (Google Flow Automation)                    │
+│ 2. Video Worker (Google Flow Automation + TypeSafe Jev)     │
 │    - Bridge Check: scripts/start_bridge.sh                  │
+│    - Jev Decider: scripts/jev_decider.py                    │
+│      ├── Pre-flight prompt screening (noul risk eval)       │
+│      └── Tile state classifier (choice: ready/policy/error) │
 │    - Flow Operator: scripts/flow_operator.sh                │
+│      ├── Per-scene character asset sync (clear/add chips)   │
 │      ├── Configure aspect ratio (9:16 / 16:9) & duration    │
 │      ├── Input scene prompts & trigger generation           │
-│      ├── Poll rendering progress until complete             │
-│      └── Download native 720p clips to renders/scene_XX.mp4 │
+│      ├── Early-abort on policy refusal (5-10s vs 240s wait) │
+│      └── Robust 3-pass DOM retry download (720p native)     │
 └───────────────────────────┬─────────────────────────────────┘
                             │
                             ▼
@@ -55,6 +60,7 @@ Powered by:
 │ 3. Audio & Auto-Edit Worker (Mode 1: Dynamic Captions + SFX)│
 │    - ElevenLabs Operator: scripts/elevenlabs_operator.sh    │
 │      ├── Uses active default voice (e.g. Alistair)          │
+│      ├── Jev semantic audio readiness verification (noul)   │
 │      └── Generates & saves MP3 to audio/voiceover_en.mp3    │
 │    - Subtitle Generator: scripts/generate_subtitles.js      │
 │      └── Whisper transcription + ground-truth alignment     │
@@ -82,3 +88,16 @@ To maintain an ultra-lightweight Git repository (<200KB) and prevent binary file
 - **Raw Materials:** `D:\Billy\Work\Editing\File video original\<Video_Title>_materials_<Timestamp>\`
 - **Finished Videos:** `D:\Billy\Work\Editing\File video after edit\<Video_Title>.mp4`
 - **Cleanup:** `renders/`, `audio/`, and `output/` are kept clean with only `.gitkeep` tracked in Git.
+
+---
+
+## TypeSafe Jev Decider Integration (`scripts/jev_decider.py`)
+VideoGen leverages TypeSafe's System One model (`jev-latest`) to eliminate brittle heuristics across browser automation:
+1. **Pre-flight Prompt Screening (`screen-prompt`):**
+   - Evaluates video prompt safety via the `noul` primitive before submission.
+   - Blocks or warns against terms likely to trigger Google Flow moderation or account flags.
+2. **Fast Policy Refusal Early Exit (`classify-tile`):**
+   - Continuously classifies tile UI text during generation using the `choice` primitive (`ready`, `generating`, `policy_refusal`, `error`).
+   - If Google Flow rejects a prompt ("Không thành công. Lời nhắc này có thể vi phạm..."), the pipeline halts in **5–10 seconds** instead of hanging for 180–240 seconds.
+3. **Audio Generation Verification (`verify-elevenlabs`):**
+   - Semantically verifies ElevenLabs audio readiness via the `noul` primitive before triggering the MP3 download.

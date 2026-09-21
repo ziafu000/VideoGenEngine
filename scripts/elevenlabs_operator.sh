@@ -74,6 +74,7 @@ cmd_generate() {
     }" >/dev/null 2>&1
 
     echo "[-] Chờ ElevenLabs tạo file âm thanh..."
+    local jev_decider="$PROJECT_DIR/scripts/jev_decider.py"
     for i in {1..30}; do
         sleep 2
         local is_ready
@@ -86,6 +87,27 @@ cmd_generate() {
             echo "✓ Giọng đọc đã tạo xong!"
             break
         fi
+
+        # Xác thực bổ trợ qua TypeSafe Jev nếu cấu trúc DOM biến động
+        if [ "$i" -ge 3 ] && [ -f "$jev_decider" ]; then
+            local page_text
+            page_text=$(chrome-devtools-axi eval '() => {
+              const main = document.querySelector("main") || document.body;
+              return (main.innerText || "").replace(/[\r\n]+/g, " ").slice(0, 400);
+            }' | sed -E 's/^result: "//; s/"$//' || true)
+
+            if [ -n "$page_text" ]; then
+                local verify_res
+                verify_res=$(python3 "$jev_decider" verify-elevenlabs "$page_text" 2>/dev/null || true)
+                local j_ready
+                j_ready=$(echo "$verify_res" | jq -r '.ready // false' 2>/dev/null || echo "false")
+                if [ "$j_ready" = "true" ]; then
+                    echo "✓ TypeSafe Jev: Xác nhận tệp âm thanh đã hoàn tất và sẵn sàng tải về!"
+                    break
+                fi
+            fi
+        fi
+
         echo -n "."
     done
     echo ""

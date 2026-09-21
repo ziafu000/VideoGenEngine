@@ -21,6 +21,12 @@ Production-grade automated system for creating cinema-quality faceless YouTube S
 - Dynamically scales voiceover speed (`atempo`) to align with exact video duration (`scripts/mix_audio.sh`).
 - Balances audio levels: Voiceover at 100% volume, background ambient SFX at 25% volume.
 
+### 1.4. System One AI Decider (TypeSafe Jev)
+- Powered by `scripts/jev_decider.py` connecting directly to TypeSafe API (`jev-latest`).
+- **Pre-flight Prompt Screening:** Uses `noul` primitive to evaluate policy risk before prompt submission, guarding against account flags.
+- **Fast-Fail Early Detection:** Uses `choice` primitive in the render polling loop to detect Google Flow policy refusal (`policy_refusal`), terminating within 5–10 seconds instead of blocking for 180–240 seconds.
+- **TTS Verification:** Uses `noul` primitive to confirm ElevenLabs speech synthesis completion prior to triggering MP3 download.
+
 ---
 
 ## 2. Environment Setup & Browser Bridge
@@ -62,6 +68,7 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
   "scenes": [
     {
       "scene_id": "scene_01",
+      "characters": ["Ashel"],
       "duration_seconds": 10,
       "timecode": "00:00 - 00:10",
       "voiceover": "First scene narration...",
@@ -78,7 +85,8 @@ The storyboard serves as the contract between the scriptwriter (Director) and th
 | Script | Function | Command / Usage |
 | :--- | :--- | :--- |
 | `scripts/start_bridge.sh` | Verifies and starts Chrome & CDP proxy on Windows | `./scripts/start_bridge.sh` |
-| `scripts/flow_operator.sh` | Google Flow automation (status, configure, character binding, submit, wait, download) | `./scripts/flow_operator.sh status`<br>`./scripts/flow_operator.sh configure 16:9 10s`<br>`./scripts/flow_operator.sh add-character "Ashel" ["Selena"]`<br>`./scripts/flow_operator.sh clear-characters`<br>`./scripts/flow_operator.sh submit "<prompt>"`<br>`./scripts/flow_operator.sh wait 180`<br>`./scripts/flow_operator.sh download renders/scene_01.mp4` |
+| `scripts/jev_decider.py` | TypeSafe Jev System One AI Decider (prompt screening, tile classification, TTS verification) | `python3 ./scripts/jev_decider.py screen-prompt "<prompt>"`<br>`python3 ./scripts/jev_decider.py classify-tile "<text>"`<br>`python3 ./scripts/jev_decider.py verify-elevenlabs "<text>"` |
+| `scripts/flow_operator.sh` | Google Flow automation (status, configure, character binding, submit, wait, download with retry) | `./scripts/flow_operator.sh status`<br>`./scripts/flow_operator.sh configure 16:9 10s`<br>`./scripts/flow_operator.sh add-character "Ashel" ["Selena"]`<br>`./scripts/flow_operator.sh clear-characters`<br>`./scripts/flow_operator.sh submit "<prompt>"`<br>`./scripts/flow_operator.sh wait 180`<br>`./scripts/flow_operator.sh download renders/scene_01.mp4` |
 | `scripts/elevenlabs_operator.sh` | ElevenLabs TTS automation (preserves active voice, generates speech, downloads MP3) | `./scripts/elevenlabs_operator.sh generate "<text>" [output_path]` |
 | `scripts/stitch_video.sh` | Concatenates rendered MP4 scene clips via FFmpeg | `./scripts/stitch_video.sh` |
 | `scripts/generate_subtitles.js` | Generates dynamic ASS captions (Whisper timestamps + script alignment) | `node ./scripts/generate_subtitles.js [voice_path] [output_ass] [dur]` |

@@ -25,6 +25,7 @@ This file provides instructions for coding agents and automated supervisors work
 ├── scripts/
 │   ├── start_bridge.sh       # Verifies Windows Chrome & CDP proxy on port 9223
 │   ├── cdp_proxy.js          # Node.js bridge (0.0.0.0:9223 -> 127.0.0.1:9222)
+│   ├── jev_decider.py        # TypeSafe Jev (System One AI) semantic decider
 │   ├── flow_operator.sh      # CDP automation for Google Flow
 │   ├── elevenlabs_operator.sh# CDP automation for ElevenLabs TTS
 │   ├── stitch_video.sh       # FFmpeg scene concatenation
@@ -100,6 +101,13 @@ Before any browser automation, ensure the CDP bridge is alive:
   `D:\Billy\Work\Editing\File video after edit\<Video_Title>.mp4` (WSL: `/mnt/d/Billy/Work/Editing/File video after edit/...`).
 - **Repo Cleanup:** Purges all files in `renders/`, `audio/`, and `output/` except `.gitkeep`, keeping repo size minimal (<200KB) and eliminating git bloat across video productions.
 
+### 3.7. TypeSafe Jev System One AI Decider (`scripts/jev_decider.py`)
+- **Engine:** Direct integration with TypeSafe System One API (`jev-latest`), reading `TYPESAFE_API_KEY` with fallback to `/home/asus/ai/firstmate/.env`.
+- **Pre-flight Prompt Screening (`screen-prompt`):** Evaluates prompt safety risk via primitive `noul` before sending to Google Flow. Alerts when risk score > 0.40 and halts unsafe submissions (> 0.70).
+- **Fast Policy Refusal Detection (`classify-tile`):** Evaluates video tile state via primitive `choice` (`ready`, `generating`, `policy_refusal`, `error`) in `flow_operator.sh wait`. Exits immediately in 5–10s when Google Flow displays refusal messages, avoiding 180–240s timeouts.
+- **Scene Character Synchronization:** `render_pipeline.sh` automatically parses the `characters` array for each scene, clearing prior chips and attaching required character assets before prompt submission.
+- **TTS Synthesis Verification (`verify-elevenlabs`):** Validates audio completion state via primitive `noul` in `elevenlabs_operator.sh` before triggering download.
+
 ---
 
 ## 4. Mode 2: Original AI Anime Series Production ("Ashel: Mã Nguồn Tái Sinh")
@@ -123,3 +131,10 @@ Operating standard for the 16-episode 3D CGI anime series adapting `ASHEL_SERIES
 ### 4.3. Cinematic Pacing & Audio Rules
 - **Anti-Shorts Aesthetic:** Strictly NO fast-cut transition SFX (whooshes, pops, braams).
 - Pacing relies on cinematic camera movement, atmospheric lighting, Japanese voice acting timing, and diegetic ambient sound effects embedded in clips (`AUDIO: SFX ONLY — ... NO MUSIC`).
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

@@ -169,6 +169,37 @@ cmd_submit_prompt() {
         echo "Lỗi: Vui lòng cung cấp nội dung prompt."
         exit 1
     fi
+
+    # TypeSafe Jev Pre-flight Prompt Screening
+    local jev_decider="$SCRIPT_DIR/jev_decider.py"
+    if [ -f "$jev_decider" ]; then
+        echo "[-] TypeSafe Jev: Đang đánh giá an toàn nội dung prompt..."
+        local screen_out
+        if screen_out=$(python3 "$jev_decider" screen-prompt "$prompt_text" 2>/dev/null); then
+            local is_safe
+            local risk_score
+            local reason
+            is_safe=$(echo "$screen_out" | jq -r '.safe // true')
+            risk_score=$(echo "$screen_out" | jq -r '.risk_score // 0')
+            reason=$(echo "$screen_out" | jq -r '.reason // ""')
+
+            if [ "$is_safe" = "false" ]; then
+                echo "================================================================="
+                echo "[!] CẢNH BÁO NGUY CƠ CHÍNH SÁCH CAO TỪ TYPESAFE JEV!"
+                echo "[!] Mức độ rủi ro: $risk_score (Nguyên nhân: $reason)"
+                echo "[!] Prompt có nguy cơ cao kích hoạt bộ lọc kiểm duyệt của Google Flow."
+                echo "================================================================="
+                if [ "${ALLOW_RISKY_PROMPT:-0}" != "1" ] && awk "BEGIN {exit !($risk_score > 0.70)}"; then
+                    echo "[!] DỪNG GỬI PROMPT: Điểm rủi ro ($risk_score > 0.70) vượt ngưỡng cho phép."
+                    echo "    Để tiếp tục thử nghiệm, chạy lại với: ALLOW_RISKY_PROMPT=1"
+                    return 1
+                fi
+            else
+                echo "✓ TypeSafe Jev: Prompt an toàn (Điểm rủi ro: $risk_score)."
+            fi
+        fi
+    fi
+
     ensure_connection
 
     echo "[-] Đang điền prompt vào Google Flow..."
@@ -220,32 +251,84 @@ cmd_wait_render() {
     ensure_connection
     echo "[-] Chờ Google Flow render xong video (tối đa ${timeout_secs}s)..."
     local elapsed=0
+    local jev_decider="$SCRIPT_DIR/jev_decider.py"
+
     while [ "$elapsed" -lt "$timeout_secs" ]; do
         sleep 5
         elapsed=$((elapsed + 5))
-        local state
-        state=$(chrome-devtools-axi eval '() => {
+
+        # Trích xuất trạng thái DOM và nội dung văn bản của tile
+        local raw_state
+        raw_state=$(chrome-devtools-axi eval '() => {
           const tile = document.querySelector("flow-video-tile");
-          if (!tile) return "WAITING_TILE";
-          const pending = tile.querySelector("flow-pending-tile");
-          const match = tile.innerText.match(/(\d+)%/);
-          if (pending || match) {
-            return "GENERATING: " + (match ? match[1] + "%" : "...");
+          if (!tile) return "NO_TILE||||";
+          const text = (tile.innerText || "").replace(/[\r\n]+/g, " ").trim();
+          const hasVideo = !!tile.querySelector("video");
+          const hasMenu = !!tile.querySelector(".mat-mdc-menu-trigger, button[aria-label*=\"Tuỳ chọn\"], button[aria-label*=\"More\"]");
+          const pending = !!tile.querySelector("flow-pending-tile");
+          const match = text.match(/(\d+)%/);
+          const percent = match ? match[1] : "";
+          
+          let domStatus = "WAITING";
+          if (hasVideo || hasMenu) {
+            domStatus = "READY";
+          } else if (pending || percent) {
+            domStatus = "GENERATING";
           }
-          if (tile.querySelector("video") || tile.querySelector(".mat-mdc-menu-trigger")) {
-            return "READY";
-          }
-          return "WAITING";
-        }')
-        if [[ "$state" == *"READY"* ]]; then
+          return domStatus + "|||" + percent + "|||" + text;
+        }' 2>/dev/null || echo "ERROR||||")
+
+        # Parse output từ chrome-devtools-axi eval
+        # Format: result: "DOM_STATUS|||PERCENT|||TEXT"
+        local cleaned_raw
+        cleaned_raw=$(echo "$raw_state" | sed -E 's/^result: "//; s/"$//')
+        local dom_status
+        local percent
+        local tile_text
+        dom_status=$(echo "$cleaned_raw" | awk -F'\\|\\|\\|' '{print $1}')
+        percent=$(echo "$cleaned_raw" | awk -F'\\|\\|\\|' '{print $2}')
+        tile_text=$(echo "$cleaned_raw" | awk -F'\\|\\|\\|' '{print $3}')
+
+        # 1. Phát hiện sớm lỗi từ chối chính sách (policy_refusal) bằng TypeSafe Jev & Heuristics
+        local tile_lower
+        tile_lower=$(echo "$tile_text" | tr '[:upper:]' '[:lower:]')
+        local is_policy_refusal=false
+
+        if [[ "$tile_lower" == *"không thành công"* ]] || [[ "$tile_lower" == *"vi phạm"* ]] || [[ "$tile_lower" == *"policy refusal"* ]] || [[ "$tile_lower" == *"guideline"* ]]; then
+            is_policy_refusal=true
+        elif [ -n "$tile_text" ] && [ "$dom_status" != "READY" ] && [ -f "$jev_decider" ]; then
+            local classify_res
+            classify_res=$(python3 "$jev_decider" classify-tile "$tile_text" 2>/dev/null || true)
+            local status_choice
+            status_choice=$(echo "$classify_res" | jq -r '.choice // .status // ""' 2>/dev/null || true)
+            if [ "$status_choice" = "policy_refusal" ]; then
+                is_policy_refusal=true
+            fi
+        fi
+
+        if [ "$is_policy_refusal" = "true" ]; then
+            echo ""
+            echo "================================================================="
+            echo "[!] PHÁT HIỆN SỚM: GOOGLE FLOW TỪ CHỐI TẠO VIDEO (policy_refusal)!"
+            echo "[!] Thông báo trên tile: $tile_text"
+            echo "[!] Thoát ngay sau ${elapsed}s để tiết kiệm thời gian (thay vì chờ ${timeout_secs}s)."
+            echo "================================================================="
+            return 2
+        fi
+
+        # 2. Kiểm tra video đã hoàn thành
+        if [ "$dom_status" = "READY" ]; then
             echo ""
             echo "✓ Video đã render xong (hoàn tất sau ${elapsed}s)!"
             return 0
         fi
-        local percent
-        percent=$(echo "$state" | grep -o '[0-9]*%' || echo "...")
-        echo -ne "\r  Render tiến trình: $percent (${elapsed}s)... "
+
+        # 3. Tiến trình đang tạo
+        local pct_display="${percent:+$percent%}"
+        pct_display="${pct_display:-...}"
+        echo -ne "\r  Render tiến trình: $pct_display (${elapsed}s)... "
     done
+
     echo ""
     echo "[!] Quá thời gian chờ render (${timeout_secs}s)."
     return 1
@@ -260,29 +343,85 @@ cmd_download_latest() {
     touch /tmp/flow_dl_marker
     sleep 0.5
 
-    chrome-devtools-axi eval '() => {
-      const tile = document.querySelector("flow-video-tile");
-      if (!tile) return "LỖI: Không tìm thấy video tile nào";
-      const moreBtn = tile.querySelector("button[aria-label=\"Tuỳ chọn khác\"], button[aria-label=\"More options\"], .mat-mdc-menu-trigger");
-      if (moreBtn) moreBtn.click();
-      return "CLICKED_MORE";
-    }'
-    sleep 1
+    local dl_menu_triggered=false
+    local max_retries=3
 
-    chrome-devtools-axi eval '() => {
-      const items = Array.from(document.querySelectorAll("[role=\"menuitem\"], .mat-mdc-menu-item"));
-      const dl = items.find(m => m.innerText.includes("Tải xuống") || m.innerText.includes("Download"));
-      if (dl) dl.click();
-      return "CLICKED_DOWNLOAD";
-    }'
-    sleep 1
+    for attempt in $(seq 1 $max_retries); do
+        echo "  [*] Thử mở menu tải về (Lần $attempt/$max_retries)..."
 
-    chrome-devtools-axi eval '() => {
-      const subItems = Array.from(document.querySelectorAll("[role=\"menuitem\"], .mat-mdc-menu-item"));
-      const p720 = subItems.find(m => m.innerText.includes("720p"));
-      if (p720) p720.click();
-      return "CLICKED_720P";
-    }'
+        # Bước 1: Tìm tile và bấm nút "Tuỳ chọn khác" / "More options"
+        local click_more_res
+        click_more_res=$(chrome-devtools-axi eval '() => {
+          const tile = document.querySelector("flow-video-tile");
+          if (!tile) return "ERR_NO_TILE";
+          const moreBtn = tile.querySelector("button[aria-label*=\"Tuỳ chọn\"], button[aria-label*=\"More\"], .mat-mdc-menu-trigger");
+          if (!moreBtn) return "ERR_NO_MORE_BTN";
+          moreBtn.scrollIntoView({ block: "center" });
+          moreBtn.click();
+          return "OK_MORE_CLICKED";
+        }' 2>/dev/null || true)
+
+        if [[ "$click_more_res" != *"OK_MORE_CLICKED"* ]]; then
+            echo "    [!] Chưa tìm thấy nút Tuỳ chọn khác ($click_more_res), đợi 1s..."
+            sleep 1
+            continue
+        fi
+
+        sleep 0.8
+
+        # Bước 2: Kiểm tra panel menu đã mở và bấm "Tải xuống" / "Download"
+        local click_dl_res
+        click_dl_res=$(chrome-devtools-axi eval '() => {
+          const menus = Array.from(document.querySelectorAll(".mat-mdc-menu-panel, [role=\"menu\"]"));
+          if (menus.length === 0) return "ERR_NO_MENU_PANEL";
+          const items = Array.from(document.querySelectorAll("[role=\"menuitem\"], .mat-mdc-menu-item"));
+          const dlItem = items.find(m => {
+            const txt = (m.innerText || "").toLowerCase();
+            return txt.includes("tải xuống") || txt.includes("download");
+          });
+          if (!dlItem) return "ERR_NO_DL_ITEM";
+          dlItem.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+          dlItem.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+          dlItem.click();
+          return "OK_DL_CLICKED";
+        }' 2>/dev/null || true)
+
+        if [[ "$click_dl_res" != *"OK_DL_CLICKED"* ]]; then
+            echo "    [!] Chưa mở được menu Tải xuống ($click_dl_res), đợi 1s..."
+            sleep 1
+            continue
+        fi
+
+        sleep 0.8
+
+        # Bước 3: Tìm và bấm tuỳ chọn "720p" (Kích thước gốc)
+        local click_720_res
+        click_720_res=$(chrome-devtools-axi eval '() => {
+          const items = Array.from(document.querySelectorAll("[role=\"menuitem\"], .mat-mdc-menu-item, button"));
+          const p720 = items.find(m => {
+            const txt = (m.innerText || "").toLowerCase();
+            return txt.includes("720p") || txt.includes("kích thước gốc") || txt.includes("original size");
+          });
+          if (!p720) return "ERR_NO_720P";
+          p720.click();
+          return "OK_720P_CLICKED";
+        }' 2>/dev/null || true)
+
+        if [[ "$click_720_res" == *"OK_720P_CLICKED"* ]]; then
+            echo "  ✓ Đã kích hoạt lệnh tải xuống 720p thành công!"
+            dl_menu_triggered=true
+            break
+        else
+            echo "    [!] Chưa tìm thấy mục 720p ($click_720_res), thử lại..."
+            chrome-devtools-axi press Escape >/dev/null 2>&1 || true
+            sleep 1
+        fi
+    done
+
+    if [ "$dl_menu_triggered" = "false" ]; then
+        echo "[!] Cảnh báo: Không thể kích hoạt menu tải xuống 720p sau $max_retries lần thử."
+        echo "    Đang tiếp tục kiểm tra thư mục tải về phòng trường hợp trình duyệt đã kích hoạt tải ngầm..."
+    fi
 
     echo "[-] Chờ tệp hoàn tất tải về tại $DOWNLOADS_DIR..."
     local downloaded_file=""

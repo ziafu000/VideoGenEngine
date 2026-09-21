@@ -48,22 +48,55 @@ for i in $(seq 0 $((TOTAL_SCENES - 1))); do
         continue
     fi
 
-    echo "  1. Gửi prompt vào Google Flow..."
-    "$SCRIPT_DIR/flow_operator.sh" submit "$PROMPT"
+    # Tự động đồng bộ nhân vật theo phân cảnh (Mode 2: Anime Series hoặc Storyboards có characters)
+    CHAR_COUNT=$(jq -r ".scenes[$i].characters | if . and type == \"array\" then length else 0 end" "$STORYBOARD" 2>/dev/null || echo 0)
+    if [ "$CHAR_COUNT" -gt 0 ]; then
+        echo "  [-] Phát hiện $CHAR_COUNT nhân vật cho $SCENE_ID. Đang thiết lập thẻ nhân vật Google Flow..."
+        "$SCRIPT_DIR/flow_operator.sh" clear-characters
+        while IFS= read -r char_name; do
+            if [ -n "$char_name" ] && [ "$char_name" != "null" ]; then
+                echo "      + Gắn nhân vật: $char_name"
+                "$SCRIPT_DIR/flow_operator.sh" add-character "$char_name"
+            fi
+        done < <(jq -r ".scenes[$i].characters[]" "$STORYBOARD")
+    fi
 
-    echo "  2. Chờ Google Flow render video..."
-    if "$SCRIPT_DIR/flow_operator.sh" wait 240; then
-        echo "  3. Tải video về thư mục renders/..."
-        if "$SCRIPT_DIR/flow_operator.sh" download "$OUTPUT_CLIP"; then
-            echo "  ✓ Đã lưu thành công: $OUTPUT_CLIP"
-        else
-            echo "[!] Lỗi tải video cho $SCENE_ID."
-            exit 1
-        fi
-    else
-        echo "[!] Quá thời gian render tại cảnh $SCENE_ID."
+    echo "  1. Gửi prompt vào Google Flow..."
+    if ! "$SCRIPT_DIR/flow_operator.sh" submit "$PROMPT"; then
+        echo ""
+        echo "[!] Pipeline dừng tại cảnh $SCENE_ID: Gửi prompt không thành công (kiểm tra an toàn TypeSafe Jev hoặc kết nối DOM)."
         exit 1
     fi
+
+    echo "  2. Chờ Google Flow render video..."
+    set +e
+    "$SCRIPT_DIR/flow_operator.sh" wait 240
+    WAIT_CODE=$?
+    set -e
+
+    if [ $WAIT_CODE -eq 2 ]; then
+        echo ""
+        echo "=========================================================================="
+        echo "[!] PIPELINE BỊ TỪ CHỐI BỞI CHÍNH SÁCH GOOGLE FLOW TẠI PHÂN CẢNH $SCENE_ID"
+        echo "[!] TypeSafe Jev đã phát hiện và ngắt tiến trình sớm để tiết kiệm thời gian."
+        echo "[!] Hướng dẫn khắc phục:"
+        echo "    1. Mở file '$STORYBOARD'"
+        echo "    2. Điều chỉnh lại mô tả 'prompt' của '$SCENE_ID' (tránh bạo lực/vũ khí/từ nhạy cảm)"
+        echo "    3. Chạy lại: ./scripts/render_pipeline.sh"
+        echo "=========================================================================="
+        exit 2
+    elif [ $WAIT_CODE -ne 0 ]; then
+        echo ""
+        echo "[!] Pipeline thất bại tại cảnh $SCENE_ID (mã lỗi $WAIT_CODE): Quá thời gian render hoặc lỗi kỹ thuật."
+        exit 1
+    fi
+
+    echo "  3. Tải video về thư mục renders/..."
+    if ! "$SCRIPT_DIR/flow_operator.sh" download "$OUTPUT_CLIP"; then
+        echo "[!] Lỗi tải video cho cảnh $SCENE_ID."
+        exit 1
+    fi
+    echo "  ✓ Đã lưu thành công: $OUTPUT_CLIP"
 done
 
 # 3. Ghép nối thành phẩm
