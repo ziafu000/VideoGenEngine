@@ -1,6 +1,6 @@
 # 🎬 VideoGen Engine (v2.0)
 
-> **Autonomous, production-grade video generation engine orchestrating Google Flow, ElevenLabs, and TypeSafe Jev AI via Chrome DevTools Protocol (0 API token cost) to produce viral YouTube Shorts and full 3D CGI Anime Series.**
+> **Autonomous, production-grade video generation engine orchestrating Google Flow, ElevenLabs, and TypeSafe Jev AI via Chrome DevTools Protocol (0 API token cost) to produce viral YouTube Shorts and full Youtube Series.**
 
 [![Node.js](https://img.shields.io/badge/Node.js-v20%2B-green?logo=node.js)](https://nodejs.org/)
 [![Google Flow](https://img.shields.io/badge/Google%20Flow-Omni%201.1%20Flash%20%7C%20Veo%203.1-4285F4?logo=google)](https://flow.google.com/)
