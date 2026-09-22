@@ -1,0 +1,454 @@
+#!/usr/bin/env node
+
+/**
+ * ==============================================================================
+ * VIDEOGEN UNIFIED CLI (v2.0)
+ * Master automated video generation engine for Anime Series & YouTube Shorts.
+ * 
+ * Usage:
+ *   ./videogen bridge                      Check or start Chrome CDP bridge
+ *   ./videogen render <storyboard> [shots] Render Google Flow clips
+ *   ./videogen voice <storyboard> [shots]  Generate ElevenLabs voiceovers
+ *   ./videogen subs <storyboard>           Generate Dual-Zone or Shorts ASS subtitles
+ *   ./videogen assemble <storyboard>       Stitch, pad, mix, and burn subtitles
+ *   ./videogen verify <video> [timestamps] Extract keyframes for verification
+ *   ./videogen archive <storyboard>        Archive materials & master to D: drive
+ *   ./videogen upload <storyboard>         Upload to YouTube Studio via CDP
+ *   ./videogen run <storyboard>            Run complete end-to-end production loop
+ * ==============================================================================
+ */
+
+const fs = require('fs');
+const path = require('path');
+const config = require('./engine/config');
+const bridge = require('./engine/bridge');
+const flow = require('./engine/flow');
+const tts = require('./engine/tts');
+const subtitles = require('./engine/subtitles');
+const compositor = require('./engine/compositor');
+const archive = require('./engine/archive');
+const youtube = require('./engine/youtube');
+const thumbnail = require('./engine/thumbnail');
+
+function loadStoryboard(storyboardPath) {
+  let candidates = [
+    path.resolve(storyboardPath),
+    path.join(config.PROJECT_DIR, storyboardPath),
+    path.join(config.STORYBOARDS_DIR, storyboardPath),
+    path.join(config.STORYBOARDS_DIR, path.basename(storyboardPath)),
+    path.join(config.PROJECT_DIR, 'examples', 'storyboards', path.basename(storyboardPath)),
+    path.join(config.PROJECT_DIR, 'examples', 'storyboards', storyboardPath)
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return { path: c, data: JSON.parse(fs.readFileSync(c, 'utf8')) };
+    }
+    if (fs.existsSync(c + '.json')) {
+      return { path: c + '.json', data: JSON.parse(fs.readFileSync(c + '.json', 'utf8')) };
+    }
+  }
+
+  console.error(`[!] Lỗi: Không tìm thấy file kịch bản tại: ${storyboardPath}`);
+  process.exit(1);
+}
+
+function printHelp() {
+  console.log(`
+==============================================================================
+               VIDEOGEN UNIFIED PRODUCTION ENGINE (v2.0)
+==============================================================================
+Lệnh điều phối:
+  ./videogen bridge [status]
+      Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
+
+  ./videogen render <storyboard.json> [shot_01 shot_02...]
+      Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
+      kiểm duyệt Jev, render và tải clip 720p về renders/.
+      (Hỗ trợ render toàn bộ kịch bản hoặc chỉ định các shot cần render bù).
+
+  ./videogen voice <storyboard.json> [shot_01 shot_02...]
+      Đọc voice_profiles từ storyboard, tự động chỉnh slider Radix UI ElevenLabs,
+      tổng hợp giọng nói đa nhân vật và tải file MP3 về audio/<project>/.
+
+  ./videogen subs <storyboard.json>
+      Tạo file phụ đề ASS chuẩn điện ảnh:
+      - Anime: Dual-Zone (Cạnh dưới: Thoại Arial 28 | Cạnh trên: HUD AI Consolas Neon 24)
+      - Shorts: Bouncy chữ lớn màu vàng Neon.
+
+  ./videogen assemble <storyboard.json>
+      Hậu kỳ hoàn chỉnh: Nối video clips, padding khớp khẩu hình, hòa âm đa tầng
+      (Voice 100%, Ambient SFX 30%), burn phụ đề ASS và xuất video master.
+
+  ./videogen verify <video_file> [00:01:00 00:02:30...]
+      Trích xuất các khung hình then chốt (keyframes) để kiểm định chất lượng hình ảnh & phụ đề.
+
+  ./videogen thumb <storyboard.json> ["custom prompt tùy chọn"]
+      Tự động kích hoạt Nano Banana Pro qua Google Flow CDP để sinh 4 ảnh Thumbnail 16:9
+      chuẩn Full HD (1920x1080), tự động đồng bộ sang ổ D: và Windows Downloads.
+
+  ./videogen archive <storyboard.json>
+      Sao lưu toàn bộ nguyên liệu (clips, audio, sub, kịch bản) sang ổ D: (File video original)
+      và lưu video hoàn chỉnh sang File video after edit, sau đó dọn dẹp sạch repo.
+
+  ./videogen upload <storyboard.json>
+      Tự động tải video thành phẩm lên YouTube Studio ở chế độ Không công khai (Unlisted).
+
+  ./videogen run <storyboard.json>
+      CHẾ ĐỘ TỰ ĐỘNG KHÉP KÍN (A -> Z): Chạy toàn bộ chuỗi sản xuất từ Render -> Voice
+      -> Assemble -> Verify -> Archive -> Upload!
+==============================================================================
+`);
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
+    printHelp();
+    return;
+  }
+
+  try {
+    switch (command) {
+      case 'bridge': {
+        const sub = args[1];
+        if (sub === 'status') {
+          await bridge.status();
+        } else {
+          await bridge.ensureBridge();
+        }
+        break;
+      }
+
+      case 'render': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...]');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+        const { data: sb } = loadStoryboard(sbArg);
+        const targetShots = args.slice(2);
+        const shots = sb.shots || [];
+
+        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title} ===`);
+        for (let i = 0; i < shots.length; i++) {
+          const s = shots[i];
+          const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+          if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
+
+          const outFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
+            console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại, bỏ qua.`);
+            continue;
+          }
+
+          console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
+          // 1. Clear characters
+          await flow.clearCharacters();
+
+          // 2. Add characters if any
+          const chars = s.characters || [];
+          for (const c of chars) {
+            console.log(`    [-] Gắn nhân vật: @${c}`);
+            await flow.addCharacter(c);
+          }
+
+          // 3. Submit prompt
+          console.log(`    [-] Gửi câu lệnh: "${s.prompt.slice(0, 50)}..."`);
+          await flow.submitPrompt(s.prompt);
+
+          // 4. Wait
+          await flow.waitForRender(240);
+
+          // 5. Download
+          await flow.downloadLatest(outFile);
+        }
+        console.log('\n✓ Hoàn tất lượt render Google Flow!');
+        break;
+      }
+
+      case 'voice': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen voice <storyboard.json> [shots...]');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+        const { data: sb } = loadStoryboard(sbArg);
+        const targetShots = args.slice(2);
+        await tts.generateAllVoices(sb, targetShots);
+        break;
+      }
+
+      case 'subs': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen subs <storyboard.json>');
+          process.exit(1);
+        }
+        const { data: sb } = loadStoryboard(sbArg);
+        const shots = sb.shots || [];
+
+        // Build timelines from existing render files or default 10s
+        const timelines = shots.map((s, idx) => {
+          const shotId = s.id || `shot_${String(idx + 1).padStart(2, '0')}`;
+          const renderPath = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          const dur = fs.existsSync(renderPath) ? compositor.getDuration(renderPath) : (s.duration_seconds || 10.0);
+          return { shotId, duration: dur };
+        });
+
+        const outAss = path.join(config.RENDERS_DIR, 'subtitles.ass');
+        subtitles.generateSubtitles(sb, timelines, outAss);
+        break;
+      }
+
+      case 'assemble': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen assemble <storyboard.json>');
+          process.exit(1);
+        }
+        const { data: sb } = loadStoryboard(sbArg);
+        const shots = sb.shots || [];
+
+        const episodeName = sb.project && sb.project.series
+          ? (sb.project.series + '_ep' + String(sb.project.episode || 1).padStart(2, '0')).replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()
+          : 'voices';
+
+        const audioDir = path.join(config.AUDIO_DIR, episodeName);
+        const videoFiles = [];
+        const audioFiles = [];
+        const timelines = [];
+
+        for (let i = 0; i < shots.length; i++) {
+          const s = shots[i];
+          const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+          const vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+
+          if (fs.existsSync(vFile)) {
+            videoFiles.push(vFile);
+            audioFiles.push(fs.existsSync(aFile) ? aFile : null);
+            timelines.push({
+              shotId,
+              duration: compositor.getDuration(vFile),
+              audioDuration: fs.existsSync(aFile) ? compositor.getDuration(aFile) : 0
+            });
+          }
+        }
+
+        if (videoFiles.length === 0) {
+          console.error('[!] Không tìm thấy video clips nào trong thư mục renders/!');
+          process.exit(1);
+        }
+
+        // Generate matching ASS subtitles
+        const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
+        subtitles.generateSubtitles(sb, timelines, assPath);
+
+        const masterOutput = path.join(config.OUTPUT_DIR, `final_master_${Date.now()}.mp4`);
+        await compositor.compositeVideo({
+          videoFiles,
+          audioFiles,
+          assSubtitlePath: assPath,
+          outputVideoPath: masterOutput
+        });
+        break;
+      }
+
+      case 'verify': {
+        const videoPath = args[1];
+        if (!videoPath || !fs.existsSync(videoPath)) {
+          console.error('[!] Vui lòng cung cấp đường dẫn video hợp lệ: ./videogen verify <video_file> [timestamps...]');
+          process.exit(1);
+        }
+        const timestamps = args.slice(2).length > 0 ? args.slice(2) : ['00:00:05', '00:01:00', '00:02:00', '00:03:00', '00:04:00'];
+        const verifyDir = path.join(config.RENDERS_DIR, 'verification_frames');
+        console.log(`[-] Trích xuất ${timestamps.length} khung hình kiểm định từ: ${videoPath}`);
+        const frames = compositor.extractVerificationFrames(videoPath, timestamps, verifyDir);
+        for (const f of frames) {
+          console.log(`  [✓] ${f.timestamp} -> ${f.path}`);
+        }
+        break;
+      }
+
+      case 'thumb':
+      case 'thumbnail': {
+        const target = args[1];
+        if (!target) {
+          console.error('[!] Vui lòng cung cấp storyboard hoặc câu prompt:');
+          console.error('    ./videogen thumb storyboards/ashel_ep01.json');
+          console.error('    ./videogen thumb "Widescreen 16:9 anime key visual..."');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+
+        let sb = null;
+        let customPrompt = null;
+        const potentialJson = target.endsWith('.json') || fs.existsSync(target) || fs.existsSync(path.join(config.STORYBOARDS_DIR, target)) || fs.existsSync(path.join(config.STORYBOARDS_DIR, target + '.json'));
+
+        if (potentialJson) {
+          const res = loadStoryboard(target);
+          sb = res.data;
+          customPrompt = args.slice(2).join(' ') || null;
+        } else {
+          customPrompt = args.slice(1).join(' ');
+        }
+
+        console.log(`=== BẮT ĐẦU TẠO 4 THUMBNAIL 16:9 BẰNG NANO BANANA PRO ===`);
+        await thumbnail.generateThumbnails({
+          storyboard: sb,
+          prompt: customPrompt
+        });
+        break;
+      }
+
+      case 'archive': {
+        const sbArg = args[1];
+        const { path: sbPath } = loadStoryboard(sbArg || 'storyboards/example_anime_series.json');
+        const latestMaster = fs.readdirSync(config.OUTPUT_DIR)
+          .filter(f => f.endsWith('.mp4'))
+          .map(f => path.join(config.OUTPUT_DIR, f))[0] || null;
+
+        await archive.archiveProject({
+          storyboardPath: sbPath,
+          masterVideoPath: latestMaster,
+          videoClipsDir: config.RENDERS_DIR,
+          audioDir: config.AUDIO_DIR,
+          assSubtitlePath: path.join(config.RENDERS_DIR, 'master_subtitles.ass')
+        });
+        break;
+      }
+
+      case 'upload': {
+        const sbArg = args[1];
+        if (sbArg === 'status') {
+          await youtube.getStatus();
+          break;
+        }
+        const { data: sb } = loadStoryboard(sbArg || 'storyboards/example_anime_series.json');
+        const title = (sb.project && sb.project.title) || sb.title || 'Video Project';
+        const desc = (sb.project && sb.project.series) || 'Original AI Series';
+
+        const latestMaster = fs.readdirSync(config.OUTPUT_DIR)
+          .filter(f => f.endsWith('.mp4'))
+          .map(f => path.join(config.OUTPUT_DIR, f))[0];
+
+        if (!latestMaster) {
+          console.error('[!] Không tìm thấy video thành phẩm trong output/ để tải lên!');
+          process.exit(1);
+        }
+
+        await youtube.uploadVideo({
+          videoPath: latestMaster,
+          title,
+          description: desc,
+          visibility: 'unlisted'
+        });
+        break;
+      }
+
+      case 'run': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen run <storyboard.json>');
+          process.exit(1);
+        }
+
+        console.log(`\n============================================================`);
+        console.log(`       VIDEOGEN: BẮT ĐẦU CHU KỲ SẢN XUẤT TỰ ĐỘNG KHÉP KÍN   `);
+        console.log(`============================================================`);
+
+        // 1. Bridge
+        await bridge.ensureBridge();
+
+        // 2. Render Google Flow
+        console.log(`\n>>> [BƯỚC 1/6] Render video phân cảnh Google Flow...`);
+        // delegate to render logic
+        const { path: sbPath, data: sb } = loadStoryboard(sbArg);
+        const shots = sb.shots || [];
+        for (let i = 0; i < shots.length; i++) {
+          const s = shots[i];
+          const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+          const outFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) continue;
+
+          await flow.clearCharacters();
+          for (const c of (s.characters || [])) await flow.addCharacter(c);
+          await flow.submitPrompt(s.prompt);
+          await flow.waitForRender(240);
+          await flow.downloadLatest(outFile);
+        }
+
+        // 3. Voiceover ElevenLabs
+        console.log(`\n>>> [BƯỚC 2/6] Tạo voiceover ElevenLabs...`);
+        const audioDir = await tts.generateAllVoices(sb);
+
+        // 4. Assemble & Compositing
+        console.log(`\n>>> [BƯỚC 3/6] Ghép nối, hòa âm và burn phụ đề ASS...`);
+        const videoFiles = [];
+        const audioFiles = [];
+        const timelines = [];
+        for (let i = 0; i < shots.length; i++) {
+          const s = shots[i];
+          const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+          const vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+          if (fs.existsSync(vFile)) {
+            videoFiles.push(vFile);
+            audioFiles.push(fs.existsSync(aFile) ? aFile : null);
+            timelines.push({
+              shotId,
+              duration: compositor.getDuration(vFile),
+              audioDuration: fs.existsSync(aFile) ? compositor.getDuration(aFile) : 0
+            });
+          }
+        }
+
+        const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
+        subtitles.generateSubtitles(sb, timelines, assPath);
+
+        const safeTitle = ((sb.project && sb.project.title) || sb.title || 'video').replace(/\s+/g, '_');
+        const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
+        await compositor.compositeVideo({
+          videoFiles,
+          audioFiles,
+          assSubtitlePath: assPath,
+          outputVideoPath: masterOutput
+        });
+
+        // 5. Verify frames
+        console.log(`\n>>> [BƯỚC 4/6] Trích xuất keyframes kiểm định...`);
+        const verifyDir = path.join(config.RENDERS_DIR, 'verify_frames');
+        compositor.extractVerificationFrames(masterOutput, ['00:00:05', '00:01:30', '00:03:00'], verifyDir);
+
+        // 6. Archive to D: drive
+        console.log(`\n>>> [BƯỚC 5/6] Sao lưu ổ D: và dọn dẹp repo...`);
+        await archive.archiveProject({
+          storyboardPath: sbPath,
+          masterVideoPath: masterOutput,
+          videoClipsDir: config.RENDERS_DIR,
+          audioDir: config.AUDIO_DIR,
+          assSubtitlePath: assPath
+        });
+
+        console.log(`\n============================================================`);
+        console.log(`✓ QUY TRÌNH SẢN XUẤT TỰ ĐỘNG ĐÃ HOÀN TẤT THÀNH CÔNG RỰC RỠ!`);
+        console.log(`============================================================\n`);
+        break;
+      }
+
+      default:
+        console.error(`[!] Lệnh không xác định: "${command}". Chạy ./videogen help để xem hướng dẫn.`);
+        process.exit(1);
+    }
+  } catch (err) {
+    console.error(`\n[!] LỖI THỰC THI:`, err.message);
+    process.exit(1);
+  }
+}
+
+main();

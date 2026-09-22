@@ -1,0 +1,39 @@
+{
+  "title": "Why Nobody Can Copy Coca-Cola's 138-Year Formula",
+  "niche": "explainer",
+  "language": "en",
+  "aspect_ratio": "9:16",
+  "model": "Omni 1.1 Flash",
+  "voice": "Alistair",
+  "target_duration_seconds": 30,
+  "title_options": [
+    "Why Nobody Can Copy Coca-Cola's 138-Year Formula",
+    "The DEA Secret Inside Every Bottle of Coke",
+    "The 138-Year Coca-Cola Monopoly Exposed"
+  ],
+  "thumbnail_line": "THE 138-YEAR LIE",
+  "script_full": "For 138 years, people thought Coca-Cola's secret formula was locked in an Atlanta vault. The truth is far stranger. Only one company in America has a federal license to import raw coca leaves: the Stepan chemical plant in New Jersey. Under strict DEA supervision, they extract the cocaine for pharmaceuticals, sending the spent flavor extract exclusively to Coca-Cola. Competitors can copy the chemistry, but no one on Earth can copy a federal monopoly. The secret isn't in a vault. It's in the law.",
+  "scenes": [
+    {
+      "scene_id": "scene_01",
+      "duration_seconds": 10,
+      "timecode": "00:00 - 00:10",
+      "voiceover": "For 138 years, people thought Coca-Cola's secret formula was locked in an Atlanta vault. The truth is far stranger. Only one company in America has a federal license to import raw coca leaves:",
+      "prompt": "Vertical 9:16 high-velocity sequence with rapid dynamic cuts: [00:00 - 00:02] Extreme close-up of a giant steel bank vault door wheel spinning rapidly, heavy locking bolts slamming shut with metallic sparks. [00:02 - 00:05] Rapid hard cut to eye-level shot: an unmarked white heavy truck speeds through reinforced security gates topped with razor wire and DEA federal warning signs. [00:05 - 00:08] Whip pan to concrete loading bay: two workers in industrial respirators heave rough burlap sacks stamped 'COCA LEAVES' off the truck bed. [00:08 - 00:10] Snap zoom in on burlap texture as a sack hits the floor, kicking up a tiny puff of dry plant dust. AUDIO: SFX ONLY — heavy vault metal clanking shut, accelerating diesel truck roar, chain-link gate rattling, dull sack thud on concrete. NO MUSIC."
+    },
+    {
+      "scene_id": "scene_02",
+      "duration_seconds": 10,
+      "timecode": "00:10 - 00:20",
+      "voiceover": "the Stepan chemical plant in New Jersey. Under strict DEA supervision, they extract the cocaine for pharmaceuticals, sending the spent flavor extract exclusively to Coca-Cola.",
+      "prompt": "Vertical 9:16 rapid-fire industrial sequence: [00:00 - 00:03] Low-angle shot looking up at massive stainless steel distillation towers and tangled chemical pipes against an overcast New Jersey sky. [00:03 - 00:05] Hard cut to cleanroom lab counter: a gloved chemist turns a brass valve, draining pure white crystalline powder into a medical glass tray. [00:05 - 00:08] Whip pan to industrial mixer: thick dark amber coca flavor syrup gushes from a pipe into a spinning stainless steel vat with swirling froth. [00:08 - 00:10] Fast push-in to heavy steel drums stamped 'EXTRACT' being sealed shut with hydraulic clamp. AUDIO: SFX ONLY — deep industrial humming, sharp valve squeak, rushing viscous fluid into vat, hydraulic clamp hissing and banging shut. NO MUSIC."
+    },
+    {
+      "scene_id": "scene_03",
+      "duration_seconds": 10,
+      "timecode": "00:20 - 00:30",
+      "voiceover": "Competitors can copy the chemistry, but no one on Earth can copy a federal monopoly. The secret isn't in a vault. It's in the law.",
+      "prompt": "Vertical 9:16 high-impact montage: [00:00 - 00:03] Close-up of supermarket soda shelf, hands reaching for competing cola cans in quick blur. [00:03 - 00:06] Hard cut to wooden table in warm directional light: an icy dark glass soda bottle dripping with condensation, metal bottle opener levers off the crown cap with a violent hiss. [00:06 - 00:08] Snap zoom into bottle neck: frothy brown carbonated bubbles surge violently upward to the rim, spilling droplets down the glass. [00:08 - 00:10] Smash cut to high-contrast top-down shot of an official government seal stamped firmly onto legal license document with black ink. AUDIO: SFX ONLY — metal cans clinking, crisp bottle cap snap with loud carbonation hiss, continuous effervescent bubbling, heavy desk stamp thud. NO MUSIC."
+    }
+  ]
+}

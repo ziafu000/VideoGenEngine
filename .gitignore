@@ -1,0 +1,18 @@
+# Creator IP & Local Production Assets (100% Private)
+/assets/
+/storyboards/
+
+# Media & temporary generated files
+/renders/*
+!/renders/.gitkeep
+/audio/*
+!/audio/.gitkeep
+/output/*
+!/output/.gitkeep
+
+# OS & Logs
+.DS_Store
+Thumbs.db
+*.log
+__pycache__/
+*.pyc

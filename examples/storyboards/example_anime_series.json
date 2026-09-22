@@ -1,0 +1,53 @@
+{
+  "project": {
+    "id": "anime_ep01_demo",
+    "title": "Cyber Samurai: The Awakening - Episode 1",
+    "series": "Protocol: Cyber",
+    "aspect_ratio": "16:9",
+    "model": "Omni 1.1 Flash",
+    "duration_per_clip": 10
+  },
+  "voice_profiles": {
+    "Ren": {
+      "voice": "Daisuke",
+      "speed": 1.0,
+      "stability": 40,
+      "similarity": 80,
+      "style": 15
+    },
+    "Aria": {
+      "voice": "Lime",
+      "speed": 1.0,
+      "stability": 35,
+      "similarity": 80,
+      "style": 25
+    },
+    "System AI": {
+      "voice": "Koichi",
+      "speed": 0.95,
+      "stability": 85,
+      "similarity": 85,
+      "style": 0
+    }
+  },
+  "shots": [
+    {
+      "id": "shot_01",
+      "characters": ["Ren"],
+      "dialogue_tier": "A",
+      "speaker": "Ren",
+      "dialogue_jp": "何者だ...？ どこから入ってきた？",
+      "dialogue_vi": "Kẻ nào đó...? Ngươi đột nhập từ đâu?",
+      "prompt": "Widescreen 16:9 cinematic eye-level medium tracking shot: A dark futuristic dojo illuminated by flickering blue neon lights. Rain streaks down the exterior translucent glass wall. [00:00 - 00:04] The cyber warrior stands in a low defensive stance, right hand resting on the hilt of his sheathed katana. [00:04 - 00:07] Rapid whip-pan to: Extreme close-up of his glowing cyan cybernetic eye scanning the shadows. [00:07 - 00:10] Push-in medium shot: He steps forward as a digital grid flickers across the tatami floor. AUDIO: SFX ONLY — heavy rain pattering against glass, neon light hum, leather armor creaking, subtle digital scanning beep. NO MUSIC."
+    },
+    {
+      "id": "shot_02",
+      "characters": [],
+      "dialogue_tier": "B",
+      "speaker": "System AI",
+      "dialogue_jp": "警告：未承認の生体反応を検知。防衛プロトコルを起動します。",
+      "dialogue_vi": "Cảnh báo: Phát hiện phản ứng sinh học trái phép. Khởi động giao thức phòng thủ.",
+      "prompt": "Widescreen 16:9 high-angle shot: A massive circular server vault ceiling. [00:00 - 00:03] Rows of geometric server towers illuminate one by one in brilliant cyan neon. [00:03 - 00:07] Rapid hard cut to: A floating spherical AI core descends from the shadows, its surface pulsing with intricate circuit patterns. [00:07 - 00:10] Snap zoom on: Holographic warnings expanding outward in mid-air. AUDIO: SFX ONLY — deep mechanical hum, electric relays clicking open, high-frequency synthesized chime. NO MUSIC."
+    }
+  ]
+}
