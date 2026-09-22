@@ -50,7 +50,7 @@ Building automated video pipelines with commercial APIs is notoriously expensive
 │     ├── Configure resolution, 16:9 / 9:16, 10s duration               │
 │     ├── Attach character asset chips (`<flow-character-chip>` `@`)     │
 │     ├── Fast policy refusal early abort (5s fail-fast vs 240s wait)    │
-│     └── Direct signed CDN download (native 720p MP4)                   │
+│     └── Cloud AI Super-Resolution (Native 1080p Full HD download)      │
 │                                                                        │
 │  3. VOICEOVER GENERATION (`engine/tts.js`)                             │
 │     ├── Read `voice_profiles` from storyboard                          │

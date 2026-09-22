@@ -8,7 +8,7 @@ Production-grade automated system for creating cinema-quality faceless YouTube S
 
 ### 1.1. Visual & Sound Effects Engine (Google Flow)
 - Operated via Chrome DevTools Protocol (CDP) through Windows Chrome profile `AutomationProfile`.
-- Uses **Omni 1.1 Flash** (10-second clips, 720p native download).
+- Uses **Omni 1.1 Flash** (10-second clips, Cloud AI 1080p Full HD upscale & download).
 - Generates natural ambient SFX embedded in the video stream (truck rumble, glass pouring, fizzing carbonation).
 
 ### 1.2. Voiceover Engine (ElevenLabs)
@@ -87,7 +87,7 @@ To eliminate fragmented scripts and prevent codebase bloat, VideoGen consolidate
 | Command | Function | Description / Example |
 | :--- | :--- | :--- |
 | `./videogen bridge [status]` | Kiểm tra/Bật kết nối CDP | Tự động khởi động Chrome Windows & CDP proxy, kiểm tra các tab Flow, ElevenLabs. |
-| `./videogen render <sb> [shots...]` | Render Google Flow | Tự động cấu hình, gắn chip `@Character`, kiểm duyệt Jev, render và tải clip 720p. |
+| `./videogen render <sb> [shots...] [--720p]` | Render Google Flow | Tự động cấu hình, gắn chip `@Character`, kiểm duyệt Jev, render và tự động kích hoạt Cloud AI 1080p Full HD (hoặc tải nhanh 720p). |
 | `./videogen voice <sb> [shots...]` | Voiceover ElevenLabs | Đọc `voice_profiles` từ storyboard, tự chỉnh slider Radix UI và tải MP3 đa nhân vật. |
 | `./videogen subs <sb>` | Sinh phụ đề ASS | Tạo phụ đề điện ảnh (Dual-Zone ASS cho Anime hoặc Bouncy Yellow cho Shorts). |
 | `./videogen assemble <sb>` | Hậu kỳ tổng hợp | Ghép video, time-padding khớp thoại, hòa âm đa tầng (Voice + Ambient), burn sub ASS. |

@@ -62,10 +62,10 @@ Lệnh điều phối:
   ./videogen bridge [status]
       Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
 
-  ./videogen render <storyboard.json> [shot_01 shot_02...]
+  ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p]
       Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
-      kiểm duyệt Jev, render và tải clip 720p về renders/.
-      (Hỗ trợ render toàn bộ kịch bản hoặc chỉ định các shot cần render bù).
+      kiểm duyệt Jev, render và tự động kích hoạt Cloud AI Super-Resolution
+      tải video 1080p Full HD (mặc định) về renders/ (hoặc thêm cờ --720p để tải nhanh 720p).
 
   ./videogen voice <storyboard.json> [shot_01 shot_02...]
       Đọc voice_profiles từ storyboard, tự động chỉnh slider Radix UI ElevenLabs,
@@ -125,15 +125,17 @@ async function main() {
       case 'render': {
         const sbArg = args[1];
         if (!sbArg) {
-          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...]');
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...] [--720p]');
           process.exit(1);
         }
         await bridge.ensureBridge();
         const { data: sb } = loadStoryboard(sbArg);
-        const targetShots = args.slice(2);
+        const is720p = args.includes('--720p');
+        const resolution = is720p ? '720p' : ((sb.project && sb.project.resolution) || '1080p');
+        const targetShots = args.slice(2).filter(a => !a.startsWith('--'));
         const shots = sb.shots || [];
 
-        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title} ===`);
+        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title} [${resolution.toUpperCase()}] ===`);
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
           const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
@@ -163,8 +165,8 @@ async function main() {
           // 4. Wait
           await flow.waitForRender(240);
 
-          // 5. Download
-          await flow.downloadLatest(outFile);
+          // 5. Download (Default: Cloud AI 1080p Full HD)
+          await flow.downloadLatest(outFile, { resolution });
         }
         console.log('\n✓ Hoàn tất lượt render Google Flow!');
         break;
@@ -369,7 +371,10 @@ async function main() {
         console.log(`\n>>> [BƯỚC 1/6] Render video phân cảnh Google Flow...`);
         // delegate to render logic
         const { path: sbPath, data: sb } = loadStoryboard(sbArg);
+        const is720p = args.includes('--720p');
+        const resolution = is720p ? '720p' : ((sb.project && sb.project.resolution) || '1080p');
         const shots = sb.shots || [];
+        console.log(`[-] Độ phân giải render: ${resolution.toUpperCase()}`);
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
           const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
@@ -380,7 +385,7 @@ async function main() {
           for (const c of (s.characters || [])) await flow.addCharacter(c);
           await flow.submitPrompt(s.prompt);
           await flow.waitForRender(240);
-          await flow.downloadLatest(outFile);
+          await flow.downloadLatest(outFile, { resolution });
         }
 
         // 3. Voiceover ElevenLabs
