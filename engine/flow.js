@@ -271,6 +271,34 @@ async function downloadLatestDirect(targetFile) {
   }
 }
 
+// Helper: Classify Google Flow toast/message using TypeSafe Jev System One
+function classifyUpscaleToast(text) {
+  if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
+  try {
+    const states = JSON.stringify({
+      in_progress: "video resolution is currently being upscaled or processed in background",
+      error: "an error, quota limit, concurrency warning, refusal or failure occurred",
+      neutral: "normal page state or confirmation message"
+    });
+    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000
+    });
+    return JSON.parse(out);
+  } catch {
+    // Resilient fallback heuristic if Jev CLI is offline or timed out
+    const lower = text.toLowerCase();
+    if (lower.includes('đang tăng') || lower.includes('tăng độ phân giải') || lower.includes('upscaling') || lower.includes('processing')) {
+      return { choice: 'in_progress', confidence: 0.9 };
+    }
+    if (lower.includes('lỗi') || lower.includes('thất bại') || lower.includes('error') || lower.includes('failed') || lower.includes('quá nhiều yêu cầu')) {
+      return { choice: 'error', confidence: 0.9 };
+    }
+    return { choice: 'neutral', confidence: 0.8 };
+  }
+}
+
 // 6b. Cloud AI Super-Resolution (1080p Full HD upscale & download)
 async function downloadCloud1080p(targetFile, timeoutSec = 240) {
   const dir = path.dirname(targetFile);
@@ -319,10 +347,16 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
       throw new Error(triggerRes.error);
     }
 
-    if (triggerRes && triggerRes.toast && triggerRes.toast.includes('Đang tăng độ phân giải')) {
-      console.log('    [-] Google Flow đang xử lý tăng độ phân giải trên Cloud...');
-      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+    if (triggerRes && triggerRes.toast) {
+      const jClass = classifyUpscaleToast(triggerRes.toast);
+      if (jClass.choice === 'error') {
+        throw new Error(`Google Flow Cloud Upscale báo lỗi: "${triggerRes.toast}"`);
+      }
+      if (jClass.choice === 'in_progress') {
+        console.log(`    [-] [TypeSafe Jev: ${jClass.choice}] Google Flow đang xử lý tăng độ phân giải trên Cloud...`);
+        await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+      }
     }
 
     // 3. Poll for upscale completion & download trigger
@@ -356,13 +390,20 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
         await new Promise(r => setTimeout(r, 800));
 
         const snack = document.querySelector('snack-bar-container, .mat-mdc-snack-bar-container');
-        return snack ? snack.innerText : null;
+        return snack ? snack.innerText.replace(/[\\r\\n]+/g, ' ') : null;
       })()`);
 
-      if (pollRes && pollRes.includes('Đang tăng độ phân giải')) {
-        process.stdout.write('*');
-        await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
-        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+      if (pollRes) {
+        const jPoll = classifyUpscaleToast(pollRes);
+        if (jPoll.choice === 'error') {
+          process.stdout.write('\n');
+          throw new Error(`Google Flow Cloud Upscale báo lỗi khi thăm dò: "${pollRes}"`);
+        }
+        if (jPoll.choice === 'in_progress') {
+          process.stdout.write('*');
+          await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+          await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
+        }
       } else {
         process.stdout.write('.');
       }
