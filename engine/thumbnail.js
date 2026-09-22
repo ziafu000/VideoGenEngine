@@ -25,6 +25,30 @@ function craftThumbnailPrompt(sb) {
   return `Widescreen 16:9 anime key visual thumbnail for dark fantasy sci-fi anime "${series}" Episode ${ep}: "${title}". Young cyber swordsman hero with silver-white hair and glowing cyan eye in battle-damaged silver and black armor. Intense sharp gaze directly at the camera. In the background, a massive dark dimensional portal vortex tearing the sky with purple and dark blue energy storm. Glowing cyan holographic tech HUD glyphs floating in the air. High contrast, dramatic rim lighting, embers and glowing data particles, Ufotable anime style, 8k resolution, ultra detailed, cinematic YouTube anime thumbnail.`;
 }
 
+// Helper: Classify thumbnail prompt refusal or error using TypeSafe Jev
+function classifyThumbnailRefusal(text) {
+  if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
+  try {
+    const states = JSON.stringify({
+      refusal: "prompt was refused, blocked or violates safety policy or terms",
+      error: "system error, capacity limit or generation failure occurred",
+      neutral: "normal generation or progress status"
+    });
+    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000
+    });
+    return JSON.parse(out);
+  } catch {
+    const lower = text.toLowerCase();
+    if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
+      return { choice: 'refusal', confidence: 0.9 };
+    }
+    return { choice: 'neutral', confidence: 0.8 };
+  }
+}
+
 async function generateThumbnails({ prompt, storyboard, projectId }) {
   let finalPrompt = prompt;
 
@@ -123,7 +147,7 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
 
           const errorEl = Array.from(document.querySelectorAll('*'))
             .map(e => e.innerText || '')
-            .find(t => t.includes('Không thành công') || t.includes('vi phạm'));
+            .find(t => t.includes('Không thành công') || t.includes('vi phạm') || t.includes('failed') || t.includes('policy'));
 
           return {
             pendingCount: pending.length,
@@ -134,7 +158,10 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
       `);
 
       if (status.error) {
-        throw new Error(`Google Flow từ chối prompt: ${status.error}`);
+        const jRef = classifyThumbnailRefusal(status.error);
+        if (jRef.choice === 'refusal' || jRef.choice === 'error') {
+          throw new Error(`Google Flow từ chối prompt Thumbnail [TypeSafe Jev: ${jRef.choice}]: ${status.error}`);
+        }
       }
 
       const freshImages = status.images.filter(src => !initialSet.has(src));

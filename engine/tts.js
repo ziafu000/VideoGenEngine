@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 
@@ -51,6 +52,59 @@ function getNewestDownload(downloadsDir) {
     return files.length > 0 ? files[0] : null;
   } catch {
     return null;
+  }
+}
+
+// Helper: Detect and dismiss popups/obstacles using TypeSafe Jev
+async function handleObstacles(cdp) {
+  try {
+    const obstacleInfo = await cdp.evaluate(`(() => {
+      const dialog = document.querySelector('[role="dialog"]:not([data-voice-menu]), [role="alertdialog"], .modal');
+      if (!dialog) return null;
+      return {
+        text: dialog.innerText ? dialog.innerText.slice(0, 300).replace(/[\\r\\n]+/g, ' ') : ''
+      };
+    })()`);
+
+    if (obstacleInfo && obstacleInfo.text) {
+      const obsOut = execSync(`browser-jev obstacle --text ${JSON.stringify(obstacleInfo.text)}`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+        timeout: 5000
+      });
+      const parsed = JSON.parse(obsOut);
+      if (parsed.has_obstacle) {
+        console.warn(`    [!] TypeSafe Jev phát hiện popup ElevenLabs: ${parsed.obstacle_type} (${parsed.suggested_action})`);
+        await cdp.evaluate(`(() => {
+          const btn = document.querySelector('button[aria-label="Close"], button[aria-label="Đóng"], button[data-testid="close-button"]');
+          if (btn) btn.click();
+        })()`);
+      }
+    }
+  } catch {}
+}
+
+// Helper: Classify ElevenLabs TTS error using TypeSafe Jev
+function classifyTtsError(text) {
+  if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
+  try {
+    const states = JSON.stringify({
+      error: "an error, quota exceeded, character limit or speech synthesis failure occurred",
+      generating: "audio speech synthesis is actively generating or rendering",
+      neutral: "normal status or informational text"
+    });
+    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000
+    });
+    return JSON.parse(out);
+  } catch {
+    const lower = text.toLowerCase();
+    if (lower.includes('quota') || lower.includes('limit') || lower.includes('error') || lower.includes('failed') || lower.includes('lỗi')) {
+      return { choice: 'error', confidence: 0.9 };
+    }
+    return { choice: 'neutral', confidence: 0.8 };
   }
 }
 
@@ -132,6 +186,9 @@ async function generateClip(cdp, text, destFile, profile) {
 
   const beforeDownload = getNewestDownload(config.WIN_DOWNLOADS_DIR);
 
+  // 0. Check & dismiss any unexpected popups via TypeSafe Jev
+  await handleObstacles(cdp);
+
   // 1. Voice & Sliders
   await setVoice(cdp, profile);
   await setSliders(cdp, profile);
@@ -165,9 +222,22 @@ async function generateClip(cdp, text, destFile, profile) {
     const state = await cdp.evaluate(`(() => {
       const loading = document.querySelectorAll('[data-loading="true"], .animate-spin, svg.animate-spin');
       const audio = document.querySelector('audio');
-      return (loading.length === 0 && audio && audio.duration > 0);
+      const errBanner = document.querySelector('[role="alert"], [class*="destructive"], [class*="error-message"]');
+      return {
+        isDone: (loading.length === 0 && audio && audio.duration > 0),
+        errorText: errBanner ? errBanner.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null
+      };
     })()`);
-    if (state) {
+
+    if (state && state.errorText) {
+      const jErr = classifyTtsError(state.errorText);
+      if (jErr.choice === 'error') {
+        process.stdout.write(' ✗\n');
+        throw new Error(`ElevenLabs báo lỗi TTS [TypeSafe Jev: ${jErr.choice}]: ${state.errorText}`);
+      }
+    }
+
+    if (state && state.isDone) {
       ready = true;
       break;
     }

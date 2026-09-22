@@ -224,6 +224,25 @@ async function cmdUpload(args) {
       throw new Error('Chưa đăng nhập tài khoản YouTube. Vui lòng mở Chrome đăng nhập vào studio.youtube.com trước.');
     }
 
+    // 1b. Kiểm tra và giải phóng popup/obstacle trên Studio qua TypeSafe Jev
+    try {
+      const obstacleText = await client.eval(`(() => {
+        const dialog = document.querySelector('ytcp-dialog[open], tp-yt-paper-dialog[opened]');
+        return dialog ? dialog.innerText.slice(0, 300).replace(/[\\r\\n]+/g, ' ') : null;
+      })()`);
+      if (obstacleText) {
+        const obsOut = execSync(`browser-jev obstacle --text ${JSON.stringify(obstacleText)}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 });
+        const parsed = JSON.parse(obsOut);
+        if (parsed.has_obstacle) {
+          console.error(`  [!] TypeSafe Jev phát hiện popup Studio: ${parsed.obstacle_type}`);
+          await client.eval(`(() => {
+            const closeBtn = document.querySelector('ytcp-dialog #close-button, tp-yt-paper-dialog #dismiss-button, [aria-label="Close"], [aria-label="Đóng"]');
+            if (closeBtn) closeBtn.click();
+          })()`);
+        }
+      }
+    } catch {}
+
     // 2. Kích hoạt menu Tạo / Tải video lên
     console.error(`[-] Mở hộp thoại tải video lên trên YouTube Studio...`);
     const openedDialog = await client.eval(`(() => {
@@ -405,6 +424,19 @@ async function cmdUpload(args) {
     }
 
     client.close();
+
+    // Verify upload success with TypeSafe Jev
+    try {
+      if (finalUrl && finalUrl.includes('youtu.be')) {
+        const jOut = execSync(`browser-jev verify --expected "video upload succeeded with shareable link" --text ${JSON.stringify(finalUrl + ' ' + title)}`, {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+          timeout: 5000
+        });
+        const jParsed = JSON.parse(jOut);
+        console.error(`  [TypeSafe Jev: ${jParsed.verified ? 'Verified ✓' : 'Unverified ✗'}] Xác thực xuất bản YouTube.`);
+      }
+    } catch {}
 
     const videoId = finalUrl ? (finalUrl.split('/').pop().split('?')[0]) : null;
 

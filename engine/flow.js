@@ -156,6 +156,30 @@ async function submitPrompt(promptText) {
   }
 }
 
+// Helper: Classify Google Flow prompt refusal or policy violation using TypeSafe Jev
+function classifyPromptRefusal(text) {
+  if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
+  try {
+    const states = JSON.stringify({
+      refusal: "prompt was refused, blocked or violates safety policy or community guidelines",
+      error: "system error, capacity limit or generation failure occurred",
+      neutral: "normal generation or progress status"
+    });
+    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'ignore'],
+      timeout: 5000
+    });
+    return JSON.parse(out);
+  } catch {
+    const lower = text.toLowerCase();
+    if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
+      return { choice: 'refusal', confidence: 0.9 };
+    }
+    return { choice: 'neutral', confidence: 0.8 };
+  }
+}
+
 // 5. Wait for render to complete (pending tile appears then disappears)
 async function waitForRender(timeoutSec = 240) {
   const cdp = await getFlowClient();
@@ -168,22 +192,26 @@ async function waitForRender(timeoutSec = 240) {
       await sleep(3000);
       const state = await cdp.evaluate(`(() => {
         const pending = document.querySelector('flow-pending-tile');
-        const err = document.querySelector('.error-message, [role="alert"]');
-        const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && el.innerText.includes('Không thành công'));
+        const err = document.querySelector('.error-message, [role="alert"], snack-bar-container, .mat-mdc-snack-bar-container');
+        const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && (el.innerText.includes('Không thành công') || el.innerText.includes('vi phạm') || el.innerText.includes('policy') || el.innerText.includes('violate') || el.innerText.includes('failed')));
         const tiles = document.querySelectorAll('flow-video-tile');
 
         return {
           hasPending: !!pending,
           pendingText: pending ? pending.innerText.trim().replace(/[\\r\\n]+/g, ' ') : '',
-          error: err ? err.innerText.trim() : null,
-          refusal: refusal ? refusal.innerText.trim() : null,
+          error: err ? err.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null,
+          refusal: refusal ? refusal.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null,
           totalTiles: tiles.length
         };
       })()`);
 
-      if (state.refusal) {
-        process.stdout.write('\n');
-        throw new Error(`Google Flow từ chối câu lệnh chính sách: ${state.refusal}`);
+      const refusalCandidate = state.refusal || state.error;
+      if (refusalCandidate) {
+        const jRef = classifyPromptRefusal(refusalCandidate);
+        if (jRef.choice === 'refusal' || jRef.choice === 'error') {
+          process.stdout.write('\n');
+          throw new Error(`Google Flow từ chối câu lệnh chính sách [TypeSafe Jev: ${jRef.choice}]: ${refusalCandidate}`);
+        }
       }
 
       if (state.hasPending) {
