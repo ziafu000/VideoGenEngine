@@ -49,5 +49,18 @@
       "dialogue_vi": "Cảnh báo: Phát hiện phản ứng sinh học trái phép. Khởi động giao thức phòng thủ.",
       "prompt": "Widescreen 16:9 high-angle shot: A massive circular server vault ceiling. [00:00 - 00:03] Rows of geometric server towers illuminate one by one in brilliant cyan neon. [00:03 - 00:07] Rapid hard cut to: A floating spherical AI core descends from the shadows, its surface pulsing with intricate circuit patterns. [00:07 - 00:10] Snap zoom on: Holographic warnings expanding outward in mid-air. AUDIO: SFX ONLY — deep mechanical hum, electric relays clicking open, high-frequency synthesized chime. NO MUSIC."
     }
+  ],
+  "shorts": [
+    {
+      "id": "short_01_awakening",
+      "title": "The Awakening of System AI",
+      "start_time": "00:00:00",
+      "duration": 35,
+      "badge": "PROTOCOL: CYBER - EPISODE 1",
+      "hook_main": "WHEN THE AI CORE AWAKENS...",
+      "hook_accent": "THE SYSTEM RESETS EVERYTHING ⚡",
+      "cta_button": "🔥 WATCH FULL EPISODE 1 HERE",
+      "cta_sub": "👇 LINK PINNED IN COMMENTS 👇"
+    }
   ]
 }

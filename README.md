@@ -149,6 +149,7 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen subs <sb>` | **Subtitles** | Generates Cinema Dual-Zone ASS subtitles or dynamic Shorts subtitles. |
 | `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. |
 | `./videogen verify <video> [ts...]` | **Visual QA** | Extracts high-res keyframes at specified timestamps for visual inspection. |
+| `./videogen shorts <sb> [video]` | **Shorts Clips** | Automatically extracts and renders viral 9:16 vertical teaser clips with **Option B (Cinematic Blur Overlay)** and high-impact CTA banners (0 Credit cost). |
 | `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Google Flow image mode, upscales to 1080p, and syncs to drive. |
 | `./videogen archive <sb>` | **Archival** | Migrates all raw materials and master video to storage drive; purges temp files. |
 | `./videogen upload <sb>` | **YouTube** | Uploads master video directly to YouTube Studio as Unlisted via CDP with Jev verification. |

@@ -29,6 +29,7 @@ const compositor = require('./engine/compositor');
 const archive = require('./engine/archive');
 const youtube = require('./engine/youtube');
 const thumbnail = require('./engine/thumbnail');
+const shorts = require('./engine/shorts');
 
 function loadStoryboard(storyboardPath) {
   let candidates = [
@@ -89,6 +90,10 @@ Lệnh điều phối:
 
   ./videogen verify <video_file> [00:01:00 00:02:30...]
       Trích xuất các khung hình then chốt (keyframes) để kiểm định chất lượng hình ảnh & phụ đề.
+
+  ./videogen shorts <storyboard.json> [master_video_path]
+      Tự động cắt các clip highlight 9:16 dọc theo kịch bản (Option B - Cinematic Blur Overlay)
+      với font chữ lớn, viền neon và thanh kêu gọi CTA trọn bộ tập về kênh chính (0 Credit cost).
 
   ./videogen thumb <storyboard.json> ["custom prompt tùy chọn"]
       Tự động kích hoạt chế độ tạo ảnh trên Google Flow CDP để sinh 4 ảnh Thumbnail 16:9
@@ -281,6 +286,41 @@ async function main() {
         for (const f of frames) {
           console.log(`  [✓] ${f.timestamp} -> ${f.path}`);
         }
+        break;
+      }
+
+      case 'shorts': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp storyboard: ./videogen shorts <storyboard.json> [master_video_path]');
+          process.exit(1);
+        }
+        const { data: sb } = loadStoryboard(sbArg);
+        
+        let masterVideo = args[2];
+        if (!masterVideo) {
+          // Find latest master in output/ or DEST_FINAL
+          const outFiles = fs.existsSync(config.OUTPUT_DIR)
+            ? fs.readdirSync(config.OUTPUT_DIR).filter(f => f.endsWith('.mp4')).map(f => path.join(config.OUTPUT_DIR, f))
+            : [];
+          if (outFiles.length > 0) {
+            masterVideo = outFiles[0];
+          } else if (config.DEST_FINAL && fs.existsSync(config.DEST_FINAL)) {
+            const destFiles = fs.readdirSync(config.DEST_FINAL).filter(f => f.endsWith('.mp4')).map(f => path.join(config.DEST_FINAL, f));
+            if (destFiles.length > 0) masterVideo = destFiles[0];
+          }
+        }
+
+        if (!masterVideo || !fs.existsSync(masterVideo)) {
+          console.error('[!] Không tìm thấy master video để cắt Shorts. Vui lòng truyền đường dẫn trực tiếp:');
+          console.error('    ./videogen shorts storyboards/my_ep01.json /path/to/master.mp4');
+          process.exit(1);
+        }
+
+        await shorts.generateAllShorts({
+          storyboard: sb,
+          masterVideoPath: masterVideo
+        });
         break;
       }
 
