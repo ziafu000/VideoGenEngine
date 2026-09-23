@@ -30,6 +30,7 @@ const archive = require('./engine/archive');
 const youtube = require('./engine/youtube');
 const thumbnail = require('./engine/thumbnail');
 const shorts = require('./engine/shorts');
+const tiktok = require('./engine/tiktok_uploader');
 
 function loadStoryboard(storyboardPath) {
   let candidates = [
@@ -94,6 +95,9 @@ Lệnh điều phối:
   ./videogen shorts <storyboard.json> [master_video_path]
       Tự động cắt các clip highlight 9:16 dọc theo kịch bản (Option B - Cinematic Blur Overlay)
       với font chữ lớn, viền neon và thanh kêu gọi CTA trọn bộ tập về kênh chính (0 Credit cost).
+
+  ./videogen tiktok <video_path> [thumbnail_path] ["caption"]
+      Tự động đăng clip Shorts lên TikTok Studio qua Chrome CDP kèm thumbnail và caption.
 
   ./videogen thumb <storyboard.json> ["custom prompt tùy chọn"]
       Tự động kích hoạt chế độ tạo ảnh trên Google Flow CDP để sinh 4 ảnh Thumbnail 16:9
@@ -320,6 +324,24 @@ async function main() {
         await shorts.generateAllShorts({
           storyboard: sb,
           masterVideoPath: masterVideo
+        });
+        break;
+      }
+
+      case 'tiktok': {
+        const videoArg = args[1];
+        if (!videoArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn video: ./videogen tiktok <video.mp4> [thumbnail.jpg] ["caption"]');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+        const thumbArg = args[2] && (args[2].endsWith('.jpg') || args[2].endsWith('.png') || args[2].endsWith('.jpeg')) ? args[2] : null;
+        const captionArg = thumbArg ? args.slice(3).join(' ') : args.slice(2).join(' ');
+
+        await tiktok.uploadSingleShortToTikTok({
+          videoPath: videoArg,
+          thumbnailPath: thumbArg,
+          caption: captionArg || path.basename(videoArg, path.extname(videoArg))
         });
         break;
       }

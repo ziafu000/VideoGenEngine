@@ -34,10 +34,9 @@ async function ensureBridge() {
     }
 
     const psCmd = `
-      $chrome = Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*Application\\chrome.exe" }
       $listening = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue
       if (-not $listening) {
-          Start-Process "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=C:\\Users\\${winUser}\\AppData\\Local\\Google\\Chrome\\AutomationProfile https://flow.google.com"
+          Start-Process "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" -ArgumentList "--remote-debugging-port=9222"
           Start-Sleep -Seconds 3
       }
       $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue
