@@ -38,9 +38,10 @@ const ASSETS_DIR = path.join(PROJECT_DIR, 'assets');
   }
 });
 
-const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || ('/mnt/c/Users/' + (process.env.WIN_USERNAME || 'ASUS') + '/Downloads');
+const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || ('/mnt/c/Users/' + (process.env.WIN_USERNAME || process.env.USER || 'User') + '/Downloads');
 const DEST_ORIGINAL = process.env.DEST_ORIGINAL || null;
 const DEST_FINAL = process.env.DEST_FINAL || null;
+const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || (process.env.YOUTUBE_CHANNEL_ID ? `https://studio.youtube.com/channel/${process.env.YOUTUBE_CHANNEL_ID}` : 'https://studio.youtube.com');
 
 function toWinPath(p) {
   if (!p) return p;
@@ -66,5 +67,6 @@ module.exports = {
   WIN_DOWNLOADS_DIR,
   DEST_ORIGINAL,
   DEST_FINAL,
+  YOUTUBE_STUDIO_URL,
   toWinPath
 };

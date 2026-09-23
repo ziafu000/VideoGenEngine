@@ -227,7 +227,8 @@ async function cmdUpload(args) {
 
     // 1b. Đảm bảo trang Studio ở trạng thái sạch sẽ hoàn toàn
     console.error(`[-] Chuẩn bị giao diện Studio sạch...`);
-    await client.send('Page.navigate', { url: 'https://studio.youtube.com/channel/UCXpamBXGkpcZ5bNpTAiZyJw' });
+    const studioUrl = config.YOUTUBE_STUDIO_URL || 'https://studio.youtube.com';
+    await client.send('Page.navigate', { url: studioUrl });
     await new Promise(r => setTimeout(r, 4000));
 
     // 2. Kích hoạt menu Tạo / Tải video lên

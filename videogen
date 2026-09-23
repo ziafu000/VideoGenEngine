@@ -326,11 +326,13 @@ async function main() {
 
       case 'thumb':
       case 'thumbnail': {
-        const target = args[1];
+        const isVertical = args.includes('--vertical') || args.includes('-v') || args.includes('--shorts') || args.includes('9:16');
+        const filteredArgs = args.filter(a => !['--vertical', '-v', '--shorts', '9:16'].includes(a));
+        const target = filteredArgs[1];
         if (!target) {
           console.error('[!] Vui lòng cung cấp storyboard hoặc câu prompt:');
-          console.error('    ./videogen thumb storyboards/my_series_ep01.json');
-          console.error('    ./videogen thumb "Widescreen 16:9 anime key visual..."');
+          console.error('    ./videogen thumb storyboards/my_series_ep01.json [--vertical]');
+          console.error('    ./videogen thumb "Anime key visual..." [--vertical]');
           process.exit(1);
         }
         await bridge.ensureBridge();
@@ -342,15 +344,16 @@ async function main() {
         if (potentialJson) {
           const res = loadStoryboard(target);
           sb = res.data;
-          customPrompt = args.slice(2).join(' ') || null;
+          customPrompt = filteredArgs.slice(2).join(' ') || null;
         } else {
-          customPrompt = args.slice(1).join(' ');
+          customPrompt = filteredArgs.slice(1).join(' ');
         }
 
-        console.log(`=== BẮT ĐẦU TẠO 4 THUMBNAIL 16:9 BẰNG NANO BANANA PRO ===`);
+        console.log(`=== BẮT ĐẦU TẠO 4 THUMBNAIL (${isVertical ? '9:16 VERTICAL' : '16:9 WIDESCREEN'}) BẰNG NANO BANANA PRO ===`);
         await thumbnail.generateThumbnails({
           storyboard: sb,
-          prompt: customPrompt
+          prompt: customPrompt,
+          isVertical
         });
         break;
       }

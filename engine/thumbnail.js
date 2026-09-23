@@ -49,7 +49,7 @@ function classifyThumbnailRefusal(text) {
   }
 }
 
-async function generateThumbnails({ prompt, storyboard, projectId }) {
+async function generateThumbnails({ prompt, storyboard, projectId, isVertical = false }) {
   let finalPrompt = prompt;
 
   if (!finalPrompt && storyboard) {
@@ -196,13 +196,15 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
       const rawJpg = path.join('/tmp', `raw_thumb_${pid}_${optNum}.jpg`);
       execSync(`curl -s ${JSON.stringify(url)} -o ${JSON.stringify(rawJpg)}`);
 
-      const fileNameFhd = `${pid}_thumb_opt${optNum}_1080p.jpg`;
+      const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
+      const resSuffix = isVertical ? '1080x1920' : '1080p';
+      const fileNameFhd = `${pid}_thumb_opt${optNum}_${resSuffix}.jpg`;
       const localFhd = path.join(outDirLocal, fileNameFhd);
       const winFhd = outDirWin ? path.join(outDirWin, fileNameFhd) : null;
       const dlFhd = path.join(outDirDownloads, fileNameFhd);
 
-      // Scale to 1920x1080 Full HD
-      execSync(`ffmpeg -y -i ${JSON.stringify(rawJpg)} -vf "scale=1920:1080:flags=lanczos" -q:v 1 ${JSON.stringify(localFhd)} 2>/dev/null`);
+      // Scale to Full HD
+      execSync(`ffmpeg -y -i ${JSON.stringify(rawJpg)} -vf ${JSON.stringify(scaleFilter)} -q:v 1 ${JSON.stringify(localFhd)} 2>/dev/null`);
       if (winFhd) fs.copyFileSync(localFhd, winFhd);
       fs.copyFileSync(localFhd, dlFhd);
 
@@ -213,7 +215,7 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
         downloads: dlFhd
       });
 
-      console.log(`[✓] Thumbnail ${optNum} (1920x1080): ${localFhd}`);
+      console.log(`[✓] Thumbnail ${optNum} (${isVertical ? '1080x1920' : '1920x1080'}): ${localFhd}`);
     }
 
     return savedFiles;
