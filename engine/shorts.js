@@ -70,9 +70,7 @@ async function renderShort({
   console.log(`    - Cắt từ: ${startTime} (Thời lượng: ${duration}s)`);
 
   // 1. Cut segment from master video
-  const winMaster = config.toWinPath(masterVideoPath);
-  const winTempCut = config.toWinPath(tempCut);
-  execSync(`ffmpeg -y -ss ${startTime} -i ${JSON.stringify(winMaster)} -t ${duration} -c:v libx264 -c:a aac ${JSON.stringify(winTempCut)} 2>/dev/null`);
+  execSync(`ffmpeg -y -ss ${startTime} -i ${JSON.stringify(masterVideoPath)} -t ${duration} -c:v libx264 -c:a aac ${JSON.stringify(tempCut)} 2>/dev/null`);
 
   // 2. Generate ASS overlay
   generateShortsOverlayASS({
@@ -98,9 +96,8 @@ async function renderShort({
   const outDir = path.dirname(outputVideoPath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const winOut = config.toWinPath(outputVideoPath);
   console.log(`    - Đang tổng hợp 9:16 Cinematic Blur Overlay...`);
-  execSync(`ffmpeg -y -i ${JSON.stringify(winTempCut)} -filter_complex "${filterComplex}" -map "[v]" -map 0:a -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${JSON.stringify(winOut)} 2>/dev/null`);
+  execSync(`ffmpeg -y -i ${JSON.stringify(tempCut)} -filter_complex "${filterComplex}" -map "[v]" -map 0:a -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)} 2>/dev/null`);
 
   const stat = fs.statSync(outputVideoPath);
   const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
