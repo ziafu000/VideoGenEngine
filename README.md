@@ -94,18 +94,34 @@ Building automated video pipelines with commercial APIs is notoriously expensive
 
 ### 2. Installation
 ```bash
-git clone https://github.com/ziafu000/VideoGenAgent.git VideoGen
+# Clone the open-source repository
+git clone https://github.com/ziafu000/VideoGenEngine.git VideoGen
 cd VideoGen
 chmod +x ./videogen
+
+# Optional: Link globally so you can run 'videogen' from any directory
+npm link
+
+# Optional: Copy environment configuration
+cp .env.example .env
 ```
 
 ### 3. Launch Chrome Remote Debugging Bridge
-Start Windows Chrome with remote debugging enabled:
-```powershell
-# Windows PowerShell
-chrome.exe --remote-debugging-port=9222 --user-data-dir="C:\Users\YourUser\AppData\Local\Google\Chrome\AutomationProfile"
+Start Windows Chrome with remote debugging enabled on port `9222`:
+
+**Option A — Automatic Launch via VideoGen:**
+```bash
+./videogen bridge
 ```
-Then verify connectivity from WSL:
+*(If the bridge is offline, VideoGen automatically triggers Windows Chrome and the CDP proxy on port 9223!)*
+
+**Option B — Manual Launch from Windows PowerShell:**
+```powershell
+# In Windows PowerShell:
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\Google\Chrome\AutomationProfile"
+```
+
+Verify connectivity from WSL/Linux terminal:
 ```bash
 ./videogen bridge status
 ```
@@ -128,15 +144,15 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | Command | Action | Description |
 | :--- | :--- | :--- |
 | `./videogen bridge [status]` | **Bridge Health** | Checks or auto-spawns Windows Chrome & CDP proxy. |
-| `./videogen render <sb> [shots...]` | **Render Video** | Controls Google Flow: configures settings, attaches `@Character` chips, submits prompts, downloads 720p clips. |
-| `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue on ElevenLabs with automated character slider calibration. |
+| `./videogen render <sb> [shots...] [--720p]` | **Render Video** | Controls Google Flow: configures settings, attaches `@Character` chips, submits prompts, activates Cloud AI 1080p Super-Resolution (or `--720p` for fast draft). |
+| `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue on ElevenLabs with automated character slider calibration and Jev obstacle clearance. |
 | `./videogen subs <sb>` | **Subtitles** | Generates Cinema Dual-Zone ASS subtitles or dynamic Shorts subtitles. |
 | `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. |
 | `./videogen verify <video> [ts...]` | **Visual QA** | Extracts high-res keyframes at specified timestamps for visual inspection. |
 | `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Nano Banana Pro, upscales to 1080p, and syncs to drive. |
 | `./videogen archive <sb>` | **Archival** | Migrates all raw materials and master video to storage drive; purges temp files. |
-| `./videogen upload <sb>` | **YouTube** | Uploads master video directly to YouTube Studio as Unlisted via CDP. |
-| **`./videogen run <sb>`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
+| `./videogen upload <sb>` | **YouTube** | Uploads master video directly to YouTube Studio as Unlisted via CDP with Jev verification. |
+| **`./videogen run <sb> [--720p]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
 
 ---
 

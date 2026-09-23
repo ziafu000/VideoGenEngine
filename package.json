@@ -1,0 +1,41 @@
+{
+  "name": "videogen-engine",
+  "version": "2.0.0",
+  "description": "Autonomous AI Video Generation & Animation Engine orchestrating Google Flow, ElevenLabs, and TypeSafe Jev via Chrome DevTools Protocol.",
+  "main": "videogen",
+  "bin": {
+    "videogen": "./videogen"
+  },
+  "scripts": {
+    "start": "node videogen",
+    "help": "node videogen --help",
+    "status": "node videogen bridge status",
+    "bridge": "node videogen bridge"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ziafu000/VideoGenEngine.git"
+  },
+  "keywords": [
+    "ai-video-generation",
+    "google-flow",
+    "elevenlabs",
+    "cdp",
+    "chrome-devtools-protocol",
+    "typesafe-ai",
+    "faceless-youtube",
+    "anime-series-engine",
+    "video-automation",
+    "ffmpeg",
+    "libass"
+  ],
+  "author": "Ryan Nguyen",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ziafu000/VideoGenEngine/issues"
+  },
+  "homepage": "https://github.com/ziafu000/VideoGenEngine#readme"
+}
