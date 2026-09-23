@@ -225,39 +225,25 @@ async function cmdUpload(args) {
       throw new Error('Chưa đăng nhập tài khoản YouTube. Vui lòng mở Chrome đăng nhập vào studio.youtube.com trước.');
     }
 
-    // 1b. Kiểm tra và giải phóng popup/obstacle trên Studio qua TypeSafe Jev
-    try {
-      const obstacleText = await client.eval(`(() => {
-        const dialog = document.querySelector('ytcp-dialog[open], tp-yt-paper-dialog[opened]');
-        return dialog ? dialog.innerText.slice(0, 300).replace(/[\\r\\n]+/g, ' ') : null;
-      })()`);
-      if (obstacleText) {
-        const obsOut = execSync(`browser-jev obstacle --text ${JSON.stringify(obstacleText)}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'], timeout: 5000 });
-        const parsed = JSON.parse(obsOut);
-        if (parsed.has_obstacle) {
-          console.error(`  [!] TypeSafe Jev phát hiện popup Studio: ${parsed.obstacle_type}`);
-          await client.eval(`(() => {
-            const closeBtn = document.querySelector('ytcp-dialog #close-button, tp-yt-paper-dialog #dismiss-button, [aria-label="Close"], [aria-label="Đóng"]');
-            if (closeBtn) closeBtn.click();
-          })()`);
-        }
-      }
-    } catch {}
+    // 1b. Đảm bảo trang Studio ở trạng thái sạch sẽ hoàn toàn
+    console.error(`[-] Chuẩn bị giao diện Studio sạch...`);
+    await client.send('Page.navigate', { url: 'https://studio.youtube.com/channel/UCXpamBXGkpcZ5bNpTAiZyJw' });
+    await new Promise(r => setTimeout(r, 4000));
 
     // 2. Kích hoạt menu Tạo / Tải video lên
     console.error(`[-] Mở hộp thoại tải video lên trên YouTube Studio...`);
     const openedDialog = await client.eval(`(() => {
-      // Thử tìm nút Tải video lên trực tiếp từ dashboard
+      // Tìm nút Tạo
+      const btns = Array.from(document.querySelectorAll('button, ytcp-button'));
+      const createBtn = btns.find(b => (b.innerText && b.innerText.trim() === 'Tạo') || b.getAttribute('aria-label') === 'Tạo' || b.id === 'create-icon');
+      if (createBtn) {
+        createBtn.click();
+        return 'CREATE_CLICKED';
+      }
       const directUpload = document.querySelector('button[aria-label*="Tải video lên"], button[aria-label*="Upload videos"], #upload-icon, #upload-button');
       if (directUpload && directUpload.offsetParent !== null) {
         directUpload.click();
         return 'DIRECT_CLICKED';
-      }
-      // Hoặc nút Tạo
-      const createBtn = document.querySelector('#create-icon, button[aria-label*="Tạo"], button[aria-label*="Create"]');
-      if (createBtn) {
-        createBtn.click();
-        return 'CREATE_CLICKED';
       }
       return 'NO_BTN';
     })()`);
@@ -266,7 +252,7 @@ async function cmdUpload(args) {
 
     if (openedDialog === 'CREATE_CLICKED') {
       await client.eval(`(() => {
-        const items = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-menu #items tp-yt-paper-item'));
+        const items = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-menu #items tp-yt-paper-item, #text-item-0'));
         const upItem = items.find(i => i.innerText && (i.innerText.includes('Tải video lên') || i.innerText.includes('Upload videos')));
         if (upItem) upItem.click();
       })()`);
@@ -276,27 +262,34 @@ async function cmdUpload(args) {
     // 3. Tìm phần tử input file và nạp file video qua CDP DOM.setFileInputFiles
     console.error(`[-] Đang truyền file video vào Chrome qua CDP DOM.setFileInputFiles...`);
     await client.send('DOM.enable');
-    await client.send('DOM.getDocument', { depth: 1 });
-
-    // Tìm node input[type="file"] bằng Runtime.evaluate + DOM.requestNode (vượt qua Shadow DOM)
-    const evalRes = await client.send('Runtime.evaluate', {
-      expression: 'document.querySelector("input[type=\'file\']")'
-    });
 
     let nodeId = 0;
-    if (evalRes.result && evalRes.result.objectId) {
-      const nodeDesc = await client.send('DOM.requestNode', { objectId: evalRes.result.objectId });
-      nodeId = nodeDesc.nodeId;
-    }
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const evalRes = await client.send('Runtime.evaluate', {
+        expression: 'document.querySelector("input[type=\'file\']")'
+      });
 
-    if (!nodeId) {
-      // Fallback tìm trực tiếp qua DOM.querySelector
+      if (evalRes.result && evalRes.result.objectId) {
+        try {
+          const nodeDesc = await client.send('DOM.requestNode', { objectId: evalRes.result.objectId });
+          if (nodeDesc && nodeDesc.nodeId) {
+            nodeId = nodeDesc.nodeId;
+            break;
+          }
+        } catch {}
+      }
+
       const doc = await client.send('DOM.getDocument', { depth: -1 });
       const fileInputNode = await client.send('DOM.querySelector', {
         nodeId: doc.root.nodeId,
         selector: 'input[type="file"][name="Filedata"], ytcp-uploads-dialog input[type="file"], input[type="file"]'
       });
-      nodeId = fileInputNode?.nodeId || 0;
+      if (fileInputNode && fileInputNode.nodeId) {
+        nodeId = fileInputNode.nodeId;
+        break;
+      }
+
+      await new Promise(r => setTimeout(r, 1000));
     }
 
     if (!nodeId) {
@@ -423,6 +416,14 @@ async function cmdUpload(args) {
         break;
       }
     }
+
+    // Đóng dialog sau khi hoàn tất
+    try {
+      await client.eval(`(() => {
+        const closeBtn = document.querySelector('ytcp-uploads-dialog #close-button, ytcp-dialog #close-button, tp-yt-paper-dialog #close-button, #dismiss-button');
+        if (closeBtn) closeBtn.click();
+      })()`);
+    } catch {}
 
     client.close();
 
