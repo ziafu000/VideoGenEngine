@@ -64,8 +64,15 @@ Lệnh điều phối:
 
   ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p]
       Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
-      kiểm duyệt Jev, render và tự động kích hoạt Cloud AI Super-Resolution
-      tải video 1080p Full HD (mặc định) về renders/ (hoặc thêm cờ --720p để tải nhanh 720p).
+      kiểm duyệt Jev, render và tải video về renders/.
+
+      ⚠️  QUAN TRỌNG: Trước khi chạy lệnh này, hãy hỏi người dùng chọn chế độ tải:
+        [1] 1080p Full HD (Cloud AI Super-Resolution) — Mặc định, chất lượng cao nhất.
+            Rủi ro: Phụ thuộc hàng đợi AI đám mây của Google. Có thể bị crash / timeout
+            nếu Google Cloud quá tải hoặc phiên trình duyệt mất kết nối giữa chừng.
+            (Engine có fallback tự động về 720p qua TypeSafe Jev nếu phát hiện lỗi trong 70ms.)
+        [2] 720p (Direct CDN) — Nhanh hơn (~0.8s/clip), ổn định 100%.
+            Dùng: thêm cờ --720p vào lệnh.
 
   ./videogen voice <storyboard.json> [shot_01 shot_02...]
       Đọc voice_profiles từ storyboard, tự động chỉnh slider Radix UI ElevenLabs,
@@ -84,7 +91,7 @@ Lệnh điều phối:
       Trích xuất các khung hình then chốt (keyframes) để kiểm định chất lượng hình ảnh & phụ đề.
 
   ./videogen thumb <storyboard.json> ["custom prompt tùy chọn"]
-      Tự động kích hoạt Nano Banana Pro qua Google Flow CDP để sinh 4 ảnh Thumbnail 16:9
+      Tự động kích hoạt chế độ tạo ảnh trên Google Flow CDP để sinh 4 ảnh Thumbnail 16:9
       chuẩn Full HD (1920x1080), tự động đồng bộ sang ổ D: và Windows Downloads.
 
   ./videogen archive <storyboard.json>
@@ -282,7 +289,7 @@ async function main() {
         const target = args[1];
         if (!target) {
           console.error('[!] Vui lòng cung cấp storyboard hoặc câu prompt:');
-          console.error('    ./videogen thumb storyboards/ashel_ep01.json');
+          console.error('    ./videogen thumb storyboards/my_series_ep01.json');
           console.error('    ./videogen thumb "Widescreen 16:9 anime key visual..."');
           process.exit(1);
         }

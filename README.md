@@ -54,7 +54,7 @@ Building automated video pipelines with commercial APIs is notoriously expensive
 │                                                                        │
 │  3. VOICEOVER GENERATION (`engine/tts.js`)                             │
 │     ├── Read `voice_profiles` from storyboard                          │
-│     ├── Switch ElevenLabs voice models (Daisuke, Lime, Koichi, etc.)   │
+│     ├── Switch ElevenLabs voice models and calibrate character-specific sliders   │
 │     ├── Programmatic Radix UI slider calibration (stability/style)     │
 │     └── Download high-fidelity dialogue MP3s                           │
 │                                                                        │
@@ -149,7 +149,7 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen subs <sb>` | **Subtitles** | Generates Cinema Dual-Zone ASS subtitles or dynamic Shorts subtitles. |
 | `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. |
 | `./videogen verify <video> [ts...]` | **Visual QA** | Extracts high-res keyframes at specified timestamps for visual inspection. |
-| `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Nano Banana Pro, upscales to 1080p, and syncs to drive. |
+| `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Google Flow image mode, upscales to 1080p, and syncs to drive. |
 | `./videogen archive <sb>` | **Archival** | Migrates all raw materials and master video to storage drive; purges temp files. |
 | `./videogen upload <sb>` | **YouTube** | Uploads master video directly to YouTube Studio as Unlisted via CDP with Jev verification. |
 | **`./videogen run <sb> [--720p]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
@@ -172,21 +172,21 @@ Every video is completely defined in a declarative JSON storyboard file under `s
   },
   "voice_profiles": {
     "Ren": {
-      "voice": "Daisuke",
+      "voice": "YourChosenVoice",
       "speed": 1.0,
       "stability": 40,
       "similarity": 80,
       "style": 15
     },
     "Aria": {
-      "voice": "Lime",
+      "voice": "YourSecondVoice",
       "speed": 1.0,
       "stability": 35,
       "similarity": 80,
       "style": 25
     },
     "System AI": {
-      "voice": "Koichi",
+      "voice": "YourNarratorVoice",
       "speed": 0.95,
       "stability": 85,
       "similarity": 85,
@@ -250,7 +250,7 @@ AUDIO: Clear Japanese character voiceover speaking: "Kono sekai wa...", synced l
 
 To safeguard proprietary intellectual property, channel assets, and series storylines from accidental public leaks:
 - Both `storyboards/` and `assets/` are strictly **gitignored** in `.gitignore`.
-- Your private storyboards (`ashel_*.json`), character designs, and channel branding are 100% safe locally and will never be pushed to Git.
+- Your private storyboards, character designs, and channel branding are 100% safe locally and will never be pushed to Git.
 
 ### 🤖 Automatic Directory Initialization (For Agents & New Clones)
 When you or an automated coding agent clones this repository:
@@ -279,7 +279,7 @@ VideoGen/
 │   ├── cdp_proxy.js          # TCP forwarder (0.0.0.0:9223 -> 127.0.0.1:9222)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompts, signed CDN dl)
 │   ├── tts.js                # ElevenLabs TTS automation (voice profiles & slider calibration)
-│   ├── thumbnail.js          # Google Flow Nano Banana Pro 16:9 thumbnail generator & 1080p scaler
+│   ├── thumbnail.js          # Google Flow image-mode 16:9 thumbnail generator & 1080p scaler
 │   ├── subtitles.js          # Subtitle generator (Dual-Zone ASS & Shorts ASS)
 │   ├── compositor.js         # FFmpeg concatenation, audio padding/ducking, hardsub
 │   ├── archive.js            # Storage archival & local working tree purge

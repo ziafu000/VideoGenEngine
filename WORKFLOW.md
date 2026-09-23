@@ -1,6 +1,8 @@
-# VideoGen: Automated Faceless YouTube Video Production Workflow
+# VideoGen: Automated Video Production Workflow
 
-Production-grade automated system for creating cinema-quality faceless YouTube Shorts and explainer videos in English using **Google Flow** (Google Omni 1.1 / Veo 3.1) and **ElevenLabs** via browser automation (0 API token cost).
+Production-grade automated system for creating cinema-quality faceless YouTube Shorts, explainer videos, and story-driven animated series using **Google Flow** (Google Omni 1.1 / Veo 3.1) and **ElevenLabs** via browser automation (0 API token cost).
+
+> **IP Protection Notice:** This workflow is a generic engine guide. All series-specific storyboards, character names, voice calibrations, and plotlines are stored privately in each user's `storyboards/` directory (gitignored) and are never part of this public repository.
 
 ---
 
@@ -9,23 +11,24 @@ Production-grade automated system for creating cinema-quality faceless YouTube S
 ### 1.1. Visual & Sound Effects Engine (Google Flow)
 - Operated via Chrome DevTools Protocol (CDP) through Windows Chrome profile `AutomationProfile`.
 - Uses **Omni 1.1 Flash** (10-second clips, Cloud AI 1080p Full HD upscale & download).
-- Generates natural ambient SFX embedded in the video stream (truck rumble, glass pouring, fizzing carbonation).
+- Generates natural ambient SFX embedded in the video stream.
 
 ### 1.2. Voiceover Engine (ElevenLabs)
 - Operated via CDP directly on the active ElevenLabs Text-to-Speech tab.
-- Generates natural native English voiceover using the user's active default voice (e.g. **Alistair** - Clear, Neutral, Informative).
-- Auto-downloads MP3 files to `audio/`.
+- Generates natural voiceover using voices declared in the storyboard's `voice_profiles`.
+- Auto-downloads MP3 files to `audio/<project_id>/`.
 
 ### 1.3. Post-Production & Mixing Engine (FFmpeg)
 - Stitches all scenes sequentially into a master video (`engine/compositor.js`).
-- Dynamically scales voiceover speed (`atempo`) to align with exact video duration (`engine/compositor.js`).
-- Balances audio levels: Voiceover at 100% volume, background ambient SFX at 25%–30% volume.
+- Dynamically scales voiceover speed (`atempo`) to align with exact video duration.
+- Balances audio levels: Voiceover at 100% volume, background ambient SFX at 25–30% volume.
 
 ### 1.4. System One AI Decider (TypeSafe Jev)
-- Powered by `browser-jev` CLI / python module `browser_jev` connecting directly to TypeSafe API (`jev-latest`).
-- **Pre-flight Prompt Screening:** Uses `noul` primitive to evaluate policy risk before prompt submission, guarding against account flags.
-- **Fast-Fail Early Detection:** Uses `choice` primitive in the render polling loop to detect Google Flow policy refusal (`policy_refusal`), terminating within 5–10 seconds instead of blocking for 180–240 seconds.
-- **TTS Verification:** Uses `noul` primitive to confirm ElevenLabs speech synthesis completion prior to triggering MP3 download.
+- Powered by `browser-jev` CLI / python module `browser_jev` connecting to TypeSafe API (`jev-latest`).
+- **Pre-flight Prompt Screening:** Uses `noul` primitive to evaluate policy risk before prompt submission.
+- **Fast-Fail Early Detection:** Uses `choice` primitive to detect Google Flow policy refusal in 5–10s instead of hanging 180–240s.
+- **Cloud 1080p Monitoring:** Uses `classify` primitive to detect upscale queue errors in ~70ms and trigger immediate 720p fallback.
+- **TTS Error Detection:** Detects ElevenLabs quota exhaustion or synthesis failure within ~3s.
 
 ---
 
@@ -34,271 +37,247 @@ Production-grade automated system for creating cinema-quality faceless YouTube S
 To bypass Cloudflare / Google bot protections, the system attaches to the user's authentic Windows Chrome browser via remote debugging.
 
 ### 2.1. Port Architecture
-- **Windows Chrome:** Launched with `--remote-debugging-port=9222` and profile at `C:\Users\ASUS\AppData\Local\Google\Chrome\AutomationProfile`.
+- **Windows Chrome:** Launched with `--remote-debugging-port=9222` and profile at `C:\Users\<YourUser>\AppData\Local\Google\Chrome\AutomationProfile`.
 - **CDP Proxy (`engine/cdp_proxy.js`):** Node.js TCP bridge on Windows forwarding `0.0.0.0:9223` -> `127.0.0.1:9222`.
 - **WSL Client:** Accesses CDP at `http://$WIN_HOST:9223` using `chrome-devtools-axi` or `engine/cdp.js`.
 
 ### 2.2. Starting the Bridge
 ```bash
-~/ai/project/VideoGen/videogen bridge
+./videogen bridge
 ```
 Runs automatically at session start or whenever a browser disconnect is detected.
 
 ---
 
-## 3. Storyboard Specification (`storyboards/scenes.json`)
+## 3. ⚠️ Resolution Mode Selection (REQUIRED at Every Render Session)
 
-The storyboard serves as the contract between the scriptwriter (Director) and the video/audio automators (Workers):
+**Before executing any render workflow, the agent MUST ask the user to choose their download resolution for this session.** Never silently default to either mode.
+
+```
+Which download resolution do you want for this render session?
+
+  [1] 🎬 1080p Full HD  (Cloud AI Super-Resolution)
+      Quality:   1920×1080, ~8.4 Mbps per clip — highest visual fidelity.
+      Mechanism: Google Cloud queues each clip for AI upscaling after generation.
+      ⚠️  Risk: Dependent on Google's cloud queue. Can crash or time out if:
+          - The cloud queue is overloaded or rate-limited.
+          - The browser session loses connection mid-upscale.
+          - The Windows Chrome process is interrupted.
+          Engine has automatic 70ms Jev-monitored safe fallback to 720p on error.
+      Command:   ./videogen render <storyboard.json>  (default)
+
+  [2] ⚡ 720p  (Direct CDN Download)
+      Quality:   1280×720, ~3–4 Mbps per clip — fast and perfectly stable.
+      Mechanism: Pulls directly from Google's signed CDN URL (~0.8s per clip).
+      ✅ Zero cloud dependency. Recommended for draft previews or fast iterations.
+      Command:   ./videogen render <storyboard.json> --720p
+
+Enter 1 for 1080p or 2 for 720p:
+```
+
+Propagate the user's selection:
+- **1080p selected:** use `./videogen render <sb>` or `./videogen run <sb>`.
+- **720p selected:** use `./videogen render <sb> --720p` or `./videogen run <sb> --720p`.
+
+---
+
+## 4. Storyboard Specification (SSOT)
+
+The storyboard JSON file is the **Single Source of Truth** (SSOT) for every production. Create it in your private `storyboards/<project_id>.json`:
 
 ```json
 {
-  "title": "Why Nobody Can Copy Coca-Cola's 138-Year Formula",
-  "niche": "explainer",
-  "language": "en",
-  "aspect_ratio": "9:16",
-  "model": "Omni 1.1 Flash",
-  "voice": "Alistair",
-  "target_duration_seconds": 30,
-  "title_options": [
-    "Why Nobody Can Copy Coca-Cola's 138-Year Formula",
-    "The DEA Secret Inside Every Bottle of Coke"
-  ],
-  "thumbnail_line": "THE 138-YEAR LIE",
-  "script_full": "Full voiceover script in English...",
-  "scenes": [
+  "project": {
+    "id": "my_series_ep01",
+    "title": "My Series — Episode 1: The Beginning",
+    "series": "My Original Series",
+    "aspect_ratio": "16:9",
+    "model": "Omni 1.1 Flash",
+    "duration_per_clip": 10
+  },
+  "voice_profiles": {
+    "Hero": {
+      "voice": "YourChosenVoiceModel",
+      "speed": 1.0,
+      "stability": 40,
+      "similarity": 80,
+      "style": 15
+    },
+    "Narrator": {
+      "voice": "YourNarratorVoiceModel",
+      "speed": 0.95,
+      "stability": 85,
+      "similarity": 85,
+      "style": 0
+    }
+  },
+  "shots": [
     {
-      "scene_id": "scene_01",
-      "characters": ["Ashel"],
-      "duration_seconds": 10,
-      "timecode": "00:00 - 00:10",
-      "voiceover": "First scene narration...",
-      "prompt": "Vertical 9:16 eye-level medium shot... [Action]... [Lighting]... AUDIO: SFX ONLY — [sound details]. NO MUSIC."
+      "id": "shot_01",
+      "characters": ["Hero"],
+      "dialogue_tier": "A",
+      "speaker": "Hero",
+      "dialogue_vi": "Character dialogue or narration text here.",
+      "prompt": "Widescreen 16:9 cinematic tracking shot: ... AUDIO: SFX ONLY — ambient sounds. NO MUSIC."
     }
   ]
 }
 ```
 
+**Storyboard JSON fields reference:**
+
+| Field | Description |
+| :--- | :--- |
+| `project.aspect_ratio` | `"16:9"` for series/long-form, `"9:16"` for Shorts |
+| `project.model` | `"Omni 1.1 Flash"` (default) or `"Veo 3.1"` variants |
+| `project.resolution` | Optional: `"1080p"` or `"720p"` — overrides CLI flag if set |
+| `voice_profiles` | Map of character name → ElevenLabs slider calibration presets |
+| `shots[].characters` | Array of character names to attach as `@Character` chips |
+| `shots[].dialogue_tier` | `"A"` = bottom-center subtitle, `"B"` = top-center HUD subtitle |
+| `shots[].prompt` | Full Google Flow prompt (follow `skills/omni-video-prompts.md`) |
+
 ---
 
-## 4. VideoGen Unified Engine v2.0 & CLI Reference (`./videogen`)
+## 5. VideoGen Unified Engine v2.0 & CLI Reference (`./videogen`)
 
-To eliminate fragmented scripts and prevent codebase bloat, VideoGen consolidates all production phases into a modular engine (`engine/`) operated via a single central CLI `./videogen`:
-
-| Command | Function | Description / Example |
+| Command | Function | Description |
 | :--- | :--- | :--- |
-| `./videogen bridge [status]` | Kiểm tra/Bật kết nối CDP | Tự động khởi động Chrome Windows & CDP proxy, kiểm tra các tab Flow, ElevenLabs. |
-| `./videogen render <sb> [shots...] [--720p]` | Render Google Flow | Tự động cấu hình, gắn chip `@Character`, kiểm duyệt Jev, render và tự động kích hoạt Cloud AI 1080p Full HD (hoặc tải nhanh 720p). |
-| `./videogen voice <sb> [shots...]` | Voiceover ElevenLabs | Đọc `voice_profiles` từ storyboard, tự chỉnh slider Radix UI và tải MP3 đa nhân vật. |
-| `./videogen subs <sb>` | Sinh phụ đề ASS | Tạo phụ đề điện ảnh (Dual-Zone ASS cho Anime hoặc Bouncy Yellow cho Shorts). |
-| `./videogen assemble <sb>` | Hậu kỳ tổng hợp | Ghép video, time-padding khớp thoại, hòa âm đa tầng (Voice + Ambient), burn sub ASS. |
-| `./videogen verify <video> [ts...]` | Kiểm định visual | Trích xuất các keyframe tại các mốc thời gian để nghiệm thu hình ảnh và phụ đề. |
-| `./videogen archive <sb>` | Sao lưu & dọn dẹp | Đẩy nguyên liệu + video master sang Windows D: drive và dọn sạch repo VideoGen. |
-| `./videogen upload <sb>` | Đăng YouTube Studio | Tự động tải video thành phẩm lên YouTube Studio ở chế độ Không công khai (Unlisted). |
-| **`./videogen run <sb>`** | **Quy trình A -> Z** | **Tự động hóa toàn bộ: Bridge -> Render -> Voice -> Assemble -> Verify -> Archive -> Upload!** |
-
-### Engine v2.0 Architecture
-Toàn bộ logic cốt lõi đã được nâng cấp và tối ưu hóa tập trung trong `engine/` (`bridge.js`, `flow.js`, `tts.js`, `subtitles.js`, `compositor.js`, `archive.js`, `youtube.js`, `cdp_proxy.js`, `youtube_uploader.js`). Folder `scripts/` cũ đã được loại bỏ hoàn toàn để tránh phân mảnh.
+| `./videogen bridge [status]` | Bridge Health | Auto-starts Windows Chrome & CDP proxy; verifies tab connections. |
+| `./videogen render <sb> [shots...] [--720p]` | Render Google Flow | Configures settings, attaches `@Character` chips, runs Jev pre-flight, renders, downloads 1080p (or `--720p`). |
+| `./videogen voice <sb> [shots...]` | Voiceover ElevenLabs | Reads `voice_profiles`, auto-calibrates Radix UI sliders, downloads MP3s. |
+| `./videogen subs <sb>` | Subtitle Generation | Generates cinema Dual-Zone ASS (Mode 2) or Bouncy Neon (Shorts). |
+| `./videogen assemble <sb>` | Post-Production | Stitches clips, pads audio, mixes multi-track, burns hardsubs. |
+| `./videogen verify <video> [ts...]` | Visual QA | Extracts keyframes at specified timestamps for quality inspection. |
+| `./videogen thumb <sb> [prompt]` | Thumbnails | Generates 4 cinematic 16:9 thumbnails, upscales to 1080p. |
+| `./videogen archive <sb>` | Archival | Migrates materials to `DEST_ORIGINAL`, master to `DEST_FINAL`, purges temp dirs. |
+| `./videogen upload <sb>` | YouTube Upload | Uploads master video to YouTube Studio as Unlisted via CDP. |
+| **`./videogen run <sb> [--720p]`** | **Full A→Z Pipeline** | **Executes the complete autonomous pipeline end-to-end.** |
 
 ---
 
-## 5. End-to-End Production Checklist (v2.0)
+## 6. End-to-End Production Checklist (v2.0)
 
-1. **Chuẩn bị Kịch bản (Director):** Soạn thảo kịch bản JSON vào `storyboards/<tên_tập>.json` với schema chuẩn SSOT (định nghĩa thông số dự án, `voice_profiles` các nhân vật và mảng `shots`).
-2. **Thực thi Sản xuất Tự động (Worker):**
-   - Chạy 1 lệnh duy nhất để hoàn tất toàn bộ quy trình:
+1. **Prepare Storyboard (Director):** Author `storyboards/<project>.json` following the SSOT schema above.
+2. **Select Resolution Mode:** Agent asks user for 1080p or 720p preference (see Section 3 above).
+3. **Execute Automated Production (Worker):**
+   - Single command (full pipeline):
      ```bash
-     ./videogen run storyboards/<tên_tập>.json
+     ./videogen run storyboards/<project>.json           # 1080p (default)
+     ./videogen run storyboards/<project>.json --720p    # 720p draft mode
      ```
-   - Hoặc chạy từng công đoạn độc lập nếu cần tinh chỉnh chi tiết:
+   - Or step-by-step for fine control:
      ```bash
-     ./videogen bridge                     # Bước 1: Khởi động kết nối
-     ./videogen render storyboards/ep.json  # Bước 2: Render video Google Flow
-     ./videogen voice storyboards/ep.json   # Bước 3: Tạo giọng đọc ElevenLabs
-     ./videogen assemble storyboards/ep.json# Bước 4: Hậu kỳ hòa âm & burn phụ đề
-     ./videogen verify <master_video.mp4>  # Bước 5: Kiểm định khung hình
-     ./videogen archive storyboards/ep.json # Bước 6: Lưu trữ D: drive & dọn dẹp repo
+     ./videogen bridge
+     ./videogen render storyboards/<project>.json [--720p]
+     ./videogen voice storyboards/<project>.json
+     ./videogen subs storyboards/<project>.json
+     ./videogen assemble storyboards/<project>.json
+     ./videogen verify output/<project>/<master>.mp4
+     ./videogen archive storyboards/<project>.json
+     ./videogen upload storyboards/<project>.json
      ```
 
 ---
 
-## 6. Auto-Edit Mode 1: Technical Specifications
+## 7. Auto-Edit Mode 1: Faceless Shorts / Explainer Specifications
 
-### 6.1. Dynamic Subtitle Specifications
+### 7.1. Dynamic Subtitle Specifications
 - **Format:** Advanced SubStation Alpha (`.ass`) rendered via `libass`.
-- **Timing & Alignment:** Transcribed with local Whisper model (`ggml-tiny.en.bin`), aligned against the ground-truth text in `storyboards/scenes.json` to guarantee 100% spelling and grammar accuracy.
-- **Pacing:** Micro-chunks of 2 to 3 words each (~0.8s to 1.5s display time) matching high-retention YouTube Shorts pacing.
+- **Timing & Alignment:** Aligned against ground-truth text in storyboard JSON.
+- **Pacing:** Micro-chunks of 2–3 words each (~0.8s–1.5s display time) for high-retention pacing.
 - **Visual Styling:**
-  - **Font:** `Arial Black` / `Impact`, all-caps.
-  - **Font Size:** `50` (proportional to 720x1280 resolution).
-  - **Base Text Color:** Pure White (`&H00FFFFFF&`).
-  - **Highlight Color:** Vibrant Neon Yellow (`&H0000FFFF&`).
-  - **Border & Shadow:** 4.5px solid black outline (`&H00000000&`) + 2.0px drop shadow for 100% contrast on dark and light backgrounds.
-  - **Screen Position:** Lower-third center (`MarginV=280`), safe from YouTube Shorts bottom channel title and right-side interactive buttons.
+  - Font: `Arial Black` / `Impact`, all-caps. Size: `50` (for 720×1280).
+  - Base Color: Pure White (`&H00FFFFFF&`). Highlight: Neon Yellow (`&H0000FFFF&`).
+  - Border: 4.5px solid black + 2.0px drop shadow.
+  - Position: Lower-third center (`MarginV=280`).
 
-### 6.2. Sound Effects (SFX) Layering
-- **Opening Hook Impact (00:00 – 00:01):** Deep cinematic sub-bass drop (`impact.mp3`, 50% volume) at second 0.0 to immediately grab viewer attention.
-- **Scene Transition Swishes (~10.0s, ~20.0s):** Crisp swoosh sound (`whoosh.mp3`, 40% volume) placed at the exact boundary of scene changes.
-- **Emphasis Pop (~05.5s):** Subtle UI accent pop (`pop.mp3`, 35% volume) emphasizing key story pivots.
-- **Voiceover & Ambient Balance:** Voiceover at 100% volume with tempo alignment; video background SFX at 20% volume.
+### 7.2. Sound Effects (SFX) Layering
+- **Opening Hook (00:00–00:01):** Deep cinematic sub-bass drop (`impact.mp3`, 50% volume).
+- **Scene Transitions (~10s, ~20s):** Crisp swoosh (`whoosh.mp3`, 40% volume).
+- **Emphasis Pop (~05.5s):** Subtle UI accent pop (`pop.mp3`, 35% volume).
+- **Audio Balance:** Voiceover at 100%, video background ambient SFX at 20–30%.
 
 ---
 
-## 7. Post-Production Archival & Storage Policy (D: Drive)
-
-To prevent Git repository bloat and ensure all high-resolution video assets are organized permanently for video editors:
-
-1. **Raw Assets & Materials Directory (`File video original`):**
-   - **Path:** `D:\Billy\Work\Editing\File video original` (WSL: `/mnt/d/Billy/Work/Editing/File video original`)
-   - **Structure:** Each video production gets a dedicated subfolder:
-     `D:\Billy\Work\Editing\File video original\<Video_Title>_materials_<Timestamp>\`
-   - **Contents:**
-     - `scene_01.mp4`, `scene_02.mp4`, ... (uncompressed 720p clips from Google Flow).
-     - `voiceover_en.mp3` (native ElevenLabs voice recording).
-     - `storyboard_backup.json` (exact prompts, timeline cuts, and full narration script).
-     - Intermediate draft concatenations and mixing iterations.
-
-2. **Master Video Delivery Directory (`File video after edit`):**
-   - **Path:** `D:\Billy\Work\Editing\File video after edit` (WSL: `/mnt/d/Billy/Work/Editing/File video after edit`)
-   - **Contents:** Final master MP4 videos with tempo-synced voiceover and ambient SFX, named cleanly after the video topic (e.g. `Why_Nobody_Can_Copy_Coca-Colas_138-Year_Formula.mp4`).
-
-3. **Repository Cleanliness Standard:**
-   - The `VideoGen` repository must **never** retain heavy media assets in working tree.
-   - `renders/`, `audio/`, and `output/` must only hold `.gitkeep`.
-   - `archive_and_cleanup.sh` is executed after every production run so `git status` always stays clean.
-
----
-
-## 8. Mode 2: Original AI Anime Series Production Pipeline ("Ashel: Mã Nguồn Tái Sinh")
-
-Production pipeline for the 16-episode story-driven 3D CGI anime series adapting `ASHEL_SERIES_BIBLE.md`.
+## 8. Mode 2: Story-Driven Cinematic Series Production
 
 ### 8.1. Episode Architecture & Budgeting
-- **Episode Duration:** 5 minutes (300 seconds) per episode.
-- **Shot Formula:** Exactly **30 shots x 10 seconds** per episode.
-- **Credit Economics:** Google Flow costs **15 credits per 10s video clip** (Omni 1.1 Flash 720p).
-  - 1 episode (30 shots) = **450 credits total**.
-- **Default Generation Duration:** Always set Flow duration setting to **10s** (`10 giây`). Never drop the generation duration to 4s or 6s in settings because 10s maximizes duration per 15 credits (most economical). Pacing is controlled internally via **Timeline Prompting**.
-- **Aspect Ratio:** **16:9** widescreen for main episodes (`configure 16:9 10s`). Climax scenes can be reformatted to **9:16** for auxiliary YouTube Shorts / TikTok teasers (30s–60s).
+- **Shot Formula:** Exactly **30 shots × 10 seconds** = 5-minute episode.
+- **Credit Economics:** 15 credits per 10s clip (Omni 1.1 Flash) → **450 credits / episode**.
+- **Aspect Ratio:** **16:9** for main episodes; **9:16** for auxiliary Shorts teasers.
+- **Duration Setting:** Always **10s** in Flow settings — control pacing internally via Timeline Prompting.
 
 ### 8.2. Character Asset Binding System (Google Flow)
-Google Flow maintains character visual consistency via **Ingredient Chips** (`<flow-character-ingredient-chip>`):
-- **Pre-saved Characters in Project `Main series`:**
-  - `Ashel` (Male protagonist, dark hair, blue terminal eyes)
-  - `Valerie` (Female technomancer, teal glow accents)
-  - `Kiran` (Agile blade-wielder, crimson energy)
-  - `Selena` (High-tier duelist, dark rapier, cold demeanor)
-  - `Master Eldrin` (Elder guild master)
-- **Character Attachment Mechanics:**
-  - **Programmatic (CLI):**
-    ```bash
-    ./scripts/flow_operator.sh add-character "Ashel"
-    # Multi-character scene (e.g. betrayal scene):
-    ./scripts/flow_operator.sh add-character "Ashel" "Selena"
-    ```
-  - **Manual / Hotkey in Flow UI:**
-    - Type `@` in the prompt input field to summon the "Thêm thành phần" menu.
-    - Switch to tab **Nhân vật** and click the character name.
-    - Flow automatically attaches the visual reference chip above the prompt and inserts the character name at the cursor.
-  - **Prompting Rule:** Never re-describe baseline physical features (hair, eyes, face structure) if the character chip is attached. Prompts must focus strictly on **Action, Expression, Lighting, Camera Framing, and Environment**.
-  - **Multi-Character Scenes:** Flow supports attaching 2 or more character chips simultaneously. The Omni 1.1 Flash model references all attached visual anchors and binds them to the respective character names mentioned in the prompt text.
+Maintain visual consistency via **Ingredient Chips** (`<flow-character-ingredient-chip>`):
 
-### 8.3. Dual-Tier Audio Architecture: Flow Native Dialogue & Narrative Monologue
-The anime series utilizes an integrated two-tier audio production model:
+- Save your characters in a named Google Flow project (e.g. `My Series`).
+- Attach chips in storyboard via `characters: ["HeroName"]`.
+- Engine auto-types `@HeroName` in Flow CDP to bind the visual reference.
+- **Zero Physical Descriptor Rule:** When a character chip is attached, prompt text **MUST NOT** include any physical descriptions (hair color, armor details, face structure). The chip anchors 100% of visual identity. Focus prompt exclusively on: **Action, Expression, Camera Framing, Lighting/FX, Audio**.
+- **Celebrity Filter Hygiene:** Avoid character names that match celebrity names in plain text — use role descriptors instead (e.g. `the duelist`, `she`, `the warrior`, `him`).
 
-1. **Tier 1 — Flow Native Character Dialogue & Lip-Sync (Thoại trực tiếp nhân vật):**
-   - **Mechanism:** Google Flow's **Omni 1.1 Flash** model natively synthesizes spoken character voice and synchronized facial lip movement directly from the prompt.
-   - **When to Use:** Close-up and medium shots where a character delivers on-screen spoken dialogue (battle shouts, confrontations, direct conversations).
-   - **Prompting Pattern:**
-     ```text
-     [00:03 - 00:07] Close-up push-in to Ashel's face as he speaks aloud with natural mouth and lip movement: "裏切りの代償を払え" ("Pay the price of betrayal"), his electric cyan terminal eyes glowing...
-     AUDIO: Clear Japanese character voiceover speaking: "裏切りの代償を払え", deep male seiyuu tone, synced lip motion, subtle cosmic wind ambient in background.
-     ```
-   - **Output:** Native AAC 48,000Hz stereo audio stream embedded in the video clip, with realistic mouth articulation (opening/closing mouth, teeth, syllable matching) requiring zero external lip-sync post-processing.
+### 8.3. Dual-Tier Audio Architecture
+1. **Tier 1 — Flow Native Dialogue & Lip-Sync:**
+   - Omni 1.1 Flash natively synthesizes character voice + synchronized lip movement from prompt.
+   - Use for close-up shots with on-screen spoken dialogue.
+   - Prompt pattern: `[00:03 - 00:07] Close-up of <character> speaking: "Your line here", synced lip motion.`
+   - Append: `AUDIO: Clear [language] voiceover speaking: "Your line", [voice description], synced lip motion, [ambient].`
 
-2. **Tier 2 — ElevenLabs Voice Profiles & Automated Slider Presets:**
-   - **Mechanism:** Synthesized via ElevenLabs CDP operator with automated Radix UI slider configuration for each character.
-   - **Voice Roster & Calibration Presets (Approved 2026-09-22):**
-     * **Ashel (Protagonist / Reborn Swordsman):**
-       - Model: `Daisuke` (*Serious, Balanced and Guttural*).
-       - Sliders: Speed `1.0x`, Stability `40%`, Similarity `80%`, Style Exaggeration `15%`.
-       - Persona: Deep, resilient, guttural male tone with dramatic emotional inflection for battle cries and inner anguish.
-     * **Selena (Female Duelist / Betrayer):**
-       - Model: `Lime` (*Japanese Kyushu*).
-       - Sliders: Speed `1.0x`, Stability `35%`, Similarity `80%`, Style Exaggeration `25%`.
-       - Persona: Sharp, haughty, aristocratic, sarcastic and ruthlessly cold.
-     * **Protocol: Root (Ancient System AI / Giao Thức Cội Nguồn):**
-       - Model: `Koichi` (*Japanese Deep Calm Narrator*).
-       - Sliders: Speed `0.95x`, Stability `85%`, Similarity `85%`, Style Exaggeration `0%`.
-       - Persona: Deep, calm, perfectly unfeeling machine cadence, pronouncing system statuses with monolithic solemnity.
+2. **Tier 2 — ElevenLabs Voice Profiles (Narration & Inner Monologue):**
+   - Configure each character's voice in `voice_profiles` (see storyboard schema above).
+   - Engine auto-selects voice model and calibrates Radix UI sliders via CDP.
 
-3. **Dual-Zone Subtitle Architecture & Visual Typography (Chuẩn Phụ Đề 2 Tầng Điện Ảnh):**
-   - **Format:** Advanced SubStation Alpha (`.ass`) rendered via `libass` with two distinct typographic layers:
-   - **Tier A — Thoại & Độc thoại nội tâm nhân vật (Character Dialogue & Inner Monologue):**
-     * **Vị trí:** Cạnh dưới màn hình (Bottom Center: `Alignment 2`, `MarginV 35`).
-     * **Màu sắc & Viền:** Trắng tinh khôi (`PrimaryColour: &H00FFFFFF`), viền đen mảnh chống lóa (`OutlineColour: &H00000000`, `Outline: 2.0`), đổ bóng nhẹ (`Shadow: 1.0`).
-     * **Phông chữ:** `Arial` (size 28), chữ thường thanh thoát, dễ đọc chuẩn Vietsub anime rạp chiếu.
-   - **Tier B — Giao Thức Cội Nguồn (Protocol: Root System AI):**
-     * **Vị trí:** Cạnh trên màn hình (Top Center: `Alignment 8`, `MarginV 30`).
-     * **Màu sắc & Viền:** Xanh Cyan Neon (`PrimaryColour: &H00FFFF00`), viền đen kỹ thuật (`OutlineColour: &H00112222`, `Outline: 1.8`).
-     * **Phông chữ:** **`Consolas`** (size 24), In hoa, Bold (`\b1`), Spacing 1.0. Mang phong cách Sci-fi / Terminal HUD / Hacker Code sắc sảo, dứt khoát chuẩn công nghệ thái cổ (Visual reference: `renders/subtitle_preview/preview_sub_rendered.jpg`).
-     * **Cấu trúc nhãn hiển thị:**  
-       `{\b1}[ GIAO THỨC CỘI NGUỒN ]{\b0}\N< KÍCH HOẠT: TÁI CẤU TRÚC HỒN HẠCH THỂ NGHIỆM ASHEL >`
-   - **Cinematic Audio Balance:** Dialogue / voiceover at 100%, background OST at 25–35%, diegetic SFX at 40%.
-   - **NO** rapid Shorts transition sound effects (whooshes, pops, braams, camera shutters). Only clean cinematic cuts aligned with seiyuu breath pauses, orchestral swells, or combat impacts.
+### 8.4. Dual-Zone Subtitle Architecture
+- **Format:** Advanced SubStation Alpha (`.ass`) via `libass`, two distinct typographic layers.
+- **Tier A — Character Dialogue & Inner Monologue:**
+  - Position: Bottom Center (`Alignment 2`, `MarginV 35`).
+  - Style: White (`&H00FFFFFF`), Arial 28pt, black outline 2.0px, shadow 1.0px.
+- **Tier B — AI System / HUD / Narrator:**
+  - Position: Top Center (`Alignment 8`, `MarginV 30`).
+  - Style: Cyan Neon (`&H00FFFF00`), Consolas 24pt Bold, tech black outline 1.8px (`&H00112222`), Spacing 1.0.
+  - Label format: `{\b1}[ SYSTEM NAME ]{\b0}\N< SYSTEM MESSAGE >`.
+- **Audio Balance:** Dialogue/voiceover at 100%, background OST at 25–35%, diegetic SFX at 40%.
+- **No Shorts-style SFX:** No whooshes, pops, or braams. Cinematic cuts only.
 
-### 8.4. Timeline Prompting Formula (Pacing Inside 10s Clips)
-To prevent shots from lingering, dragging, or freezing for 8–10 seconds, every 10-second clip prompt must be subdivided into **2 to 3 dynamic micro-scenes (2–4 seconds each)** using explicit bracketed timecodes:
+### 8.5. Timeline Prompting Formula (10s Clips)
+Subdivide every 10s clip into **2–3 dynamic micro-scenes (2–4s each)**:
 
 ```text
-[00:00 - 00:03] <Micro-Scene 1: Establishing framing & initial character stance (3s)>
-[00:03 - 00:07] <Micro-Scene 2: Dynamic camera motion (push-in/pan/tilt) & motivated action beat (4s)>
-[00:07 - 00:10] <Micro-Scene 3: Dramatic close-up / reaction / climax expression (3s)>.
-<Lighting, Rendering Aesthetics, Engine>.
+[00:00 - 00:03] <Establishing wide/medium shot — character stance & environment (3s)>
+[00:03 - 00:07] <Dynamic camera motion (push-in/pan/tilt) + motivated action beat (4s)>
+[00:07 - 00:10] <Dramatic close-up — reaction / expression / climax (3s)>
+<Lighting, rendering style, engine notes>.
 AUDIO: SFX ONLY — <diegetic sounds>. NO MUSIC.
 ```
 
-**Benefits:**
-- Forces the Omni 1.1 Flash diffusion model to execute sequential camera moves and action beats within one generation pass.
-- Yields 60 to 90 cinematic angles across a 30-shot (5-minute) episode without spending extra credits.
-
-### 8.5. Policy & Safety Filter Hygiene (Zero-Flag Guarantee)
-Google Flow strictly filters violent and harmful terms, rejecting prompts and aborting generations with `Không thành công / Câu lệnh này có thể vi phạm chính sách`. To ensure 100% first-pass generation success, apply the following vocabulary replacements:
+### 8.6. Policy & Safety Filter Hygiene (Zero-Flag Guarantee)
+Google Flow rejects prompts containing violence/injury terms. Always substitute:
 
 | Prohibited / High-Risk Term | Safe Cinematic Alternative |
 | :--- | :--- |
 | `blood`, `bleeding`, `blood dripping` | `purple/crimson cosmic particles`, `energy residue`, `shattered crystal sparks` |
 | `severely injured`, `wounded`, `dying` | `exhausted battle stance`, `kneeling in fatigue`, `battle-worn posture` |
-| `dagger`, `knife stabbing`, `slash throat` | `shattered crystalline blade`, `blade hilt`, `energy saber`, `defensive stance` |
-| `piercing chest`, `impaling` | `thrusting glowing rapier close to chest`, `impact shockwave`, `energy burst` |
+| `dagger stabbing`, `slash throat` | `shattered crystalline blade`, `energy saber`, `defensive stance` |
+| `piercing chest`, `impaling` | `thrusting glowing rapier near chest`, `impact shockwave`, `energy burst` |
 | `kill`, `murder`, `corpse` | `vanquish`, `fallen warrior`, `motionless silhouette in dark void` |
-| `screaming in agony` | `gasp of shock`, `sharp intake of breath`, `fierce determined glare` |
+| `screaming in agony` | `gasp of shock`, `fierce determined glare`, `sharp intake of breath` |
 
-### 8.6. Automated Unlisted YouTube Uploading (YouTube Studio via CDP)
-To share finished episodes or review drafts without burning official YouTube Data API v3 quota (1,600 units/upload):
-- **Zero API Quota / Zero Cost:** Operates directly inside the active Google session on `studio.youtube.com` via Chrome CDP bridge.
-- **Safety & Verification by TypeSafe Jev:** Performs pre-flight screening on video title and description before upload.
-- **CLI Commands:**
-  ```bash
-  # Check YouTube Studio session status
-  ./videogen upload status
+### 8.7. Post-Production Archival & Storage Policy
+Configure your external storage paths in `.env`:
+```bash
+DEST_ORIGINAL=/mnt/d/YourPath/File video original
+DEST_FINAL=/mnt/d/YourPath/File video after edit
+```
+Then run:
+```bash
+./videogen archive storyboards/<project>.json
+```
+This migrates all raw clips, voiceover MP3s, and the storyboard backup to `DEST_ORIGINAL/<title>_materials_<timestamp>/`, copies the final master MP4 to `DEST_FINAL/`, and purges `renders/`, `audio/`, and `output/` in the repo.
 
-  # Upload video as Unlisted (default)
-  ./videogen upload storyboards/<storyboard.json>
-  ```
-- **Pipeline Integration:** `./videogen run <storyboard.json>` automatically handles rendering, voice, assembly, verification, archival, and uploading in one pass.
-
-### 8.7. Character Asset Chip Binding vs. Zero Physical Appearance In Prompts
-**Quy tắc bất di bất dịch của Đạo diễn:**
-Khi nhân vật đã được lưu trữ trong Google Flow và gắn thẻ thành phần (`<flow-character-ingredient-chip>` `@Character`), **TUYỆT ĐỐI KHÔNG MIÊU TẢ CHI TIẾT NGOẠI HÌNH TRONG TEXT PROMPT**.
-- **Lý do:** Thẻ nhân vật đã cố định 100% nhận diện khuôn mặt, tỷ lệ vóc dáng, trang phục, và màu tóc gốc (ví dụ: tóc đỏ của Selena, tóc bạc của Ashel). Việc mô tả màu tóc hoặc giáp trụ trong text prompt sẽ trực tiếp gây xung đột giữa prompt chữ và asset gốc (AI hallucination), làm vỡ màu tóc hoặc sinh ra nhân vật sai lệch.
-- **Cấm tiệt:** Tả màu tóc (`lavender hair`, `silver hair`, `crimson hair`), tả chi tiết trang phục (`ornate silver-plated armor with amethyst gems`), tả mắt/khuôn mặt.
-- **Tập trung 100% vào:**
-  1. **Hành động & Động tác (Action & Kinetics):** Lướt kiếm, rút kiếm, chém ngang (*iaijutsu flash-step*), thủ thế phòng thủ, ngã quỵ, xoay người góc 3/4.
-  2. **Biểu cảm & Diễn xuất (Facial Expression):** Nụ cười khinh bỉ thoáng qua, ánh mắt sắc lạnh kiên nghị, mím môi, thở dốc.
-  3. **Chuyển động Camera (Cinematography):** `Low-angle tracking push-in`, `smooth orbital pan`, `tight close-up`, `shallow depth of field`.
-  4. **Ánh sáng & Môi trường (Lighting & FX):** `swirling cosmic dust`, `cyan/purple lighting reflection`, `volumetric atmospheric fog`.
-  5. **Âm thanh & Khẩu hình (Audio & Lip-Sync):** Câu thoại tiếng Nhật có mấp máy môi hoặc chỉ định `AUDIO: SFX ONLY... NO MUSIC.`
-- **Tránh bộ lọc tên riêng (Celebrity Filter):** Đối với nhân vật có tên dễ trùng người nổi tiếng như `Selena`, dùng chip `@Selena` để khóa ngoại hình nhưng trong văn bản prompt gọi bằng danh xưng vai trò: `the duelist`, `she`, `her`.
-
-
-
+### 8.8. Automated Unlisted YouTube Uploading
+```bash
+./videogen upload storyboards/<project>.json
+```
+- Operates on `studio.youtube.com` via CDP (zero YouTube Data API quota cost).
+- TypeSafe Jev pre-screens title and description before submission.
+- Sets visibility to **Unlisted** by default and returns the shareable `https://youtu.be/...` link.
