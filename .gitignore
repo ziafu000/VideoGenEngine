@@ -2,6 +2,9 @@
 /assets/
 /storyboards/
 
+# Local private environment config
+.env
+
 # Media & temporary generated files
 /renders/*
 !/renders/.gitkeep

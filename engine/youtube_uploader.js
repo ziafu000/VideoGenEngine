@@ -82,11 +82,12 @@ function toWindowsPath(linuxPath) {
     return `${drive}:\\` + abs.slice(7).replace(/\//g, '\\');
   }
   // Linux/WSL internal path: copy to Windows Temp for Chrome accessibility
-  const winTempDir = '/mnt/c/Users/ASUS/AppData/Local/Temp';
+  const winUser = process.env.WIN_USERNAME || 'ASUS';
+  const winTempDir = `/mnt/c/Users/${winUser}/AppData/Local/Temp`;
   if (fs.existsSync(winTempDir)) {
     const dest = path.join(winTempDir, `yt_up_${Date.now()}_${path.basename(abs)}`);
     fs.copyFileSync(abs, dest);
-    return 'C:\\Users\\ASUS\\AppData\\Local\\Temp\\' + path.basename(dest);
+    return `C:\\Users\\${winUser}\\AppData\\Local\\Temp\\` + path.basename(dest);
   }
   return abs;
 }

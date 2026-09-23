@@ -4,31 +4,11 @@ const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 
+// Built-in generic fallback profiles — series-specific voices belong in storyboard voice_profiles.
+// Daisuke/Lime/Koichi are kept here only as named references so existing storyboards
+// that declare those keys in voice_profiles continue to resolve correctly.
 const DEFAULT_PROFILES = {
-  Daisuke: {
-    voiceName: 'Daisuke',
-    searchKey: 'Daisuke',
-    speed: 1.0,
-    stability: 0.40,
-    similarity: 0.80,
-    style: 0.15
-  },
-  Lime: {
-    voiceName: 'Lime',
-    searchKey: 'Lime',
-    speed: 1.0,
-    stability: 0.35,
-    similarity: 0.80,
-    style: 0.25
-  },
-  Koichi: {
-    voiceName: 'Koichi',
-    searchKey: 'Koichi',
-    speed: 0.95,
-    stability: 0.85,
-    similarity: 0.85,
-    style: 0.00
-  },
+  // Generic neutral narrator — safe fallback when storyboard has no voice_profiles
   Alistair: {
     voiceName: 'Alistair',
     searchKey: 'Alistair',
@@ -36,7 +16,11 @@ const DEFAULT_PROFILES = {
     stability: 0.50,
     similarity: 0.75,
     style: 0.00
-  }
+  },
+  // Named-voice pass-throughs: resolved from storyboard voice_profiles at runtime
+  Daisuke: { voiceName: 'Daisuke', searchKey: 'Daisuke', speed: 1.0, stability: 0.40, similarity: 0.80, style: 0.15 },
+  Lime:    { voiceName: 'Lime',    searchKey: 'Lime',    speed: 1.0, stability: 0.35, similarity: 0.80, style: 0.25 },
+  Koichi:  { voiceName: 'Koichi',  searchKey: 'Koichi',  speed: 0.95, stability: 0.85, similarity: 0.85, style: 0.00 }
 };
 
 async function getElevenLabsClient() {
@@ -313,8 +297,9 @@ async function generateAllVoices(storyboardData, targetShotIds = null) {
         continue;
       }
 
-      const speaker = (s.audio && (s.audio.speaker || s.audio.voice_model)) || s.speaker || s.voice_model || 'Daisuke';
-      const prof = profiles[speaker] || profiles.Daisuke;
+      const speaker = (s.audio && (s.audio.speaker || s.audio.voice_model)) || s.speaker || s.voice_model || null;
+      const prof = (speaker && profiles[speaker]) || profiles[Object.keys(profiles)[0]] || DEFAULT_PROFILES.Alistair;
+      if (!speaker) console.warn(`    [!] shot ${s.id || i}: no speaker declared, using first voice_profile as fallback`);
 
       console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice cho ${shotId} (Người nói: ${speaker})...`);
       await generateClip(cdp, voiceoverText, destFile, prof);

@@ -5,7 +5,7 @@ const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 
 /**
- * engine/thumbnail.js: Automated 16:9 YouTube Thumbnail Generator via Google Flow (Nano Banana Pro).
+ * engine/thumbnail.js: Automated 16:9 YouTube Thumbnail Generator via Google Flow image mode.
  *
  * Supports generating a batch of 4 high-CTR cinematic 16:9 thumbnails, downloading signed CDN URLs,
  * upscaling to standard 1920x1080 Full HD, and syncing to Windows storage and Downloads.
@@ -127,7 +127,7 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
     await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 13, unmodifiedText: '\r', text: '\r' });
     await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 13, unmodifiedText: '\r', text: '\r' });
     await cdp.clickMouse(btnRect.x, btnRect.y);
-    console.log('[✓] Đã kích hoạt Nano Banana Pro tạo 4 ảnh (crop_16_9 x4)...');
+    console.log('[✓] Đã kích hoạt chế độ tạo ảnh Google Flow (crop_16_9 x4)...');
 
     // 4. Poll for generation completion (up to 3 mins)
     const startTime = Date.now();
@@ -180,10 +180,11 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
 
     // 5. Download and upscale
     const outDirLocal = path.join(config.PROJECT_DIR, 'assets', 'thumbnails', pid);
-    const outDirWin = path.join('/mnt/d/Billy/Work/Editing/File video after edit/thumbnails', pid);
-    const outDirDownloads = path.join('/mnt/c/Users/ASUS/Downloads', `thumbnails_${pid}`);
+    // Use config-driven paths; gracefully skip external dirs if not configured
+    const outDirWin = config.DEST_FINAL ? path.join(config.DEST_FINAL, 'thumbnails', pid) : null;
+    const outDirDownloads = path.join(config.WIN_DOWNLOADS_DIR, `thumbnails_${pid}`);
 
-    for (const d of [outDirLocal, outDirWin, outDirDownloads]) {
+    for (const d of [outDirLocal, outDirWin, outDirDownloads].filter(Boolean)) {
       if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
     }
 
@@ -197,18 +198,18 @@ async function generateThumbnails({ prompt, storyboard, projectId }) {
 
       const fileNameFhd = `${pid}_thumb_opt${optNum}_1080p.jpg`;
       const localFhd = path.join(outDirLocal, fileNameFhd);
-      const winFhd = path.join(outDirWin, fileNameFhd);
+      const winFhd = outDirWin ? path.join(outDirWin, fileNameFhd) : null;
       const dlFhd = path.join(outDirDownloads, fileNameFhd);
 
       // Scale to 1920x1080 Full HD
       execSync(`ffmpeg -y -i ${JSON.stringify(rawJpg)} -vf "scale=1920:1080:flags=lanczos" -q:v 1 ${JSON.stringify(localFhd)} 2>/dev/null`);
-      fs.copyFileSync(localFhd, winFhd);
+      if (winFhd) fs.copyFileSync(localFhd, winFhd);
       fs.copyFileSync(localFhd, dlFhd);
 
       savedFiles.push({
         option: optNum,
         local: localFhd,
-        win: winFhd,
+        win: winFhd || '(DEST_FINAL not configured)',
         downloads: dlFhd
       });
 

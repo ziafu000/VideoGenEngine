@@ -23,7 +23,8 @@ async function ensureBridge() {
 
     // Copy proxy script to Windows if needed
     const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
-    const winProxyPath = '/mnt/c/Users/ASUS/AppData/Local/Google/Chrome/cdp_proxy.js';
+    const winUser = process.env.WIN_USERNAME || 'ASUS';
+    const winProxyPath = `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
     if (fs.existsSync(proxyScriptSrc)) {
       try {
         fs.copyFileSync(proxyScriptSrc, winProxyPath);
@@ -36,12 +37,12 @@ async function ensureBridge() {
       $chrome = Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*Application\\chrome.exe" }
       $listening = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue
       if (-not $listening) {
-          Start-Process "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=C:\\Users\\ASUS\\AppData\\Local\\Google\\Chrome\\AutomationProfile https://flow.google.com"
+          Start-Process "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" -ArgumentList "--remote-debugging-port=9222 --user-data-dir=C:\\Users\\${winUser}\\AppData\\Local\\Google\\Chrome\\AutomationProfile https://flow.google.com"
           Start-Sleep -Seconds 3
       }
       $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue
       if (-not $proxyListening) {
-          Start-Process node -ArgumentList "C:\\Users\\ASUS\\AppData\\Local\\Google\\Chrome\\cdp_proxy.js" -WindowStyle Hidden
+          Start-Process node -ArgumentList "C:\\Users\\${winUser}\\AppData\\Local\\Google\\Chrome\\cdp_proxy.js" -WindowStyle Hidden
       }
     `;
 

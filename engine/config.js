@@ -2,6 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 
+// Load .env from project root (gitignored — contains user-specific paths)
+const envPath = path.resolve(__dirname, '..', '.env');
+if (fs.existsSync(envPath)) {
+  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
+  });
+}
 // Determine Windows Host IP from default route or fallback
 function getWinHost() {
   if (process.env.WIN_HOST) return process.env.WIN_HOST;
@@ -30,9 +38,9 @@ const ASSETS_DIR = path.join(PROJECT_DIR, 'assets');
   }
 });
 
-const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || '/mnt/c/Users/ASUS/Downloads';
-const DEST_ORIGINAL = process.env.DEST_ORIGINAL || '/mnt/d/Billy/Work/Editing/File video original';
-const DEST_FINAL = process.env.DEST_FINAL || '/mnt/d/Billy/Work/Editing/File video after edit';
+const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || ('/mnt/c/Users/' + (process.env.WIN_USERNAME || 'ASUS') + '/Downloads');
+const DEST_ORIGINAL = process.env.DEST_ORIGINAL || null;
+const DEST_FINAL = process.env.DEST_FINAL || null;
 
 function toWinPath(p) {
   if (!p) return p;
