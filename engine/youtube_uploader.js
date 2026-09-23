@@ -14,6 +14,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const jev = require('./jev');
 
 function getWinHost() {
   try {
@@ -431,12 +432,7 @@ async function cmdUpload(args) {
     // Verify upload success with TypeSafe Jev
     try {
       if (finalUrl && finalUrl.includes('youtu.be')) {
-        const jOut = execSync(`browser-jev verify --expected "video upload succeeded with shareable link" --text ${JSON.stringify(finalUrl + ' ' + title)}`, {
-          encoding: 'utf8',
-          stdio: ['pipe', 'pipe', 'ignore'],
-          timeout: 5000
-        });
-        const jParsed = JSON.parse(jOut);
+        const jParsed = jev.verify(finalUrl + ' ' + title, 'video upload succeeded with shareable link');
         console.error(`  [TypeSafe Jev: ${jParsed.verified ? 'Verified ✓' : 'Unverified ✗'}] Xác thực xuất bản YouTube.`);
       }
     } catch {}

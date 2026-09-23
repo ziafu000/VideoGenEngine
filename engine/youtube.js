@@ -1,6 +1,7 @@
 const path = require('path');
-const { execSync, fork } = require('child_process');
+const { fork } = require('child_process');
 const config = require('./config');
+const jev = require('./jev');
 
 async function uploadVideo({
   videoPath,
@@ -16,8 +17,7 @@ async function uploadVideo({
 
   // Pre-flight title/description screening with TypeSafe Jev if available
   try {
-    const jevOut = execSync(`browser-jev screen-prompt ${JSON.stringify(title + ' ' + description)}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-    const parsed = JSON.parse(jevOut);
+    const parsed = jev.screenPrompt(title + ' ' + description);
     if (parsed.safe === false) {
       console.warn(`[!] Cảnh báo kiểm duyệt Jev: Tiêu đề có điểm rủi ro ${parsed.risk_score}: ${parsed.reason}`);
     } else {

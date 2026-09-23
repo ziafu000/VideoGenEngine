@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
+const jev = require('./jev');
 
 // Built-in generic fallback profiles — series-specific voices belong in storyboard voice_profiles.
 // Daisuke/Lime/Koichi are kept here only as named references so existing storyboards
@@ -51,12 +51,7 @@ async function handleObstacles(cdp) {
     })()`);
 
     if (obstacleInfo && obstacleInfo.text) {
-      const obsOut = execSync(`browser-jev obstacle --text ${JSON.stringify(obstacleInfo.text)}`, {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'ignore'],
-        timeout: 5000
-      });
-      const parsed = JSON.parse(obsOut);
+      const parsed = jev.obstacle(obstacleInfo.text);
       if (parsed.has_obstacle) {
         console.warn(`    [!] TypeSafe Jev phát hiện popup ElevenLabs: ${parsed.obstacle_type} (${parsed.suggested_action})`);
         await cdp.evaluate(`(() => {
@@ -71,25 +66,17 @@ async function handleObstacles(cdp) {
 // Helper: Classify ElevenLabs TTS error using TypeSafe Jev
 function classifyTtsError(text) {
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
-  try {
-    const states = JSON.stringify({
-      error: "an error, quota exceeded, character limit or speech synthesis failure occurred",
-      generating: "audio speech synthesis is actively generating or rendering",
-      neutral: "normal status or informational text"
-    });
-    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
-    });
-    return JSON.parse(out);
-  } catch {
-    const lower = text.toLowerCase();
-    if (lower.includes('quota') || lower.includes('limit') || lower.includes('error') || lower.includes('failed') || lower.includes('lỗi')) {
-      return { choice: 'error', confidence: 0.9 };
-    }
-    return { choice: 'neutral', confidence: 0.8 };
+  const res = jev.classify(text, {
+    error: "an error, quota exceeded, character limit or speech synthesis failure occurred",
+    generating: "audio speech synthesis is actively generating or rendering",
+    neutral: "normal status or informational text"
+  });
+  if (res.choice) return res;
+  const lower = text.toLowerCase();
+  if (lower.includes('quota') || lower.includes('limit') || lower.includes('error') || lower.includes('failed') || lower.includes('lỗi')) {
+    return { choice: 'error', confidence: 0.9 };
   }
+  return { choice: 'neutral', confidence: 0.8 };
 }
 
 async function setVoice(cdp, profile) {

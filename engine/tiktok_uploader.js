@@ -1,23 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const config = require('./config');
 const { getClientForPage, sleep } = require('./cdp');
-
-/**
- * TypeSafe Jev Classifier Helper
- */
-function jevClassify(text, statesMap) {
-  try {
-    const statesJson = JSON.stringify(statesMap).replace(/"/g, '\\"');
-    const cleanText = (text || '').replace(/[\r\n\t]+/g, ' ').slice(0, 800).replace(/"/g, '\\"');
-    const cmd = `browser-jev classify --text "${cleanText}" --states "${statesJson}"`;
-    const out = execSync(cmd, { encoding: 'utf8', timeout: 5000 }).trim();
-    return JSON.parse(out);
-  } catch (err) {
-    return { choice: Object.keys(statesMap)[0], confidence: 0 };
-  }
-}
+const jev = require('./jev');
 
 /**
  * Upload a single vertical 9:16 Short to TikTok Studio with Jev-guided gates.
@@ -55,7 +40,7 @@ async function uploadSingleShortToTikTok({
 
   // Kiểm tra đăng nhập bằng Jev
   const pageSnippet = await cdp.evaluate('document.body.innerText.slice(0, 400)');
-  const loginState = jevClassify(pageSnippet, {
+  const loginState = jev.classify(pageSnippet, {
     logged_in: "User is in creator studio upload page",
     login_required: "Login page or sign in form"
   });
@@ -109,7 +94,7 @@ async function uploadSingleShortToTikTok({
   for (let i = 0; i < 45; i++) {
     await sleep(1500);
     const bodyText = await cdp.evaluate('document.body.innerText.slice(0, 800)');
-    const state = jevClassify(bodyText, {
+    const state = jev.classify(bodyText, {
       ready: "Video uploaded successfully, editor form and details are visible",
       uploading: "Video is still uploading with progress percentage or loading",
       initial: "Initial select file dropzone"
@@ -250,7 +235,7 @@ async function uploadSingleShortToTikTok({
     })()`);
 
     if (dialogText) {
-      const obstacleDecision = jevClassify(dialogText, {
+      const obstacleDecision = jev.classify(dialogText, {
         copyright_warning: "Copyright check warning dialog asking to continue or post now",
         other_obstacle: "Other popup or dialog",
         none: "No obstacle"
@@ -280,7 +265,7 @@ async function uploadSingleShortToTikTok({
       };
     })()`);
 
-    const resultDecision = jevClassify(state.bodyText, {
+    const resultDecision = jev.classify(state.bodyText, {
       published: "Video has been uploaded or user is redirected to manage content posts",
       in_progress: "Upload still in progress",
       error: "Upload error or failure"

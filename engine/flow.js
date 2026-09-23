@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
+const jev = require('./jev');
 
 async function getFlowClient() {
   return await getClientForPage('flow.google.com');
@@ -96,8 +96,7 @@ async function addCharacter(charName) {
 async function submitPrompt(promptText) {
   // Pre-flight prompt screening with TypeSafe Jev if available
   try {
-    const jevOut = execSync(`browser-jev screen-prompt ${JSON.stringify(promptText)}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-    const parsed = JSON.parse(jevOut);
+    const parsed = jev.screenPrompt(promptText);
     if (parsed.safe === false && parsed.risk_score > 0.70) {
       console.warn(`[!] CẢNH BÁO TYPESAFE JEV: Prompt có rủi ro chính sách cao (${parsed.risk_score}): ${parsed.reason}`);
     }
@@ -159,25 +158,17 @@ async function submitPrompt(promptText) {
 // Helper: Classify Google Flow prompt refusal or policy violation using TypeSafe Jev
 function classifyPromptRefusal(text) {
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
-  try {
-    const states = JSON.stringify({
-      refusal: "prompt was refused, blocked or violates safety policy or community guidelines",
-      error: "system error, capacity limit or generation failure occurred",
-      neutral: "normal generation or progress status"
-    });
-    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
-    });
-    return JSON.parse(out);
-  } catch {
-    const lower = text.toLowerCase();
-    if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
-      return { choice: 'refusal', confidence: 0.9 };
-    }
-    return { choice: 'neutral', confidence: 0.8 };
+  const res = jev.classify(text, {
+    refusal: "prompt was refused, blocked or violates safety policy or community guidelines",
+    error: "system error, capacity limit or generation failure occurred",
+    neutral: "normal generation or progress status"
+  });
+  if (res.choice) return res;
+  const lower = text.toLowerCase();
+  if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
+    return { choice: 'refusal', confidence: 0.9 };
   }
+  return { choice: 'neutral', confidence: 0.8 };
 }
 
 // 5. Wait for render to complete (pending tile appears then disappears)
@@ -302,29 +293,20 @@ async function downloadLatestDirect(targetFile) {
 // Helper: Classify Google Flow toast/message using TypeSafe Jev System One
 function classifyUpscaleToast(text) {
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
-  try {
-    const states = JSON.stringify({
-      in_progress: "video resolution is currently being upscaled or processed in background",
-      error: "an error, quota limit, concurrency warning, refusal or failure occurred",
-      neutral: "normal page state or confirmation message"
-    });
-    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
-    });
-    return JSON.parse(out);
-  } catch {
-    // Resilient fallback heuristic if Jev CLI is offline or timed out
-    const lower = text.toLowerCase();
-    if (lower.includes('đang tăng') || lower.includes('tăng độ phân giải') || lower.includes('upscaling') || lower.includes('processing')) {
-      return { choice: 'in_progress', confidence: 0.9 };
-    }
-    if (lower.includes('lỗi') || lower.includes('thất bại') || lower.includes('error') || lower.includes('failed') || lower.includes('quá nhiều yêu cầu')) {
-      return { choice: 'error', confidence: 0.9 };
-    }
-    return { choice: 'neutral', confidence: 0.8 };
+  const res = jev.classify(text, {
+    in_progress: "video resolution is currently being upscaled or processed in background",
+    error: "an error, quota limit, concurrency warning, refusal or failure occurred",
+    neutral: "normal page state or confirmation message"
+  });
+  if (res.choice) return res;
+  const lower = text.toLowerCase();
+  if (lower.includes('đang tăng') || lower.includes('tăng độ phân giải') || lower.includes('upscaling') || lower.includes('processing')) {
+    return { choice: 'in_progress', confidence: 0.9 };
   }
+  if (lower.includes('lỗi') || lower.includes('thất bại') || lower.includes('error') || lower.includes('failed') || lower.includes('quá nhiều yêu cầu')) {
+    return { choice: 'error', confidence: 0.9 };
+  }
+  return { choice: 'neutral', confidence: 0.8 };
 }
 
 // 6b. Cloud AI Super-Resolution (1080p Full HD upscale & download)

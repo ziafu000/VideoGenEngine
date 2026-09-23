@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
+const jev = require('./jev');
 
 /**
  * engine/thumbnail.js: Automated 16:9 YouTube Thumbnail Generator via Google Flow image mode.
@@ -28,25 +28,17 @@ function craftThumbnailPrompt(sb) {
 // Helper: Classify thumbnail prompt refusal or error using TypeSafe Jev
 function classifyThumbnailRefusal(text) {
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
-  try {
-    const states = JSON.stringify({
-      refusal: "prompt was refused, blocked or violates safety policy or terms",
-      error: "system error, capacity limit or generation failure occurred",
-      neutral: "normal generation or progress status"
-    });
-    const out = execSync(`browser-jev classify --states ${JSON.stringify(states)} --text ${JSON.stringify(text)}`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'ignore'],
-      timeout: 5000
-    });
-    return JSON.parse(out);
-  } catch {
-    const lower = text.toLowerCase();
-    if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
-      return { choice: 'refusal', confidence: 0.9 };
-    }
-    return { choice: 'neutral', confidence: 0.8 };
+  const res = jev.classify(text, {
+    refusal: "prompt was refused, blocked or violates safety policy or terms",
+    error: "system error, capacity limit or generation failure occurred",
+    neutral: "normal generation or progress status"
+  });
+  if (res.choice) return res;
+  const lower = text.toLowerCase();
+  if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
+    return { choice: 'refusal', confidence: 0.9 };
   }
+  return { choice: 'neutral', confidence: 0.8 };
 }
 
 async function generateThumbnails({ prompt, storyboard, projectId, isVertical = false }) {
@@ -66,8 +58,7 @@ async function generateThumbnails({ prompt, storyboard, projectId, isVertical = 
 
   // Pre-flight screening with TypeSafe Jev if available
   try {
-    const jevOut = execSync(`browser-jev screen-prompt ${JSON.stringify(finalPrompt)}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] });
-    const parsed = JSON.parse(jevOut);
+    const parsed = jev.screenPrompt(finalPrompt);
     if (parsed.safe === false && parsed.risk_score > 0.70) {
       console.warn(`[!] CẢNH BÁO JEV: Prompt thumbnail có rủi ro chính sách (${parsed.risk_score}): ${parsed.reason}`);
     }
