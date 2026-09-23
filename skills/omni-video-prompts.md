@@ -22,19 +22,19 @@ Chỉ mô tả những gì ống kính camera thực sự ghi lại: hành độ
 
 ---
 
-## 2. Kỹ Thuật Timeline Prompting (Dành riêng cho YouTube Shorts & Video Nhịp Nhanh)
+## 2. Kỹ Thuật Timeline Prompting (Dành riêng cho Series Dài Tập & YouTube Shorts)
 
-Trong YouTube Shorts, giữ 1 góc máy quá 2 giây là quá dài và khiến người xem lướt đi. Omni 1.1 Flash có khả năng hiểu các mốc thời gian trong prompt và thực hiện chuyển cảnh trực tiếp trong clip 10 giây.
+Trong cả anime series dài tập lẫn Shorts, giữ 1 góc máy quá 2.5–3.0s sẽ làm nhịp phim bị chậm và lê thê. Omni 1.1 Flash có khả năng hiểu các mốc thời gian trong prompt và thực hiện chuyển cảnh trực tiếp trong clip 10 giây.
 
-### 2.1. Cấu trúc một Timeline Prompt (10 Giây = 4 đến 5 Cú Cắt Cảnh)
-Mỗi clip 10 giây được chia thành các nhịp nhỏ từ **1.5s đến 2.5s**:
+### 2.1. Cấu trúc một Timeline Prompt Chuẩn (10 Giây = 3 đến 4 Micro-Scenes)
+Mỗi clip 10 giây bắt buộc chia thành **3 đến 4 micro-scenes** (mỗi cảnh từ **2.0s đến 3.5s**; hạn chế tối đa 2 micro-scenes chỉ cho các khoảnh khắc đặc thù cần giữ khoảng lặng):
 
 ```
 [Khung hình & Phong cách tổng quan]
-[00:00 - 00:02] Cảnh 1: [Góc máy 1] + [Hành động dồn dập 1]
-[00:02 - 00:05] Cảnh 2: [Từ khóa chuyển cảnh] + [Góc máy 2] + [Chi tiết tương phản 2]
-[00:05 - 00:07] Cảnh 3: [Từ khóa chuyển cảnh] + [Góc máy 3] + [Hành động then chốt 3]
-[00:07 - 00:10] Cảnh 4: [Từ khóa chuyển cảnh] + [Góc máy 4] + [Điểm chốt thị giác 4]
+[00:00 - 00:03] Cảnh 1: [Góc máy 1: Low-angle / Wide shot] + [Hành động dồn dập 1]
+[00:03 - 00:05] Cảnh 2: [Từ khóa chuyển cảnh: Fast push-in / Whip pan] + [Góc máy 2: Medium] + [Hành động 2]
+[00:05 - 00:08] Cảnh 3: [Từ khóa chuyển cảnh: Hard cut to] + [Góc máy 3: Close-up / Over-the-shoulder] + [Hành động then chốt 3]
+[00:08 - 00:10] Cảnh 4: [Từ khóa chuyển cảnh: Snap zoom / Tracking] + [Góc máy 4] + [Điểm chốt thị giác 4]
 AUDIO: SFX ONLY — [Mô tả âm thanh hiện trường đồng bộ với các hành động trên]. NO MUSIC.
 ```
 
