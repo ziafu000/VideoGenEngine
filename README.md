@@ -1,6 +1,8 @@
 # 🎬 VideoGen Engine (v2.0)
 
-> **Autonomous, production-grade video generation engine orchestrating Google Flow, ElevenLabs, and TypeSafe Jev AI via Chrome DevTools Protocol (0 API token cost) to produce viral YouTube Shorts and full Youtube Series.**
+> **Autonomous, token-efficient video generation engine orchestrating Google Flow, ElevenLabs, and TypeSafe Jev AI via Chrome DevTools Protocol (CDP) to produce cinema-grade anime series and viral YouTube Shorts.**
+>
+> 💡 *A cost-effective, high-quality alternative to the expensive Claude + Higgsfield stack — powered by a single Google AI Pro subscription.*
 
 [![Node.js](https://img.shields.io/badge/Node.js-v20%2B-green?logo=node.js)](https://nodejs.org/)
 [![Google Flow](https://img.shields.io/badge/Google%20Flow-Omni%201.1%20Flash%20%7C%20Veo%203.1-4285F4?logo=google)](https://flow.google.com/)
@@ -13,9 +15,22 @@
 
 ## 🌟 Why VideoGen?
 
-Building automated video pipelines with commercial APIs is notoriously expensive and fragile: raw video generation APIs cost dollars per minute, and basic scripts break on bot checks. 
+### 🚀 The Cost-Effective Alternative to Claude + Higgsfield
+Building automated AI video pipelines traditionally relies on an expensive, fragmented stack: combining premium LLM subscriptions (like Claude Pro / API) with specialized video generation platforms (like Higgsfield) quickly escalates to hundreds of dollars per month in recurring fees and credit top-ups, while still leaving you with manual, brittle stitching.
 
-**VideoGen Engine v2.0** solves this by acting as an **Autonomous Director-Worker System** that drives authentic, logged-in browser workspaces directly through the **Chrome DevTools Protocol (CDP)**:
+**VideoGen Engine v2.0** provides a smarter, unified, and drastically cheaper alternative:
+
+* **The Single Google AI Pro Subscription Advantage:** With just **one** standard Google AI Pro subscription (~$20/month), you solve both halves of the production pipeline:
+  1. **Agent Intelligence:** Access to premier frontier models (Gemini / Antigravity) to drive your autonomous coding and directing agent.
+  2. **Cinema-Grade Video Credits:** Massive credit pools on Google Flow powered by **Omni 1.1 Flash** — delivering exceptional temporal consistency, 3D character asset chips (`@Character`), native lip-sync, and cinematic rendering without per-second API surcharges.
+* **Radical Cost Reduction Without Sacrificing Quality:** Outperforms or matches commercial Claude + Higgsfield outputs in visual fidelity, character consistency, and storytelling pacing at a fraction of the cost.
+* **Token-Efficient Agent Architecture:** Specially engineered to protect your LLM context window. Instead of forcing the AI agent to write massive ephemeral scripts, guess video editing parameters, or burn thousands of prompt tokens per scene, the engine provides pre-compiled, battle-tested modular CLI scripts (`./videogen`). The agent acts strictly as an executive director calling deterministic commands, keeping token consumption near zero.
+
+---
+
+### 🛠️ Key Architectural Advantages
+
+**VideoGen Engine v2.0** operates as an **Autonomous Director-Worker System** that drives authentic, logged-in browser workspaces directly through the **Chrome DevTools Protocol (CDP)**:
 
 1. 💰 **Zero API Token Cost:** Leverages your existing Google AI Pro (Google Flow) and ElevenLabs subscriptions directly in the browser. Zero paid API keys required.
 2. 🧠 **TypeSafe Jev System One AI Decider:** Sub-second semantic decision engine (`jev-latest`) evaluating pre-flight prompt safety, detecting Google Flow policy refusals in 5–10s (instead of 240s hanging timeouts), and confirming ElevenLabs audio synthesis readiness.
