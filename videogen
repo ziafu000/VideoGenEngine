@@ -164,25 +164,29 @@ async function main() {
           }
 
           console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
-          // 1. Clear characters
-          await flow.clearCharacters();
+          try {
+            // 1. Clear characters
+            await flow.clearCharacters();
 
-          // 2. Add characters if any
-          const chars = s.characters || [];
-          for (const c of chars) {
-            console.log(`    [-] Gắn nhân vật: @${c}`);
-            await flow.addCharacter(c);
+            // 2. Add characters if any
+            const chars = s.characters || [];
+            for (const c of chars) {
+              console.log(`    [-] Gắn nhân vật: @${c}`);
+              await flow.addCharacter(c);
+            }
+
+            // 3. Submit prompt
+            console.log(`    [-] Gửi câu lệnh: "${s.prompt.slice(0, 50)}..."`);
+            await flow.submitPrompt(s.prompt);
+
+            // 4. Wait
+            await flow.waitForRender(240);
+
+            // 5. Download (Default: Cloud AI 1080p Full HD)
+            await flow.downloadLatest(outFile, { resolution });
+          } catch (err) {
+            console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
           }
-
-          // 3. Submit prompt
-          console.log(`    [-] Gửi câu lệnh: "${s.prompt.slice(0, 50)}..."`);
-          await flow.submitPrompt(s.prompt);
-
-          // 4. Wait
-          await flow.waitForRender(240);
-
-          // 5. Download (Default: Cloud AI 1080p Full HD)
-          await flow.downloadLatest(outFile, { resolution });
         }
         console.log('\n✓ Hoàn tất lượt render Google Flow!');
         break;
@@ -234,7 +238,9 @@ async function main() {
 
         const episodeName = sb.series_id ||
           (sb.project && sb.project.series ? `${sb.project.series}_ep${String(sb.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
-          (sb.project && sb.project.id ? sb.project.id : 'master');
+          (sb.project && sb.project.id ? sb.project.id : '') ||
+          (sb.series ? `${sb.series}_ep${String(sb.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
+          path.basename(sbArg, '.json');
         const audioDir = path.join(config.AUDIO_DIR, episodeName);
         const videoFiles = [];
         const audioFiles = [];

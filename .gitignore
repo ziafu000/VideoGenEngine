@@ -12,6 +12,7 @@
 !/audio/.gitkeep
 /output/*
 !/output/.gitkeep
+/backup/
 
 # OS & Logs
 .DS_Store

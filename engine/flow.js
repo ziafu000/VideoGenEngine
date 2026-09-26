@@ -171,6 +171,9 @@ async function submitPrompt(promptText) {
       return { submitted: false, reason: 'Generate button not ready or disabled' };
     })()`);
 
+    // Give 2.5s for Google Flow to register the generation and insert the pending tile
+    await sleep(2500);
+
     return { ...inputRes, ...clickRes };
   } finally {
     cdp.close();
@@ -204,17 +207,28 @@ async function waitForRender(timeoutSec = 240) {
     while ((Date.now() - start) < timeoutSec * 1000) {
       await sleep(3000);
       const state = await cdp.evaluate(`(() => {
-        const pending = document.querySelector('flow-pending-tile');
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        const tile0 = tiles[0];
+        if (!tile0) return { hasPending: false, isReady: false };
+
+        const text = tile0.innerText || '';
+        const m = text.match(/\\d+%/);
+        const hasVideo = !!tile0.querySelector('video');
+        const hasThumb = !!tile0.querySelector('img.thumbnail');
+        const hasPending = !!tile0.querySelector('flow-pending-tile');
+
+        const isActivelyPending = (hasPending || !!m) && !hasVideo;
+        const isReady = (hasVideo || (hasThumb && !hasPending)) && !isActivelyPending;
+
         const err = document.querySelector('.error-message, [role="alert"], snack-bar-container, .mat-mdc-snack-bar-container');
         const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && (el.innerText.includes('Không thành công') || el.innerText.includes('vi phạm') || el.innerText.includes('policy') || el.innerText.includes('violate') || el.innerText.includes('failed')));
-        const tiles = document.querySelectorAll('flow-video-tile');
 
         return {
-          hasPending: !!pending,
-          pendingText: pending ? pending.innerText.trim().replace(/[\\r\\n]+/g, ' ') : '',
+          hasPending: isActivelyPending,
+          isReady: isReady,
+          pct: m ? m[0] : null,
           error: err ? err.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null,
-          refusal: refusal ? refusal.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null,
-          totalTiles: tiles.length
+          refusal: refusal ? refusal.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null
         };
       })()`);
 
@@ -229,8 +243,8 @@ async function waitForRender(timeoutSec = 240) {
 
       if (state.hasPending) {
         hasSeenPending = true;
-        process.stdout.write('*');
-      } else if (hasSeenPending) {
+        process.stdout.write(state.pct ? `[${state.pct}]` : '*');
+      } else if (hasSeenPending && state.isReady) {
         process.stdout.write(' ✓ XONG!\n');
         return true;
       } else {
