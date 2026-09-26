@@ -236,12 +236,12 @@ async function main() {
         const { data: sb } = loadStoryboard(sbArg);
         const shots = sb.shots || [];
 
-        const episodeName = sb.series_id ||
-          (sb.project && sb.project.series ? `${sb.project.series}_ep${String(sb.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
-          (sb.project && sb.project.id ? sb.project.id : '') ||
-          (sb.series ? `${sb.series}_ep${String(sb.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
-          path.basename(sbArg, '.json');
-        const audioDir = path.join(config.AUDIO_DIR, episodeName);
+        const baseName = path.basename(sbArg, '.json');
+        const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+        let audioDir = path.join(config.AUDIO_DIR, episodeName);
+        if (!fs.existsSync(audioDir) && fs.existsSync(path.join(config.AUDIO_DIR, baseName))) {
+          audioDir = path.join(config.AUDIO_DIR, baseName);
+        }
         const videoFiles = [];
         const audioFiles = [];
         const timelines = [];
@@ -259,17 +259,15 @@ async function main() {
           if (fs.existsSync(vFile)) {
             videoFiles.push(vFile);
 
-            // Tự động phân loại: Flow native voice vs ElevenLabs backup voice
-            const voText = s.japanese_voiceover || (s.audio && s.audio.voiceover);
-            const promptHasFlowVoice = s.prompt && (s.prompt.includes('speaking:') || s.prompt.includes('voiceover speaking:'));
-            const needsElevenLabs = voText && (!promptHasFlowVoice || (s.audio && s.audio.voice_source === 'elevenlabs'));
+            // Tự động phân loại: Ưu tiên nạp voiceover ElevenLabs cho toàn bộ shot có phụ đề/lời thoại
+            const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
+            const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
 
-            const hasAudioFile = needsElevenLabs && fs.existsSync(aFile);
             if (hasAudioFile) {
               count11LabsVoice++;
               audioFiles.push(aFile);
             } else {
-              if (voText && promptHasFlowVoice) countFlowVoice++;
+              if (hasSubOrVo) countFlowVoice++;
               audioFiles.push(null);
             }
 

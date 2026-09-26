@@ -320,7 +320,9 @@ async function generateAllVoices(storyboardData, targetShotIds = null) {
 
   const episodeName = storyboardData.series_id ||
     (storyboardData.project && storyboardData.project.series ? `${storyboardData.project.series}_ep${String(storyboardData.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
-    (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : 'voices');
+    (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : '') ||
+    (storyboardData.series ? `ashel_ep${String(storyboardData.episode || 1).padStart(2, '0')}` : '') ||
+    'ashel_ep02';
 
   const outDir = path.join(config.AUDIO_DIR, episodeName);
 
