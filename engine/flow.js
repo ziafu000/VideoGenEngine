@@ -1,11 +1,25 @@
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 const jev = require('./jev');
 
 async function getFlowClient() {
-  return await getClientForPage('flow.google.com');
+  const client = await getClientForPage('flow.google.com');
+  const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
+  try {
+    await client.send('Page.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: winDownloads
+    });
+    await client.send('Browser.setDownloadBehavior', {
+      behavior: 'allow',
+      downloadPath: winDownloads,
+      eventsEnabled: true
+    });
+  } catch {}
+  return client;
 }
 
 // 1. Get status of Google Flow UI
@@ -71,19 +85,27 @@ async function addCharacter(charName) {
 
       pm.focus();
       document.execCommand('insertText', false, '@');
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 600));
 
-      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"]'));
+      // Click tab 'Nhân vật' if available in overlay
+      const navItems = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-list-item, .cdk-overlay-pane button, .cdk-overlay-pane span'));
+      const charTab = navItems.find(i => (i.innerText || '').includes('Nhân vật'));
+      if (charTab) {
+        charTab.click();
+        await new Promise(r => setTimeout(r, 600));
+      }
+
+      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item'));
       const target = options.find(o => (o.innerText || '').toLowerCase().includes(${JSON.stringify(charName.toLowerCase())}));
       if (!target) return { error: 'Không tìm thấy nhân vật ' + ${JSON.stringify(charName)} + ' trong menu' };
       target.click();
 
-      await new Promise(r => setTimeout(r, 400));
+      await new Promise(r => setTimeout(r, 600));
       const insertBtn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Thêm vào câu lệnh'));
       if (insertBtn) insertBtn.click();
 
       await new Promise(r => setTimeout(r, 400));
-      const chips = Array.from(pm.querySelectorAll('.mention-chip')).map(c => c.innerText.trim());
+      const chips = Array.from(document.querySelectorAll('.chip-container, flow-character-ingredient-chip, flow-ingredient-chip, .mention-chip')).map(c => c.innerText.trim());
       return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips };
     })()`);
     return res;
@@ -257,9 +279,10 @@ async function downloadLatestDirect(targetFile) {
   const cdp = await getFlowClient();
   try {
     let videoSrc = null;
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 10; i++) {
       videoSrc = await cdp.evaluate(`(() => {
-        const tile = document.querySelector('flow-video-tile');
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        const tile = tiles.find(t => !t.querySelector('flow-pending-tile')) || tiles[0];
         if (!tile) return null;
         tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         tile.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
@@ -270,7 +293,7 @@ async function downloadLatestDirect(targetFile) {
       })()`);
 
       if (videoSrc) break;
-      await sleep(600);
+      await sleep(800);
     }
 
     if (!videoSrc) {
@@ -278,7 +301,18 @@ async function downloadLatestDirect(targetFile) {
     }
 
     console.log(`    [-] Tải nhanh qua Direct CDN (720p): ${videoSrc.slice(0, 60)}...`);
-    execSync(`curl -s -f -L ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+    
+    // Lấy cookie xác thực từ Chrome session để curl tải video trực tiếp từ domain flow.google.com mà không bị redirect đăng nhập
+    let cookieHeader = '';
+    try {
+      const cookieRes = await cdp.send('Network.getCookies', { urls: ['https://flow.google.com'] });
+      if (cookieRes && cookieRes.cookies && cookieRes.cookies.length > 0) {
+        const cookieStr = cookieRes.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+        cookieHeader = `-H "Cookie: ${cookieStr}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"`;
+      }
+    } catch {}
+
+    execSync(`curl -s -f -L ${cookieHeader} ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
 
     if (!fs.existsSync(targetFile) || fs.statSync(targetFile).size < 1000) {
       throw new Error(`File tải về không hợp lệ hoặc rỗng: ${targetFile}`);
@@ -319,6 +353,11 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
 
   console.log('    [-] Kích hoạt Cloud 1080p Super-Resolution trên Google Flow...');
   const cdp = await getFlowClient();
+  const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
+  try {
+    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads });
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads, eventsEnabled: true });
+  } catch {}
 
   try {
     // 1. Close overlays
@@ -334,7 +373,16 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
       tile.scrollIntoView({ block: 'center' });
       tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
 
-      const dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
+      let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
+      if (!dlBtn) {
+        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác');
+        if (moreBtn) {
+          moreBtn.click();
+          await new Promise(r => setTimeout(r, 400));
+          const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+          dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
+        }
+      }
       if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trên thẻ video' };
 
       dlBtn.click();
@@ -388,7 +436,16 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
       const pollRes = await cdp.evaluate(`(async () => {
         const tile = document.querySelector('flow-video-tile');
         if (!tile) return null;
-        const dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
+        let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
+        if (!dlBtn) {
+          const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác');
+          if (moreBtn) {
+            moreBtn.click();
+            await new Promise(r => setTimeout(r, 400));
+            const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+            dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
+          }
+        }
         if (!dlBtn) return null;
         dlBtn.click();
         await new Promise(r => setTimeout(r, 500));

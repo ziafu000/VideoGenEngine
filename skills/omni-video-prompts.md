@@ -26,16 +26,19 @@ Chỉ mô tả những gì ống kính camera thực sự ghi lại: hành độ
 
 Trong cả anime series dài tập lẫn Shorts, giữ 1 góc máy quá 2.5–3.0s sẽ làm nhịp phim bị chậm và lê thê. Omni 1.1 Flash có khả năng hiểu các mốc thời gian trong prompt và thực hiện chuyển cảnh trực tiếp trong clip 10 giây.
 
-### 2.1. Cấu trúc một Timeline Prompt Chuẩn (10 Giây = 3 đến 4 Micro-Scenes)
-Mỗi clip 10 giây bắt buộc chia thành **3 đến 4 micro-scenes** (mỗi cảnh từ **2.0s đến 3.5s**; hạn chế tối đa 2 micro-scenes chỉ cho các khoảnh khắc đặc thù cần giữ khoảng lặng):
+### 2.1. Cấu trúc Timeline Prompting Linh Hoạt Theo Tiết Tấu (3–7 Micro-Scenes)
+Không giới hạn cứng nhắc số nhát cắt cảnh trong một clip 10 giây. Tùy thuộc vào bản chất của phân cảnh:
+- **Cảnh khám phá / thám hiểm / hội thoại tĩnh:** Chia làm **3 đến 5 micro-scenes** (mỗi cảnh con dài **2.0s đến 3.0s**) để camera quan sát, bắt biểu cảm và không gian.
+- **Cảnh hành động chiến đấu cao trào / combat Boss:** Cho phép từ **6 đến 7 micro-scenes** (mỗi cảnh con dài **1.2s đến 1.8s**, thay đổi góc máy liên tục: Low-angle -> Rapid cut to Close-up -> Whip pan -> Snap zoom) để tạo tiết tấu võ thuật/ma pháp dồn dập, nghẹt thở chuẩn điện ảnh AAA.
 
 ```
 [Khung hình & Phong cách tổng quan]
-[00:00 - 00:03] Cảnh 1: [Góc máy 1: Low-angle / Wide shot] + [Hành động dồn dập 1]
-[00:03 - 00:05] Cảnh 2: [Từ khóa chuyển cảnh: Fast push-in / Whip pan] + [Góc máy 2: Medium] + [Hành động 2]
-[00:05 - 00:08] Cảnh 3: [Từ khóa chuyển cảnh: Hard cut to] + [Góc máy 3: Close-up / Over-the-shoulder] + [Hành động then chốt 3]
-[00:08 - 00:10] Cảnh 4: [Từ khóa chuyển cảnh: Snap zoom / Tracking] + [Góc máy 4] + [Điểm chốt thị giác 4]
-AUDIO: SFX ONLY — [Mô tả âm thanh hiện trường đồng bộ với các hành động trên]. NO MUSIC.
+[00:00 - 00:02] Cảnh 1: [Góc máy 1: Low-angle / Wide shot] + [Hành động dồn dập 1]
+[00:02 - 00:04] Cảnh 2: [Từ khóa chuyển cảnh: Rapid cut to] + [Góc máy 2: Medium] + [Hành động 2]
+[00:04 - 00:06] Cảnh 3: [Từ khóa chuyển cảnh: Hard cut to] + [Góc máy 3: Tight Close-up] + [Hành động then chốt 3]
+[00:06 - 00:08] Cảnh 4: [Từ khóa chuyển cảnh: Whip pan to] + [Góc máy 4: Orbital tilt] + [Đòn đánh 4]
+[00:08 - 00:10] Cảnh 5: [Từ khóa chuyển cảnh: Snap zoom on] + [Góc máy 5] + [Điểm chốt thị giác 5]
+AUDIO: SFX ONLY — [Mô tả âm thanh hiện trường đồng bộ]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.
 ```
 
 ### 2.2. Từ vựng chuyển cảnh kỹ thuật điện ảnh (Cinematic Cut Keywords)
@@ -55,17 +58,20 @@ Omni 1.1 Flash tự động tạo âm thanh đồng bộ với video. Đặt dò
 `AUDIO: SFX ONLY — [Mô tả chi tiết 3–4 âm thanh tương ứng với từng giai đoạn chuyển cảnh]. NO MUSIC.`
 Tuyệt đối cấm nhạc nền (NO MUSIC) để không lấn át giọng thuyết minh và cho phép hậu kỳ hòa âm chuẩn xác.
 
-### 3.2. Thoại Nhân Vật Trực Tiếp & Khẩu Hình Môi (Native Dialogue & Lip-Sync)
-Omni 1.1 Flash có khả năng **tự sinh giọng nói nhân vật và nhép môi (lip-sync)** trực tiếp theo câu thoại trong prompt.
+### 3.2. Thoại Nhân Vật Trực Tiếp & Khẩu Hình Môi (Native Dialogue & Lip-Sync — Ưu Tiên Số 1)
+Omni 1.1 Flash có khả năng **tự sinh giọng nói nhân vật và nhép môi (lip-sync)** trực tiếp theo câu thoại trong prompt, đóng vai trò là **Voice Engine Chính (Primary)**:
 - **Cách viết trong mô tả hình ảnh:**
   `[00:03 - 00:07] Close-up push-in to the warrior's face as he speaks aloud: "Your character line here", his eyes glowing with determination...`
 - **Cách viết trong chỉ thị AUDIO:**
-  `AUDIO: Clear [language] character voiceover speaking: "Your line", [voice tone description], synced lip motion, [ambient sound].`
-- **Đặc tính kỹ thuật:**
-  - Mô hình tự động tạo chuyển động mấp máy môi, hở răng và phát âm khớp ngữ âm.
-  - Luồng âm thanh xuất ra là AAC stereo 48kHz.
-  - Sử dụng cho các cảnh cận mặt nhân vật phát ngôn, tuyên chiến hoặc đối thoại trực tiếp.
-  - Đối với độc thoại nội tâm hoặc dẫn chuyện kéo dài, sử dụng ElevenLabs để giữ chất lượng kể chuyện đồng nhất.
+  `AUDIO: Clear Japanese character voiceover speaking: "Your line", [voice tone description], synced lip motion, [ambient sound]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
+- **Đặc tính kỹ thuật & Chỉ thị chống ảo giác sub (Anti-Subtitle Hallucination):**
+  - Mô hình tự động tạo chuyển động mấp máy môi, hở răng và phát âm khớp ngữ âm tiếng Nhật.
+  - Luồng âm thanh xuất ra là AAC stereo 48kHz hòa quyện tự nhiên với hiệu ứng nền (SFX).
+  - **CẢNH BÁO QUAN TRỌNG:** Ở các cảnh quay tĩnh/cận cảnh nhân vật, nếu đưa câu thoại tiếng Nhật có ký tự Kanji trong ngoặc kép, Flow có thể hiểu nhầm thành typography và tự động vẽ hard-sub tiếng Nhật vào chân video. Giải pháp: Luôn thêm chỉ thị phủ định `CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`, hoặc mô tả ngữ âm nhân vật (`Clear Japanese character monologue solemnly speaking...`) ở các phân cảnh tĩnh đó để giữ video sạch 100% trước khi burn phụ đề.
+- **Phân vai với ElevenLabs (Secondary Backup):**
+  - Flow là nguồn giọng chính cho tất cả các cảnh nhân vật đối thoại trực diện mở miệng.
+  - ElevenLabs đóng vai trò bảo hiểm/backup: chỉ kích hoạt cho các cảnh Flow chỉ sinh SFX chiến đấu thuần túy mà thiếu voice, cảnh độc thoại nội tâm ngậm miệng, hoặc dẫn chuyện/thông báo hệ thống.
+  - Trong quá trình dựng (`videogen assemble`), tuyệt đối không lồng chồng voice ElevenLabs lên các cảnh Flow đã tự sinh voice rõ ràng. Sử dụng cờ `normalize=0` trong bộ lọc `amix` của FFmpeg để bảo toàn 100% âm lượng SFX và độ sắc của giọng nói.
 
 ---
 

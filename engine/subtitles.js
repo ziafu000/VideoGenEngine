@@ -9,7 +9,13 @@ function secToAss(s) {
   return `${h}:${String(m).padStart(2, '0')}:${sec.toFixed(2).padStart(5, '0')}`;
 }
 
-const DUAL_ZONE_HEADER = `[Script Info]
+function getDualZoneHeader(styleConfig = {}) {
+  const dialogueSize = styleConfig.dialogueFontSize || 34;
+  const protocolSize = styleConfig.protocolFontSize || 28;
+  const dialogueMarginV = styleConfig.dialogueMarginV || 38;
+  const protocolMarginV = styleConfig.protocolMarginV || 30;
+
+  return `[Script Info]
 Title: VideoGen Dual-Zone Subtitles
 ScriptType: v4.00+
 WrapStyle: 0
@@ -20,12 +26,13 @@ PlayResY: 720
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: AnimeDialogue,Arial,28,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2.0,1.0,2,30,30,35,1
-Style: SystemProtocol,Consolas,24,&H00FFFF00,&H000000FF,&H00112222,&H80000000,1,0,0,0,100,100,1.0,0,1,1.8,0.0,8,30,30,30,1
+Style: AnimeDialogue,Arial,${dialogueSize},&H00FFFFFF,&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,2.2,1.2,2,30,30,${dialogueMarginV},1
+Style: SystemProtocol,Consolas,${protocolSize},&H00FFFF00,&H000000FF,&H00112222,&H80000000,1,0,0,0,100,100,1.0,0,1,1.8,0.0,8,30,30,${protocolMarginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
+}
 
 const SHORTS_HEADER = `[Script Info]
 Title: VideoGen Shorts Subtitles
@@ -52,7 +59,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
  */
 function generateSubtitles(storyboardData, clipTimelines, outputPath) {
   const isShorts = storyboardData.project && storyboardData.project.mode === 'shorts';
-  let assContent = isShorts ? SHORTS_HEADER : DUAL_ZONE_HEADER;
+  const customStyles = storyboardData.subtitle_style || (storyboardData.project && storyboardData.project.subtitle_style) || {};
+  let assContent = isShorts ? SHORTS_HEADER : getDualZoneHeader(customStyles);
 
   let currentTime = 0.0;
 
@@ -60,16 +68,17 @@ function generateSubtitles(storyboardData, clipTimelines, outputPath) {
     const item = clipTimelines[i];
     const shot = (storyboardData.shots || []).find(s => s.id === item.shotId) || (storyboardData.shots || [])[i];
     const dur = item.duration;
-    const aDur = item.audioDuration || (dur - 1.0);
+    const audioConf = (shot && shot.audio) || {};
+    const voiceDelay = typeof audioConf.voice_delay_sec === 'number' ? audioConf.voice_delay_sec : 0.3;
+    const aDur = item.audioDuration || (dur - voiceDelay - 0.5);
 
-    const subStart = currentTime + 0.3;
-    const subEnd = Math.min(currentTime + dur - 0.1, subStart + aDur + 0.4);
+    const subStart = currentTime + voiceDelay;
+    const subEnd = Math.min(currentTime + dur - 0.1, subStart + aDur + 0.3);
 
     const startStr = secToAss(subStart);
     const endStr = secToAss(subEnd);
 
     if (shot) {
-      const audioConf = shot.audio || {};
       const layer = audioConf.sub_layer || shot.subtitle_layer || 'bottom';
       const text = audioConf.sub_text || shot.vietnamese_subtitles || shot.subtitles || '';
       const sysText = audioConf.sys_sub || shot.system_vietnamese || '';

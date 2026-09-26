@@ -33,10 +33,16 @@ async function ensureBridge() {
       }
     }
 
+    const chromeUserData = process.env.CHROME_USER_DATA_DIR;
+    const chromeProfile = process.env.CHROME_PROFILE_DIR;
+    let extraChromeArgs = '';
+    if (chromeUserData) extraChromeArgs += `, '--user-data-dir=\"${chromeUserData}\"'`;
+    if (chromeProfile) extraChromeArgs += `, '--profile-directory=\"${chromeProfile}\"'`;
+
     const psCmd = `
       $listening = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue
       if (-not $listening) {
-          Start-Process "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" -ArgumentList "--remote-debugging-port=9222"
+          Start-Process 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -ArgumentList '--remote-debugging-port=9222'${extraChromeArgs}
           Start-Sleep -Seconds 3
       }
       $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue

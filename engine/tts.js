@@ -24,13 +24,19 @@ const DEFAULT_PROFILES = {
 };
 
 async function getElevenLabsClient() {
-  return await getClientForPage('elevenlabs.io');
+  const client = await getClientForPage('elevenlabs.io');
+  const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
+  try {
+    await client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads });
+    await client.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads, eventsEnabled: true });
+  } catch {}
+  return client;
 }
 
 function getNewestDownload(downloadsDir) {
   try {
     const files = fs.readdirSync(downloadsDir)
-      .filter(f => f.startsWith('ElevenLabs') && f.endsWith('.mp3'))
+      .filter(f => (f.endsWith('.mp3') || f.endsWith('.tmp')) && !f.endsWith('.crdownload'))
       .map(f => ({ name: f, time: fs.statSync(path.join(downloadsDir, f)).mtime.getTime() }))
       .sort((a, b) => b.time - a.time);
     return files.length > 0 ? files[0] : null;
@@ -157,8 +163,15 @@ async function generateClip(cdp, text, destFile, profile) {
 
   const beforeDownload = getNewestDownload(config.WIN_DOWNLOADS_DIR);
 
-  // 0. Check & dismiss any unexpected popups via TypeSafe Jev
+  // 0. Check & dismiss any unexpected popups / close voice dialog if stuck open
   await handleObstacles(cdp);
+  await cdp.evaluate(`(() => {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (dialog && !dialog.getAttribute('data-voice-menu')) {
+      const closeBtn = dialog.querySelector('button[aria-label="Close"], button[aria-label="Đóng"], button[data-testid="close-button"]');
+      if (closeBtn) closeBtn.click();
+    }
+  })()`);
 
   // 1. Voice & Sliders
   await setVoice(cdp, profile);
@@ -174,28 +187,41 @@ async function generateClip(cdp, text, destFile, profile) {
     ta.dispatchEvent(new Event('input', { bubbles: true }));
     ta.dispatchEvent(new Event('change', { bubbles: true }));
   })()`);
-  await sleep(500);
+  await sleep(600);
 
   // 3. Click generate
   console.log(`    [-] Bấm Generate speech...`);
   await cdp.evaluate(`(() => {
-    const btn = document.querySelector('button[aria-label="Generate speech Ctrl+Enter"]') ||
+    const btn = document.querySelector('[data-testid="tts-generate"]') ||
+                document.querySelector('button[aria-label="Generate speech Ctrl+Enter"]') ||
                 document.querySelector('button[aria-label="Regenerate speech Ctrl+Enter"]') ||
                 Array.from(document.querySelectorAll('button')).find(b => b.innerText.includes('Generate speech') || b.innerText.includes('Regenerate speech'));
     if (btn && !btn.disabled) btn.click();
   })()`);
 
-  // 4. Wait for generation to finish
+  // 4. Wait for generation to finish (wait for Loading state -> then wait for completion)
   let ready = false;
   process.stdout.write('    [-] Đang tổng hợp âm thanh: ');
-  for (let i = 0; i < 30; i++) {
-    await sleep(1500);
+
+  // Give 1-2s for loading state to kick in
+  for (let w = 0; w < 5; w++) {
+    await sleep(500);
+    const isBusy = await cdp.evaluate(`(() => {
+      const btn = document.querySelector('[data-testid="tts-generate"]');
+      return btn && (btn.disabled || (btn.innerText && btn.innerText.includes('Loading')));
+    })()`);
+    if (isBusy) break;
+  }
+
+  for (let i = 0; i < 40; i++) {
+    await sleep(1000);
     const state = await cdp.evaluate(`(() => {
-      const loading = document.querySelectorAll('[data-loading="true"], .animate-spin, svg.animate-spin');
-      const audio = document.querySelector('audio');
+      const genBtn = document.querySelector('[data-testid="tts-generate"]');
+      const dlBtn = document.querySelector('[data-testid="tts-download-latest-button"], button[aria-label="Download latest"], button[aria-label="Download Audio"]');
       const errBanner = document.querySelector('[role="alert"], [class*="destructive"], [class*="error-message"]');
+      const isLoading = genBtn && (genBtn.disabled || (genBtn.innerText && genBtn.innerText.includes('Loading')));
       return {
-        isDone: (loading.length === 0 && audio && audio.duration > 0),
+        isDone: (!isLoading && dlBtn && !dlBtn.disabled),
         errorText: errBanner ? errBanner.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null
       };
     })()`);
@@ -220,33 +246,68 @@ async function generateClip(cdp, text, destFile, profile) {
     throw new Error('Timeout khi chờ ElevenLabs tạo âm thanh!');
   }
 
-  // 5. Download audio
+  // 5. Download audio using direct CDP Network response body interception + file fallback
+  await cdp.send('Network.enable');
+
+  let audioSaved = false;
+  const interceptPromise = new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), 8000);
+    const onMsg = async (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.method === 'Network.responseReceived') {
+          const resp = msg.params.response;
+          if (resp.url.includes('/history/download') && (resp.mimeType.includes('audio') || resp.mimeType.includes('mpeg'))) {
+            await sleep(500);
+            try {
+              const body = await cdp.send('Network.getResponseBody', { requestId: msg.params.requestId });
+              if (body && body.body) {
+                const buf = Buffer.from(body.body, body.base64Encoded ? 'base64' : 'binary');
+                if (buf.length > 2000) {
+                  fs.writeFileSync(destFile, buf);
+                  audioSaved = true;
+                  clearTimeout(timer);
+                  cdp.ws.removeEventListener('message', onMsg);
+                  resolve(true);
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+    };
+    cdp.ws.addEventListener('message', onMsg);
+  });
+
+  // Click download button
   await cdp.evaluate(`(() => {
-    const btn = document.querySelector('button[aria-label="Download Audio"]') ||
-                document.querySelector('button[aria-label="Download latest"]');
-    if (btn) {
-      btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      btn.click();
-    }
+    const btn = document.querySelector('[data-testid="tts-download-latest-button"]') ||
+                document.querySelector('[data-testid="audio-player-download-button"]');
+    if (btn) btn.click();
   })()`);
 
-  // 6. Move file from Downloads
-  let downloadedFile = null;
-  for (let i = 0; i < 15; i++) {
-    await sleep(1000);
-    const newest = getNewestDownload(config.WIN_DOWNLOADS_DIR);
-    if (newest && (!beforeDownload || newest.name !== beforeDownload.name || newest.time > beforeDownload.time)) {
-      downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
-      break;
+  await interceptPromise;
+
+  // 6. Fallback: Check Downloads folder if network intercept didn't write the file
+  if (!audioSaved || !fs.existsSync(destFile) || fs.statSync(destFile).size < 2000) {
+    for (let i = 0; i < 10; i++) {
+      await sleep(1000);
+      const newest = getNewestDownload(config.WIN_DOWNLOADS_DIR);
+      if (newest && (!beforeDownload || newest.name !== beforeDownload.name || newest.time > beforeDownload.time)) {
+        const downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
+        if (fs.existsSync(downloadedFile) && fs.statSync(downloadedFile).size > 2000) {
+          fs.copyFileSync(downloadedFile, destFile);
+          audioSaved = true;
+          break;
+        }
+      }
     }
   }
 
-  if (!downloadedFile || !fs.existsSync(downloadedFile)) {
-    throw new Error('Không tìm thấy file MP3 vừa tải về trong thư mục Downloads!');
+  if (!fs.existsSync(destFile) || fs.statSync(destFile).size < 2000) {
+    throw new Error('Không thể tải hoặc trích xuất file MP3 từ ElevenLabs!');
   }
 
-  fs.copyFileSync(downloadedFile, destFile);
   console.log(`    [✓] Đã lưu voice clip: ${destFile} (${fs.statSync(destFile).size} bytes)`);
   return destFile;
 }
@@ -257,9 +318,9 @@ async function generateAllVoices(storyboardData, targetShotIds = null) {
   const shots = storyboardData.shots || [];
   const cdp = await getElevenLabsClient();
 
-  const episodeName = storyboardData.project && storyboardData.project.series
-    ? (storyboardData.project.series + '_ep' + String(storyboardData.project.episode || 1).padStart(2, '0')).replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()
-    : 'voices';
+  const episodeName = storyboardData.series_id ||
+    (storyboardData.project && storyboardData.project.series ? `${storyboardData.project.series}_ep${String(storyboardData.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
+    (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : 'voices');
 
   const outDir = path.join(config.AUDIO_DIR, episodeName);
 

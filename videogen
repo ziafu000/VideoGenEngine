@@ -82,7 +82,7 @@ Lệnh điều phối:
 
   ./videogen subs <storyboard.json>
       Tạo file phụ đề ASS chuẩn điện ảnh:
-      - Anime: Dual-Zone (Cạnh dưới: Thoại Arial 28 | Cạnh trên: HUD AI Consolas Neon 24)
+      - Anime: Dual-Zone (Cạnh dưới: Thoại Arial 34 | Cạnh trên: HUD AI Consolas Neon 28)
       - Shorts: Bouncy chữ lớn màu vàng Neon.
 
   ./videogen assemble <storyboard.json>
@@ -232,14 +232,17 @@ async function main() {
         const { data: sb } = loadStoryboard(sbArg);
         const shots = sb.shots || [];
 
-        const episodeName = sb.project && sb.project.series
-          ? (sb.project.series + '_ep' + String(sb.project.episode || 1).padStart(2, '0')).replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase()
-          : 'voices';
-
+        const episodeName = sb.series_id ||
+          (sb.project && sb.project.series ? `${sb.project.series}_ep${String(sb.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
+          (sb.project && sb.project.id ? sb.project.id : 'master');
         const audioDir = path.join(config.AUDIO_DIR, episodeName);
         const videoFiles = [];
         const audioFiles = [];
         const timelines = [];
+        const delays = [];
+
+        let countFlowVoice = 0;
+        let count11LabsVoice = 0;
 
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
@@ -249,14 +252,33 @@ async function main() {
 
           if (fs.existsSync(vFile)) {
             videoFiles.push(vFile);
-            audioFiles.push(fs.existsSync(aFile) ? aFile : null);
+
+            // Tự động phân loại: Flow native voice vs ElevenLabs backup voice
+            const voText = s.japanese_voiceover || (s.audio && s.audio.voiceover);
+            const promptHasFlowVoice = s.prompt && (s.prompt.includes('speaking:') || s.prompt.includes('voiceover speaking:'));
+            const needsElevenLabs = voText && (!promptHasFlowVoice || (s.audio && s.audio.voice_source === 'elevenlabs'));
+
+            const hasAudioFile = needsElevenLabs && fs.existsSync(aFile);
+            if (hasAudioFile) {
+              count11LabsVoice++;
+              audioFiles.push(aFile);
+            } else {
+              if (voText && promptHasFlowVoice) countFlowVoice++;
+              audioFiles.push(null);
+            }
+
+            const delaySec = (s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.3;
+            delays.push(delaySec);
+
             timelines.push({
               shotId,
               duration: compositor.getDuration(vFile),
-              audioDuration: fs.existsSync(aFile) ? compositor.getDuration(aFile) : 0
+              audioDuration: hasAudioFile ? compositor.getDuration(aFile) : 0
             });
           }
         }
+
+        console.log(`[-] Tổng kết âm thanh: ${countFlowVoice} shot dùng Voice Flow gốc | ${count11LabsVoice} shot dùng Voice ElevenLabs backup.`);
 
         if (videoFiles.length === 0) {
           console.error('[!] Không tìm thấy video clips nào trong thư mục renders/!');
@@ -267,12 +289,13 @@ async function main() {
         const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
         subtitles.generateSubtitles(sb, timelines, assPath);
 
-        const masterOutput = path.join(config.OUTPUT_DIR, `final_master_${Date.now()}.mp4`);
+        const masterOutput = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
         await compositor.compositeVideo({
           videoFiles,
           audioFiles,
           assSubtitlePath: assPath,
-          outputVideoPath: masterOutput
+          outputVideoPath: masterOutput,
+          delays
         });
         break;
       }

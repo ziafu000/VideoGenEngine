@@ -7,6 +7,12 @@
     "model": "Omni 1.1 Flash",
     "duration_per_clip": 10
   },
+  "subtitle_style": {
+    "dialogueFontSize": 34,
+    "protocolFontSize": 28,
+    "dialogueMarginV": 38,
+    "protocolMarginV": 30
+  },
   "voice_profiles": {
     "Ren": {
       "voice": "Daisuke",
@@ -38,7 +44,10 @@
       "speaker": "Ren",
       "dialogue_jp": "何者だ...？ どこから入ってきた？",
       "dialogue_vi": "Kẻ nào đó...? Ngươi đột nhập từ đâu?",
-      "prompt": "Widescreen 16:9 cinematic eye-level medium tracking shot: A dark futuristic dojo illuminated by flickering blue neon lights. Rain streaks down the exterior translucent glass wall. [00:00 - 00:04] The cyber warrior stands in a low defensive stance, right hand resting on the hilt of his sheathed katana. [00:04 - 00:07] Rapid whip-pan to: Extreme close-up of his glowing cyan cybernetic eye scanning the shadows. [00:07 - 00:10] Push-in medium shot: He steps forward as a digital grid flickers across the tatami floor. AUDIO: SFX ONLY — heavy rain pattering against glass, neon light hum, leather armor creaking, subtle digital scanning beep. NO MUSIC."
+      "audio": {
+        "voice_delay_sec": 1.2
+      },
+      "prompt": "Widescreen 16:9 cinematic eye-level medium tracking shot: A dark futuristic dojo illuminated by flickering blue neon lights. Rain streaks down the exterior translucent glass wall. [00:00 - 00:04] The cyber warrior stands in a low defensive stance, right hand resting on the hilt of his sheathed katana. [00:04 - 00:07] Rapid whip-pan to: Extreme close-up of his glowing cyan cybernetic eye scanning the shadows. [00:07 - 00:10] Push-in medium shot: He steps forward as a digital grid flickers across the tatami floor. AUDIO: Clear Japanese character voiceover speaking: \"何者だ...？ どこから入ってきた？\", low calm tense tone, synced lip motion, heavy rain against glass, neon hum. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS."
     },
     {
       "id": "shot_02",

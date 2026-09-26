@@ -22,7 +22,8 @@ async function compositeVideo({
   assSubtitlePath,
   outputVideoPath,
   voiceVolume = 1.0,
-  ambientVolume = 0.30
+  ambientVolume = 0.30,
+  delays = []
 }) {
   const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -43,9 +44,12 @@ async function compositeVideo({
     const paddedAudio = path.join(tempDir, `padded_${String(i + 1).padStart(2, '0')}.wav`);
 
     let aDur = 0;
+    const delaySec = (delays && delays[i] !== undefined) ? delays[i] : 0.3;
+    const delayMs = Math.round(delaySec * 1000);
+
     if (aFile && fs.existsSync(aFile)) {
       aDur = getDuration(aFile);
-      execSync(`ffmpeg -y -i ${JSON.stringify(aFile)} -af "adelay=300|300,apad=whole_dur=${vDur}" -ar 44100 -ac 2 -t ${vDur} ${JSON.stringify(paddedAudio)} 2>/dev/null`);
+      execSync(`ffmpeg -y -i ${JSON.stringify(aFile)} -af "adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}" -ar 44100 -ac 2 -t ${vDur} ${JSON.stringify(paddedAudio)} 2>/dev/null`);
     } else {
       execSync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vDur} ${JSON.stringify(paddedAudio)} 2>/dev/null`);
     }
@@ -84,9 +88,22 @@ async function compositeVideo({
   const outDir = path.dirname(outputVideoPath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=${ambientVolume}[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2[a]`;
+  const hasVoiceTrack = audioFiles && audioFiles.some(f => f && fs.existsSync(f));
+  let filterStr = '';
+  let cmd = '';
 
-  execSync(`ffmpeg -y -i ${JSON.stringify(rawMaster)} -i ${JSON.stringify(masterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)} 2>/dev/null`);
+  if (hasVoiceTrack) {
+    console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (SFX + Voice gốc) + Voiceover ElevenLabs (chống chồng voice)...`);
+    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -i ${JSON.stringify(masterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
+  } else {
+    // 100% native Flow audio (Primary voice + SFX + lip-sync directly from Omni 1.1 Flash)
+    console.log(`    [-] Sử dụng toàn bộ dải âm thanh gốc từ Google Flow (Voice chính + SFX)...`);
+    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
+  }
+
+  execSync(`${cmd} 2>/dev/null`);
 
   const finalDur = getDuration(outputVideoPath);
   const finalSize = (fs.statSync(outputVideoPath).size / 1024 / 1024).toFixed(2);

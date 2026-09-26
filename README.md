@@ -37,11 +37,15 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
 3. 🎭 **Dual-Mode Production:**
    - **Mode 1: Faceless Explainer & Shorts (English):** 9:16 vertical, rapid 2.75 words/sec retention pacing, dynamic animated word-by-word subtitles, automated cinematic SFX (sub-bass impacts, scene swishes, accent pops).
    - **Mode 2: Original 3D CGI Anime Series:** 16:9 widescreen, multi-character asset consistency via `@Character` chips, multi-voice Japanese voice acting, and cinema-grade **Dual-Zone ASS Subtitles**.
-4. 🎙️ **Automated ElevenLabs Voice Calibration:** Automatically selects character voices and adjusts Radix UI sliders (Stability, Similarity, Style Exaggeration, Speed) via simulated CDP mouse events according to your storyboard's `voice_profiles`.
-5. 🎞️ **Dual-Zone Subtitle Architecture (`.ass` via `libass`):**
-   - **Tier A (Dialogue & Inner Monologue):** Bottom-center white Arial with black stroke for character dialogue.
-   - **Tier B (AI System HUD Captions):** Top-center cyan neon Consolas for ancient AI terminal/HUD alerts.
-6. 📦 **Single Source of Truth (SSOT):** Entire episodes are defined in pure declarative JSON (`storyboards/example_anime_series.json`). The engine contains zero hardcoded episode text or character names.
+4. 🎙️ **Hybrid Voiceover Strategy & Lip-Sync:**
+   - **Google Flow Omni 1.1 Flash (Primary):** Injected directly into prompts (`AUDIO: Clear Japanese character voiceover speaking: "...", synced lip motion...`) to generate synchronized mouth movements (visemes) and spatial acoustics.
+   - **ElevenLabs (Secondary Backup):** Automated model and Radix UI slider calibration (Stability, Similarity, Style, Speed) via simulated CDP mouse events for off-screen narration, inner monologues, and backup dubbing.
+   - **Intelligent Audio Multiplexer:** `./videogen assemble` auto-detects Flow native speech vs SFX-only scenes to prevent double-voice echo, applying zero-gain FFmpeg mixing (`normalize=0`) to preserve 100% SFX dynamic range.
+5. 🔤 **Dual-Zone Subtitle Architecture 2.0 (`.ass` via `libass`):**
+   - **Tier A (Dialogue & Inner Monologue):** Bottom-center white Arial (**34px**, 2.2px outline, 1.2px shadow) for high-contrast anime dialogue.
+   - **Tier B (AI System HUD Captions):** Top-center cyan neon Consolas (**28px** bold, 1.8px outline) for sci-fi system and ancient protocol alerts.
+   - **Precision Audio-Subtitle Onset Sync:** Storyboard `audio.voice_delay_sec` dynamically locks FFmpeg `adelay` and subtitle timestamps (`subStart`), ensuring subtitles appear at the exact second speech begins. Overridable via `subtitle_style` in storyboard JSON.
+   - **Anti-Subtitle Hallucination:** Strict negative prompt hygiene (`CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`) ensures zero burned-in foreign text before final master hardsubbing.
 7. 🚀 **Unified CLI (`./videogen`):** Single executable command to control every phase or execute end-to-end autonomous runs (`./videogen run storyboard.json`).
 8. 💾 **Automated D: Drive Archival & Clean Git:** Automatically migrates hundreds of megabytes of raw scene clips, voice files, and master videos to external storage, keeping the Git repository ultra-lightweight (<200KB).
 
