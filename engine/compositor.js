@@ -146,8 +146,41 @@ function extractVerificationFrames(videoPath, timestamps, outputDir) {
   return frames;
 }
 
+/**
+ * Verify integrity and extract QA snapshots for all rendered scene clips
+ */
+function verifyRenderedShots(rendersDir = config.RENDERS_DIR, qaDir = null) {
+  const targetQa = qaDir || path.join(rendersDir, 'qa_inspect');
+  if (!fs.existsSync(targetQa)) fs.mkdirSync(targetQa, { recursive: true });
+
+  const files = fs.readdirSync(rendersDir).filter(f => f.startsWith('shot_') && f.endsWith('.mp4')).sort();
+  const results = [];
+
+  for (const f of files) {
+    const sid = f.replace('.mp4', '');
+    const mp4Path = path.join(rendersDir, f);
+    const snapPath = path.join(targetQa, `${sid}_mid.jpg`);
+    const size = fs.statSync(mp4Path).size;
+
+    if (size > 50000) {
+      if (!fs.existsSync(snapPath)) {
+        try {
+          execSync(`ffmpeg -y -ss 00:00:04 -i ${JSON.stringify(mp4Path)} -frames:v 1 -q:v 2 ${JSON.stringify(snapPath)} 2>/dev/null`);
+        } catch {}
+      }
+      const ok = fs.existsSync(snapPath) && fs.statSync(snapPath).size > 10000;
+      results.push({ shotId: sid, sizeMb: (size / 1024 / 1024).toFixed(2), verified: ok, snapshot: snapPath });
+    } else {
+      results.push({ shotId: sid, sizeMb: (size / 1024 / 1024).toFixed(2), verified: false, error: 'File corrupt or too small' });
+    }
+  }
+
+  return results;
+}
+
 module.exports = {
   getDuration,
   compositeVideo,
-  extractVerificationFrames
+  extractVerificationFrames,
+  verifyRenderedShots
 };

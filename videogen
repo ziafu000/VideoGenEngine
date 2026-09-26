@@ -301,11 +301,43 @@ async function main() {
       }
 
       case 'verify': {
-        const videoPath = args[1];
-        if (!videoPath || !fs.existsSync(videoPath)) {
-          console.error('[!] Vui lòng cung cấp đường dẫn video hợp lệ: ./videogen verify <video_file> [timestamps...]');
-          process.exit(1);
+        const target = args[1];
+
+        if (target === '--shots' || target === 'shots') {
+          console.log(`[-] Bắt đầu kiểm định chất lượng toàn bộ video clips trong renders/...`);
+          const results = compositor.verifyRenderedShots();
+          let passCount = 0;
+          for (const r of results) {
+            if (r.verified) {
+              passCount++;
+              console.log(`  [QA PASS] ${r.shotId}: ${r.sizeMb} MB -> ${r.snapshot}`);
+            } else {
+              console.warn(`  [QA WARN] ${r.shotId}: ${r.error || 'snapshot failed'}`);
+            }
+          }
+          console.log(`\n[✓] Hoàn tất kiểm định: ${passCount}/${results.length} clips đạt chuẩn QA.`);
+          break;
         }
+
+        let videoPath = target;
+        if (!videoPath || !fs.existsSync(videoPath)) {
+          // Tự động tìm video master gần nhất trong output/
+          const masters = fs.readdirSync(config.OUTPUT_DIR)
+            .filter(f => f.endsWith('.mp4'))
+            .map(f => path.join(config.OUTPUT_DIR, f))
+            .sort((a, b) => fs.statSync(b).mtime.getTime() - fs.statSync(a).mtime.getTime());
+
+          if (masters.length > 0) {
+            videoPath = masters[0];
+            console.log(`[-] Tự động chọn video master mới nhất: ${videoPath}`);
+          } else {
+            console.error('[!] Vui lòng cung cấp đường dẫn video hoặc cờ --shots:');
+            console.error('    ./videogen verify <video_file> [timestamps...]');
+            console.error('    ./videogen verify --shots');
+            process.exit(1);
+          }
+        }
+
         const timestamps = args.slice(2).length > 0 ? args.slice(2) : ['00:00:05', '00:01:00', '00:02:00', '00:03:00', '00:04:00'];
         const verifyDir = path.join(config.RENDERS_DIR, 'verification_frames');
         console.log(`[-] Trích xuất ${timestamps.length} khung hình kiểm định từ: ${videoPath}`);

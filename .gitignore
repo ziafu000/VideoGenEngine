@@ -1,7 +1,6 @@
 # Creator IP & Local Production Assets (100% Private)
 /assets/
 /storyboards/
-/scripts/
 
 # Local private environment config
 .env
