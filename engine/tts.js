@@ -101,17 +101,16 @@ async function setVoice(cdp, profile) {
 
   // 1. Ensure Settings tab is selected on the right panel
   await cdp.evaluate(`(() => {
-    const tab = Array.from(document.querySelectorAll("button, [role=\\"tab\\"]")).find(e => e.innerText === "Settings");
+    const tab = Array.from(document.querySelectorAll("button, [role=\\"tab\\"]")).find(e => e.innerText && e.innerText.trim() === "Settings");
     if (tab) tab.click();
   })()`);
   await sleep(400);
 
   // 2. Check current voice
   const cur = await cdp.evaluate(`(() => {
-    const headings = Array.from(document.querySelectorAll("*")).filter(e => e.innerText === "Voice" && e.children.length === 0);
-    for (const h of headings) {
-      const parent = h.parentElement;
-      const btn = parent ? parent.querySelector("button") : null;
+    const h = Array.from(document.querySelectorAll("h5, h4, h6")).find(e => e.innerText && e.innerText.trim() === "Voice");
+    if (h && h.parentElement) {
+      const btn = h.parentElement.querySelector("button");
       if (btn) return btn.innerText.replace(/@keyframes[^{]+{[^}]+}/g, "").trim();
     }
     const btn = document.querySelector('button[aria-label*="Select voice"]');
@@ -124,14 +123,14 @@ async function setVoice(cdp, profile) {
 
   console.log(`    [-] Chuyển giọng ElevenLabs sang: ${voiceName}...`);
 
-  // 3. Open Voice selector dialog
+  // 3. Open Voice selector dialog if not open
   await cdp.evaluate(`(() => {
-    let pop = document.querySelector('[data-state="open"][role="dialog"]');
-    if (!pop) {
-      const headings = Array.from(document.querySelectorAll("*")).filter(e => e.innerText === "Voice" && e.children.length === 0);
-      for (const h of headings) {
-        const parent = h.parentElement;
-        const btn = parent ? parent.querySelector("button") : null;
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+    const isOpen = dialogs.some(d => d.innerText && (d.innerText.includes("Explore") || d.innerText.includes("My Voices")));
+    if (!isOpen) {
+      const h = Array.from(document.querySelectorAll("h5, h4, h6")).find(e => e.innerText && e.innerText.trim() === "Voice");
+      if (h && h.parentElement) {
+        const btn = h.parentElement.querySelector("button");
         if (btn) { btn.click(); return; }
       }
       const btn = document.querySelector('button[aria-label*="Select voice"]');
@@ -142,7 +141,10 @@ async function setVoice(cdp, profile) {
 
   // 4. Click Explore tab in voice modal
   await cdp.evaluate(`(() => {
-    const el = Array.from(document.querySelectorAll("button, [role=\\"tab\\"]")).find(e => e.innerText === "Explore");
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+    const voiceDialog = dialogs.find(d => d.innerText && (d.innerText.includes("Explore") || d.innerText.includes("My Voices")));
+    if (!voiceDialog) return;
+    const el = Array.from(voiceDialog.querySelectorAll('button, [role="tab"]')).find(e => e.innerText && e.innerText.trim() === "Explore");
     if (el) el.click();
   })()`);
   await sleep(600);
@@ -150,49 +152,51 @@ async function setVoice(cdp, profile) {
   // 5. Search for the voice
   const searchKey = profile.searchKey || voiceName;
 
-  // Clear existing search text via clear button or DOM
   await cdp.evaluate(`(() => {
-    const input = document.querySelector('input[placeholder="Start typing to search..."]');
-    if (input) {
-      const parent = input.parentElement;
-      const btn = parent ? parent.querySelector("button") : null;
-      if (btn) btn.click();
-    }
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+    const voiceDialog = dialogs.find(d => d.innerText && (d.innerText.includes("Explore") || d.innerText.includes("My Voices")));
+    if (!voiceDialog) return;
+    const input = voiceDialog.querySelector('input[placeholder="Start typing to search..."]');
+    if (!input) return;
+    input.focus();
+    const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    nativeInputValueSetter.call(input, "");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    nativeInputValueSetter.call(input, ${JSON.stringify(searchKey)});
+    input.dispatchEvent(new Event("input", { bubbles: true }));
   })()`);
-  await sleep(300);
 
-  const inputRect = (await cdp.send('Runtime.evaluate', {
-    expression: `(() => {
-      const i = document.querySelector('input[placeholder="Start typing to search..."]');
-      if (!i) return null;
-      const r = i.getBoundingClientRect();
-      return { x: r.left + r.width/2, y: r.top + r.height/2 };
-    })()`,
-    returnByValue: true
-  })).result.value;
-
-  if (inputRect) {
-    await cdp.clickMouse(inputRect.x, inputRect.y);
-    await sleep(200);
-    await cdp.send('Input.insertText', { text: searchKey });
-    await sleep(1500);
-  }
-
-  // 6. Find matching voice row and click its trigger button
-  const clicked = (await cdp.send('Runtime.evaluate', {
-    expression: `(() => {
+  // 6. Wait for search results and click matching voice row
+  let clicked = false;
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await sleep(500);
+    const res = await cdp.evaluate(`(() => {
       const key = ${JSON.stringify(voiceName)};
-      const lis = Array.from(document.querySelectorAll("li")).filter(li => li.innerText && li.innerText.includes(key));
-      if (lis.length === 0) return false;
+      const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+      const voiceDialog = dialogs.find(d => d.innerText && (d.innerText.includes("Explore") || d.innerText.includes("My Voices")));
+      if (!voiceDialog) return { ok: false };
+
+      const lis = Array.from(voiceDialog.querySelectorAll('li'));
+      if (lis.length === 0) return { ok: false };
+
       const match = (key.toLowerCase() === "marcus")
-        ? (lis.find(li => li.innerText.toLowerCase().includes("robotic")) || lis[0])
-        : lis[0];
-      const btn = match.querySelector("button[class*='inset-0']");
-      if (btn) { btn.click(); return true; }
-      return false;
-    })()`,
-    returnByValue: true
-  })).result.value;
+        ? (lis.find(li => li.innerText && li.innerText.toLowerCase().includes("robotic")) || lis.find(li => li.innerText && li.innerText.includes(key)))
+        : (lis.find(li => li.innerText && li.innerText.includes(key)) || lis[0]);
+
+      if (!match) return { ok: false };
+      const btn = match.querySelector("button[class*='inset-0']") || match.querySelector("button");
+      if (btn) {
+        btn.click();
+        return { ok: true };
+      }
+      return { ok: false };
+    })()`);
+
+    if (res && res.ok) {
+      clicked = true;
+      break;
+    }
+  }
 
   if (!clicked) {
     console.warn(`    [!] Không tìm thấy element cho giọng ${voiceName}`);
