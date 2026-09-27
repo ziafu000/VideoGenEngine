@@ -46,8 +46,7 @@ class CDPClient {
   async evaluate(expr, returnByValue = true) {
     const res = await this.send('Runtime.evaluate', {
       expression: expr,
-      returnByValue,
-      awaitPromise: true
+      returnByValue
     });
     return res && res.result ? res.result.value : null;
   }

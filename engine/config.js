@@ -10,16 +10,57 @@ if (fs.existsSync(envPath)) {
     if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim();
   });
 }
+
+// Find available PowerShell executable on Windows/WSL
+function getPowerShellCmd() {
+  const candidates = [
+    'powershell.exe',
+    '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',
+    'pwsh.exe',
+    'pwsh'
+  ];
+  for (const c of candidates) {
+    try {
+      execSync(`${c} -NoProfile -Command "exit 0"`, {
+        stdio: ['ignore', 'ignore', 'ignore'],
+        timeout: 1000
+      });
+      return c;
+    } catch {}
+  }
+  return 'powershell.exe';
+}
+
+// Dynamically detect Windows username without hardcoded assumptions
+function getWinUser() {
+  if (process.env.WIN_USERNAME) return process.env.WIN_USERNAME;
+  const ps = getPowerShellCmd();
+  try {
+    const who = execSync(`${ps} -NoProfile -Command "[System.Environment]::UserName"`, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 2000
+    }).trim();
+    if (who && who.length > 0) return who;
+  } catch {}
+  return process.env.USER || 'User';
+}
+
 // Determine Windows Host IP from default route or fallback
 function getWinHost() {
   if (process.env.WIN_HOST) return process.env.WIN_HOST;
   try {
-    const route = execSync("ip route | awk '/default/ {print $3}'", { encoding: 'utf8' }).trim();
+    const route = execSync("ip route | awk '/default/ {print $3}'", {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 1000
+    }).trim();
     if (route) return route;
   } catch {}
   return '127.0.0.1';
 }
 
+const WIN_USER = getWinUser();
 const WIN_HOST = getWinHost();
 const CDP_PORT = parseInt(process.env.CDP_PORT || '9223', 10);
 const CDP_URL = `http://${WIN_HOST}:${CDP_PORT}`;
@@ -38,23 +79,35 @@ const ASSETS_DIR = path.join(PROJECT_DIR, 'assets');
   }
 });
 
-const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || ('/mnt/c/Users/' + (process.env.WIN_USERNAME || process.env.USER || 'User') + '/Downloads');
+const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || `/mnt/c/Users/${WIN_USER}/Downloads`;
 const DEST_ORIGINAL = process.env.DEST_ORIGINAL || null;
 const DEST_FINAL = process.env.DEST_FINAL || null;
 const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || (process.env.YOUTUBE_CHANNEL_ID ? `https://studio.youtube.com/channel/${process.env.YOUTUBE_CHANNEL_ID}` : 'https://studio.youtube.com');
 
+// Robust cross-platform path conversion (WSL to Windows)
 function toWinPath(p) {
   if (!p) return p;
-  const match = p.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
+  const abs = path.resolve(p);
+  const match = abs.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
   if (match) {
     const drive = match[1].toUpperCase();
     const rest = match[2].replace(/\//g, '\\');
     return `${drive}:\\${rest}`;
   }
-  return p;
+  // Linux internal path fallback (e.g. WSL home dir): copy to Windows Temp for Chrome accessibility
+  const winTempDir = `/mnt/c/Users/${WIN_USER}/AppData/Local/Temp`;
+  if (fs.existsSync(winTempDir)) {
+    const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(abs)}`);
+    try {
+      fs.copyFileSync(abs, dest);
+      return `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
+    } catch {}
+  }
+  return abs;
 }
 
 module.exports = {
+  WIN_USER,
   WIN_HOST,
   CDP_PORT,
   CDP_URL,
@@ -68,5 +121,6 @@ module.exports = {
   DEST_ORIGINAL,
   DEST_FINAL,
   YOUTUBE_STUDIO_URL,
+  getPowerShellCmd,
   toWinPath
 };

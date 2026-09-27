@@ -64,6 +64,9 @@ Lệnh điều phối:
   ./videogen bridge [status]
       Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
 
+  ./videogen doctor (hoặc check)
+      Kiểm định sức khỏe hệ thống, bảo mật IP/Gitignore, FFmpeg, và kết nối Chrome CDP.
+
   ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p]
       Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
       kiểm duyệt Jev, render và tải video về renders/.
@@ -135,6 +138,13 @@ async function main() {
         } else {
           await bridge.ensureBridge();
         }
+        break;
+      }
+
+      case 'doctor':
+      case 'check': {
+        const doctor = require('./engine/doctor');
+        await doctor.runDoctor();
         break;
       }
 

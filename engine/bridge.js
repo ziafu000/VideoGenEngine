@@ -21,12 +21,14 @@ async function ensureBridge() {
   } else {
     console.log('    [-] CDP bridge chưa chạy, đang tự động khởi động Chrome và proxy trên Windows...');
 
-    // Copy proxy script to Windows if needed
+    // Copy proxy script to Windows AppData if accessible
     const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
-    const winUser = process.env.WIN_USERNAME || 'ASUS';
+    const winUser = config.WIN_USER;
     const winProxyPath = `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
     if (fs.existsSync(proxyScriptSrc)) {
       try {
+        const destDir = path.dirname(winProxyPath);
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
         fs.copyFileSync(proxyScriptSrc, winProxyPath);
       } catch (e) {
         console.warn('    [!] Không thể copy cdp_proxy.js sang Windows AppData:', e.message);
@@ -51,8 +53,9 @@ async function ensureBridge() {
       }
     `;
 
+    const psExec = config.getPowerShellCmd();
     try {
-      execSync(`powershell.exe -NoProfile -Command '${psCmd.replace(/'/g, "''")}'`, { stdio: 'inherit' });
+      execSync(`${psExec} -NoProfile -Command '${psCmd.replace(/'/g, "''")}'`, { stdio: 'inherit' });
     } catch (err) {
       console.warn('    [!] Lỗi khi chạy powershell khởi động Chrome:', err.message);
     }

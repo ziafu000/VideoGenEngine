@@ -162,6 +162,7 @@ All production phases are orchestrated through the central `./videogen` CLI:
 
 | Command | Action | Description |
 | :--- | :--- | :--- |
+| `./videogen doctor` | **Health & Preflight** | Runs system diagnostics: Node.js, FFmpeg, auto-detects Windows host/user, verifies CDP bridge, and checks open-source IP security. |
 | `./videogen bridge [status]` | **Bridge Health** | Checks or auto-spawns Windows Chrome & CDP proxy. |
 | `./videogen render <sb> [shots...] [--720p]` | **Render Video** | Controls Google Flow: configures settings, attaches `@Character` chips, submits prompts, activates Cloud AI 1080p Super-Resolution (or `--720p` for fast draft). |
 | `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue on ElevenLabs with automated character slider calibration and Jev obstacle clearance. |

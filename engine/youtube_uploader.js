@@ -1,33 +1,22 @@
 #!/usr/bin/env node
 /**
- * scripts/youtube_uploader.js: Automated YouTube Studio Video Uploader via Chrome DevTools Protocol.
+ * engine/youtube_uploader.js: Automated YouTube Studio Video Uploader via Chrome DevTools Protocol.
  *
  * Supports uploading unlisted/private/public videos directly via YouTube Creator Studio UI
  * without consuming YouTube Data API v3 quota (0 API cost).
  *
  * Usage:
- *   node scripts/youtube_uploader.js status
- *   node scripts/youtube_uploader.js upload --video <path> [--title <title>] [--description <desc>] [--visibility <unlisted|private|public>] [--thumbnail <path>]
+ *   node engine/youtube_uploader.js status
+ *   node engine/youtube_uploader.js upload --video <path> [--title <title>] [--description <desc>] [--visibility <unlisted|private|public>] [--thumbnail <path>]
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const config = require('./config');
 const jev = require('./jev');
 
-function getWinHost() {
-  try {
-    const route = execSync("ip route | awk '/default/ {print $3}'", { encoding: 'utf-8' }).trim();
-    return route || '127.0.0.1';
-  } catch {
-    return '127.0.0.1';
-  }
-}
-
-const WIN_HOST = process.env.WIN_HOST || getWinHost();
-const PROXY_PORT = process.env.CDP_PORT || 9223;
-const PROXY_BASE = `http://${WIN_HOST}:${PROXY_PORT}`;
+const PROXY_BASE = config.CDP_URL;
 const STUDIO_URL = 'https://studio.youtube.com';
 
 function fetchJson(url) {
@@ -68,29 +57,6 @@ function postPut(url, method = 'POST') {
     req.on('error', reject);
     req.end();
   });
-}
-
-function toWindowsPath(linuxPath) {
-  const abs = path.resolve(linuxPath);
-  if (abs.startsWith('/mnt/c/')) {
-    return 'C:\\' + abs.slice(7).replace(/\//g, '\\');
-  }
-  if (abs.startsWith('/mnt/d/')) {
-    return 'D:\\' + abs.slice(7).replace(/\//g, '\\');
-  }
-  if (abs.startsWith('/mnt/')) {
-    const drive = abs[5].toUpperCase();
-    return `${drive}:\\` + abs.slice(7).replace(/\//g, '\\');
-  }
-  // Linux/WSL internal path: copy to Windows Temp for Chrome accessibility
-  const winUser = process.env.WIN_USERNAME || 'ASUS';
-  const winTempDir = `/mnt/c/Users/${winUser}/AppData/Local/Temp`;
-  if (fs.existsSync(winTempDir)) {
-    const dest = path.join(winTempDir, `yt_up_${Date.now()}_${path.basename(abs)}`);
-    fs.copyFileSync(abs, dest);
-    return `C:\\Users\\${winUser}\\AppData\\Local\\Temp\\` + path.basename(dest);
-  }
-  return abs;
 }
 
 class CDPClient {
@@ -154,7 +120,6 @@ async function getStudioTab() {
   const tabs = await fetchJson(`${PROXY_BASE}/json/list`);
   let studioTab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('studio.youtube.com'));
   if (!studioTab) {
-    // Open new tab
     studioTab = await postPut(`${PROXY_BASE}/json/new?${STUDIO_URL}`, 'PUT');
     await new Promise(r => setTimeout(r, 4000));
   }
@@ -204,8 +169,8 @@ async function cmdUpload(args) {
   const visibility = (args.visibility || 'unlisted').toLowerCase();
   const thumbnail = args.thumbnail && fs.existsSync(args.thumbnail) ? args.thumbnail : null;
 
-  const winVideoPath = toWindowsPath(videoFile);
-  const winThumbPath = thumbnail ? toWindowsPath(thumbnail) : null;
+  const winVideoPath = config.toWinPath(videoFile);
+  const winThumbPath = thumbnail ? config.toWinPath(thumbnail) : null;
 
   console.error(`[-] Chuẩn bị upload video lên YouTube Studio...`);
   console.error(`  - Video: ${videoFile} (Windows: ${winVideoPath})`);
@@ -235,7 +200,6 @@ async function cmdUpload(args) {
     // 2. Kích hoạt menu Tạo / Tải video lên
     console.error(`[-] Mở hộp thoại tải video lên trên YouTube Studio...`);
     const openedDialog = await client.eval(`(() => {
-      // Tìm nút Tạo
       const btns = Array.from(document.querySelectorAll('button, ytcp-button'));
       const createBtn = btns.find(b => (b.innerText && b.innerText.trim() === 'Tạo') || b.getAttribute('aria-label') === 'Tạo' || b.id === 'create-icon');
       if (createBtn) {
@@ -323,7 +287,6 @@ async function cmdUpload(args) {
     console.error(`[-] Điền tiêu đề và mô tả video...`);
     // 5. Điền Title và Description
     await client.eval(`((titleText, descText) => {
-      // Tiêu đề
       const titleBox = document.querySelector('#textbox[aria-label*="Tiêu đề"], #textbox[aria-label*="Title"], ytcp-social-suggestions-textbox#title-textarea [contenteditable="true"]');
       if (titleBox) {
         titleBox.focus();
@@ -331,7 +294,6 @@ async function cmdUpload(args) {
         titleBox.dispatchEvent(new Event('input', { bubbles: true }));
       }
 
-      // Mô tả
       const descBox = document.querySelector('#textbox[aria-label*="Mô tả"], #textbox[aria-label*="Description"], ytcp-social-suggestions-textbox#description-textarea [contenteditable="true"]');
       if (descBox && descText) {
         descBox.focus();
@@ -339,7 +301,6 @@ async function cmdUpload(args) {
         descBox.dispatchEvent(new Event('input', { bubbles: true }));
       }
 
-      // Đối tượng người xem: Không dành cho trẻ em
       const notForKids = document.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
       if (notForKids) {
         notForKids.click();
@@ -350,6 +311,7 @@ async function cmdUpload(args) {
     if (winThumbPath) {
       try {
         console.error(`[-] Đang tải thumbnail tùy chỉnh...`);
+        const doc = await client.send('DOM.getDocument', { depth: -1 });
         const thumbNode = await client.send('DOM.querySelector', {
           nodeId: doc.root.nodeId,
           selector: 'input#file-loader[type="file"], input[type="file"][accept*="image"]'
@@ -419,7 +381,6 @@ async function cmdUpload(args) {
       }
     }
 
-    // Đóng dialog sau khi hoàn tất
     try {
       await client.eval(`(() => {
         const closeBtn = document.querySelector('ytcp-uploads-dialog #close-button, ytcp-dialog #close-button, tp-yt-paper-dialog #close-button, #dismiss-button');
@@ -429,7 +390,6 @@ async function cmdUpload(args) {
 
     client.close();
 
-    // Verify upload success with TypeSafe Jev
     try {
       if (finalUrl && finalUrl.includes('youtu.be')) {
         const jParsed = jev.verify(finalUrl + ' ' + title, 'video upload succeeded with shareable link');

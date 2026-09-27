@@ -4,6 +4,8 @@
 
 # Local private environment config
 .env
+.env.local
+*.env
 
 # Media & temporary generated files
 /renders/*
@@ -14,9 +16,12 @@
 !/output/.gitkeep
 /backup/
 
-# OS & Logs
+# OS, Temp & Logs
 .DS_Store
 Thumbs.db
 *.log
+*.tmp
+*.crdownload
 __pycache__/
 *.pyc
+.treehouse/
