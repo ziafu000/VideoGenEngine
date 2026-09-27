@@ -88,22 +88,42 @@ const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || (process.env.YOUTUB
 function toWinPath(p) {
   if (!p) return p;
   const abs = path.resolve(p);
-  const match = abs.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
+  // Resolve symlinks if path or its parent directory is a symlink (WSL / Windows compatibility)
+  let resolvedAbs = abs;
+  try {
+    if (fs.existsSync(abs)) {
+      resolvedAbs = fs.realpathSync(abs);
+    } else {
+      const parent = path.dirname(abs);
+      if (fs.existsSync(parent)) {
+        resolvedAbs = path.join(fs.realpathSync(parent), path.basename(abs));
+      }
+    }
+  } catch {}
+
+  const match = resolvedAbs.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
   if (match) {
     const drive = match[1].toUpperCase();
     const rest = match[2].replace(/\//g, '\\');
     return `${drive}:\\${rest}`;
   }
-  // Linux internal path fallback (e.g. WSL home dir): copy to Windows Temp for Chrome accessibility
+  // Linux internal path fallback (e.g. WSL home dir):
+  // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
+  try {
+    const { execSync } = require('child_process');
+    const unc = execSync(`wslpath -m ${JSON.stringify(resolvedAbs)}`, { encoding: 'utf8' }).trim();
+    if (unc) return unc;
+  } catch {}
+
   const winTempDir = `/mnt/c/Users/${WIN_USER}/AppData/Local/Temp`;
-  if (fs.existsSync(winTempDir)) {
-    const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(abs)}`);
+  if (fs.existsSync(winTempDir) && fs.existsSync(resolvedAbs) && !fs.statSync(resolvedAbs).isDirectory()) {
+    const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(resolvedAbs)}`);
     try {
-      fs.copyFileSync(abs, dest);
+      fs.copyFileSync(resolvedAbs, dest);
       return `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
     } catch {}
   }
-  return abs;
+  return resolvedAbs;
 }
 
 module.exports = {
