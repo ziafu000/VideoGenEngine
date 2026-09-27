@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const config = require('./config');
 
 function getDuration(filePath) {
@@ -49,12 +49,15 @@ async function compositeVideo({
 
     if (aFile && fs.existsSync(aFile)) {
       aDur = getDuration(aFile);
-      execSync(`ffmpeg -y -i ${JSON.stringify(aFile)} -af "adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}" -ar 44100 -ac 2 -t ${vDur} ${JSON.stringify(paddedAudio)} 2>/dev/null`);
+      const winAFile = config.toWinPath(aFile);
+      const winPaddedAudio = config.toWinPath(paddedAudio);
+      execFileSync('ffmpeg', ['-y', '-i', winAFile, '-af', `adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}`, '-ar', '44100', '-ac', '2', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
     } else {
-      execSync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vDur} ${JSON.stringify(paddedAudio)} 2>/dev/null`);
+      const winPaddedAudio = config.toWinPath(paddedAudio);
+      execFileSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
     }
 
-    audioConcatContent += `file '${paddedAudio}'\n`;
+    audioConcatContent += `file '${config.toWinPath(paddedAudio).replace(/\\/g, '/')}'\n`;
     timelines.push({
       shotIndex: i + 1,
       videoFile: vFile,
@@ -67,20 +70,24 @@ async function compositeVideo({
 
   // 2. Concatenate audio into master_voiceover.wav
   const masterVoice = path.join(tempDir, 'master_voice.wav');
-  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(paddedAudioList)} -c:a pcm_s16le ${JSON.stringify(masterVoice)} 2>/dev/null`);
+  const winPaddedAudioList = config.toWinPath(paddedAudioList);
+  const winMasterVoice = config.toWinPath(masterVoice);
+  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winPaddedAudioList)} -c:a pcm_s16le ${JSON.stringify(winMasterVoice)} 2>/dev/null`);
   console.log(`[✓] Đã tạo master voice track: ${getDuration(masterVoice).toFixed(2)}s`);
 
   // 3. Concatenate video clips into raw_master.mp4
   const videoConcatList = path.join(tempDir, 'video_concat.txt');
   let videoConcatContent = '';
   for (const vf of videoFiles) {
-    videoConcatContent += `file '${vf}'\n`;
+    videoConcatContent += `file '${config.toWinPath(vf).replace(/\\/g, '/')}'\n`;
   }
   fs.writeFileSync(videoConcatList, videoConcatContent, 'utf8');
 
   const rawMaster = path.join(tempDir, 'raw_master.mp4');
+  const winVideoConcatList = config.toWinPath(videoConcatList);
+  const winRawMaster = config.toWinPath(rawMaster);
   console.log(`[-] Đang nối các clip video...`);
-  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(videoConcatList)} -c copy ${JSON.stringify(rawMaster)} 2>/dev/null`);
+  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winVideoConcatList)} -c copy ${JSON.stringify(winRawMaster)} 2>/dev/null`);
   console.log(`[✓] Đã nối xong raw master video: ${getDuration(rawMaster).toFixed(2)}s`);
 
   // 4. Final Compositing: Audio mix (voice + ambient) + 1080p Lanczos upscale + Subtitle burn
@@ -89,18 +96,20 @@ async function compositeVideo({
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const hasVoiceTrack = audioFiles && audioFiles.some(f => f && fs.existsSync(f));
+  const winAssSubtitlePath = config.toWinPath(assSubtitlePath).replace(/\\/g, '/').replace(/:/g, '\\\\:');
+  const winOutputVideoPath = config.toWinPath(outputVideoPath);
   let filterStr = '';
   let cmd = '';
 
   if (hasVoiceTrack) {
     console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (100% SFX & Ambiance) + Voiceover ElevenLabs (100% Lời thoại Studio)...`);
-    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -i ${JSON.stringify(masterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
+    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${winAssSubtitlePath}'[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
   } else {
     // 100% pure Flow SFX audio (No dialogue track)
     console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
-    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
+    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${winAssSubtitlePath}'[v];[0:a]volume=1.0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
   }
 
   execSync(`${cmd} 2>/dev/null`);
