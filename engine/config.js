@@ -110,17 +110,19 @@ function toWinPath(p) {
   // Linux internal path fallback (e.g. WSL home dir):
   // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
   try {
-    const { execSync } = require('child_process');
-    const unc = execSync(`wslpath -m ${JSON.stringify(resolvedAbs)}`, { encoding: 'utf8' }).trim();
+    const { execFileSync } = require('child_process');
+    const unc = execFileSync('wslpath', ['-m', resolvedAbs], { encoding: 'utf8' }).trim();
     if (unc) return unc;
   } catch {}
 
   const winTempDir = `/mnt/c/Users/${WIN_USER}/AppData/Local/Temp`;
-  if (fs.existsSync(winTempDir) && fs.existsSync(resolvedAbs) && !fs.statSync(resolvedAbs).isDirectory()) {
-    const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(resolvedAbs)}`);
+  if (fs.existsSync(winTempDir) && fs.existsSync(resolvedAbs)) {
     try {
-      fs.copyFileSync(resolvedAbs, dest);
-      return `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
+      if (!fs.statSync(resolvedAbs).isDirectory()) {
+        const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(resolvedAbs)}`);
+        fs.copyFileSync(resolvedAbs, dest);
+        return `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
+      }
     } catch {}
   }
   return resolvedAbs;

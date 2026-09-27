@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execSync, execFileSync } = require('child_process');
 const config = require('./config');
 
 function getDuration(filePath) {
@@ -51,13 +51,13 @@ async function compositeVideo({
       aDur = getDuration(aFile);
       const winAFile = config.toWinPath(aFile);
       const winPaddedAudio = config.toWinPath(paddedAudio);
-      execSync(`ffmpeg -y -i ${JSON.stringify(winAFile)} -af "adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}" -ar 44100 -ac 2 -t ${vDur} ${JSON.stringify(winPaddedAudio)} 2>/dev/null`);
+      execFileSync('ffmpeg', ['-y', '-i', winAFile, '-af', `adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}`, '-ar', '44100', '-ac', '2', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
     } else {
       const winPaddedAudio = config.toWinPath(paddedAudio);
-      execSync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${vDur} ${JSON.stringify(winPaddedAudio)} 2>/dev/null`);
+      execFileSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
     }
 
-    audioConcatContent += `file '${config.toWinPath(paddedAudio)}'\n`;
+    audioConcatContent += `file '${config.toWinPath(paddedAudio).replace(/\\/g, '/')}'\n`;
     timelines.push({
       shotIndex: i + 1,
       videoFile: vFile,
@@ -79,7 +79,7 @@ async function compositeVideo({
   const videoConcatList = path.join(tempDir, 'video_concat.txt');
   let videoConcatContent = '';
   for (const vf of videoFiles) {
-    videoConcatContent += `file '${config.toWinPath(vf)}'\n`;
+    videoConcatContent += `file '${config.toWinPath(vf).replace(/\\/g, '/')}'\n`;
   }
   fs.writeFileSync(videoConcatList, videoConcatContent, 'utf8');
 
