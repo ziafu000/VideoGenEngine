@@ -9,6 +9,14 @@ function secToAss(s) {
   return `${h}:${String(m).padStart(2, '0')}:${sec.toFixed(2).padStart(5, '0')}`;
 }
 
+function secToSrt(s) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  const ms = Math.floor((s % 1) * 1000);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+}
+
 function getDualZoneHeader(styleConfig = {}) {
   const dialogueSize = styleConfig.dialogueFontSize || 34;
   const protocolSize = styleConfig.protocolFontSize || 28;
@@ -106,6 +114,47 @@ function generateSubtitles(storyboardData, clipTimelines, outputPath) {
 
   fs.writeFileSync(outputPath, assContent, 'utf8');
   console.log(`[✓] Đã tạo file phụ đề ASS: ${outputPath}`);
+
+  // Tự động tạo file Softsub SRT chuẩn cho YouTube Studio
+  const srtPath = outputPath.replace(/\.ass$/i, '.srt');
+  let srtContent = '';
+  let srtIndex = 1;
+  let srtTime = 0.0;
+
+  for (let i = 0; i < clipTimelines.length; i++) {
+    const item = clipTimelines[i];
+    const shot = (storyboardData.shots || []).find(s => s.id === item.shotId) || (storyboardData.shots || [])[i];
+    const dur = item.duration;
+    const audioConf = (shot && shot.audio) || {};
+    const voiceDelay = typeof audioConf.voice_delay_sec === 'number' ? audioConf.voice_delay_sec : 0.3;
+    const aDur = item.audioDuration || (dur - voiceDelay - 0.5);
+
+    const subStart = srtTime + voiceDelay;
+    const subEnd = Math.min(srtTime + dur - 0.1, subStart + aDur + 0.3);
+
+    if (shot) {
+      const text = audioConf.sub_text || shot.vietnamese_subtitles || shot.subtitles || '';
+      const sysText = audioConf.sys_sub || shot.system_vietnamese || '';
+      let combined = '';
+      if (sysText && text && sysText !== text) {
+        combined = `${sysText}\n${text}`;
+      } else {
+        combined = sysText || text;
+      }
+      combined = combined.replace(/\{\\[^}]+\}/g, '').replace(/\\N/g, '\n').trim();
+
+      if (combined) {
+        srtContent += `${srtIndex++}\n${secToSrt(subStart)} --> ${secToSrt(subEnd)}\n${combined}\n\n`;
+      }
+    }
+    srtTime += dur;
+  }
+
+  if (srtContent) {
+    fs.writeFileSync(srtPath, srtContent, 'utf8');
+    console.log(`[✓] Đã tạo file Softsub SRT (YouTube CC): ${srtPath}`);
+  }
+
   return outputPath;
 }
 
