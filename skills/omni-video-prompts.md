@@ -51,27 +51,29 @@ Sử dụng các từ khóa điều hướng camera rõ ràng để mô hình th
 
 ---
 
-## 3. Quy Chuẩn Âm Thanh Hiện Trường & Thoại Nhân Vật (Audio & Dialogue)
+## 3. Quy Chuẩn Âm Thanh & Lồng Tiếng Chuẩn Hóa (Standardized Audio Architecture 2026-09-27)
 
-### 3.1. Âm Thanh Hiện Trường Thuần Túy (SFX Only — Cảnh hành động / Bối cảnh)
-Omni 1.1 Flash tự động tạo âm thanh đồng bộ với video. Đặt dòng này ở cuối prompt cho các cảnh không thoại:
-`AUDIO: SFX ONLY — [Mô tả chi tiết 3–4 âm thanh tương ứng với từng giai đoạn chuyển cảnh]. NO MUSIC.`
-Tuyệt đối cấm nhạc nền (NO MUSIC) để không lấn át giọng thuyết minh và cho phép hậu kỳ hòa âm chuẩn xác.
+### 3.1. Google Flow: 100% Âm Thanh Hiện Trường & SFX Thuần Túy (SFX Only — BẮT BUỘC)
+Omni 1.1 Flash chỉ đảm nhiệm tạo âm thanh môi trường, tiếng động võ thuật, đao kiếm, tiếng bước chân, nổ ma thuật, sấm sét và tiếng quái thú.
+**TUYỆT ĐỐI CẤM đưa lời thoại nhân vật, trích dẫn tiếng Nhật hay yêu cầu lồng tiếng vào prompt của Google Flow!**
+Mọi prompt gửi lên Flow BẮT BUỘC kết thúc bằng chỉ thị âm thanh sau:
+`AUDIO: SFX ONLY — [Mô tả chi tiết 3–4 âm thanh tương ứng với từng giai đoạn chuyển cảnh]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
 
-### 3.2. Thoại Nhân Vật Trực Tiếp & Khẩu Hình Môi (Native Dialogue & Lip-Sync — Ưu Tiên Số 1)
-Omni 1.1 Flash có khả năng **tự sinh giọng nói nhân vật và nhép môi (lip-sync)** trực tiếp theo câu thoại trong prompt, đóng vai trò là **Voice Engine Chính (Primary)**:
-- **Cách viết trong mô tả hình ảnh:**
-  `[00:03 - 00:07] Close-up push-in to the warrior's face as he speaks aloud: "Your character line here", his eyes glowing with determination...`
-- **Cách viết trong chỉ thị AUDIO:**
-  `AUDIO: Clear Japanese character voiceover speaking: "Your line", [voice tone description], synced lip motion, [ambient sound]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
-- **Đặc tính kỹ thuật & Chỉ thị chống ảo giác sub (Anti-Subtitle Hallucination):**
-  - Mô hình tự động tạo chuyển động mấp máy môi, hở răng và phát âm khớp ngữ âm tiếng Nhật.
-  - Luồng âm thanh xuất ra là AAC stereo 48kHz hòa quyện tự nhiên với hiệu ứng nền (SFX).
-  - **CẢNH BÁO QUAN TRỌNG:** Ở các cảnh quay tĩnh/cận cảnh nhân vật, nếu đưa câu thoại tiếng Nhật có ký tự Kanji trong ngoặc kép, Flow có thể hiểu nhầm thành typography và tự động vẽ hard-sub tiếng Nhật vào chân video. Giải pháp: Luôn thêm chỉ thị phủ định `CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`, hoặc mô tả ngữ âm nhân vật (`Clear Japanese character monologue solemnly speaking...`) ở các phân cảnh tĩnh đó để giữ video sạch 100% trước khi burn phụ đề.
-- **Phân vai với ElevenLabs (Secondary Backup):**
-  - Flow là nguồn giọng chính cho tất cả các cảnh nhân vật đối thoại trực diện mở miệng.
-  - ElevenLabs đóng vai trò bảo hiểm/backup: chỉ kích hoạt cho các cảnh Flow chỉ sinh SFX chiến đấu thuần túy mà thiếu voice, cảnh độc thoại nội tâm ngậm miệng, hoặc dẫn chuyện/thông báo hệ thống.
-  - Trong quá trình dựng (`videogen assemble`), tuyệt đối không lồng chồng voice ElevenLabs lên các cảnh Flow đã tự sinh voice rõ ràng. Sử dụng cờ `normalize=0` trong bộ lọc `amix` của FFmpeg để bảo toàn 100% âm lượng SFX và độ sắc của giọng nói.
+- **Lý do kiến trúc:**
+  1. Triệt tiêu hoàn toàn hiện tượng choải giọng (voice clash) hoặc 2 giọng nói đè lên nhau.
+  2. Triệt tiêu 100% nguy cơ Flow hallucinate tự vẽ phụ đề tiếng Nhật vào video.
+  3. Video clip xuất xưởng luôn là footage sạch sẽ (clean footage) chuẩn 1080p sẵn sàng để burn phụ đề ASS 2 tầng.
+
+### 3.2. ElevenLabs: 100% Lồng Tiếng Nhân Vật & Hệ Thống (Single Source of Dialogue)
+Toàn bộ lời thoại nhân vật, độc thoại nội tâm và thông báo hệ thống được đảm nhiệm 100% độc quyền bởi ElevenLabs:
+- **Dàn diễn viên chuẩn (Voice Cast Presets):**
+  - Nhân vật chính (Ashel): Voice **`Daisuke`** (Speed 1.0x, Stability 40%, Similarity 80%, Style 15%) — Giọng trầm gằn, nam tính, quyết đoán.
+  - Nữ đối thủ / Kiếm thủ (Selena): Voice **`Lime`** (Speed 1.0x, Stability 35%, Similarity 80%, Style 25%) — Giọng sắc sảo, kiêu kỳ.
+  - Hệ thống / AI Thái Cổ (Protocol: Root): Voice **`Koichi`** (Speed 0.95x, Stability 85%, Similarity 85%, Style 0%) — Giọng trầm tĩnh, phẳng lặng, uy nghiêm.
+- **Hòa âm tự động (`videogen assemble`):**
+  - Engine tự động nạp file voice ElevenLabs cho toàn bộ các phân cảnh có phụ đề/lời thoại.
+  - Bộ lọc FFmpeg `amix=inputs=2:duration=first:dropout_transition=2:normalize=0` ghép trực tiếp đường tiếng ElevenLabs studio lên nền SFX sạch của Flow mà không làm suy giảm âm lượng SFX.
+  - Khóa đồng bộ chính xác từng miligiây giữa mốc bắt đầu của phụ đề ASS (`subStart`) và độ trễ âm thanh FFmpeg (`adelay = voice_delay_sec`).
 
 ---
 

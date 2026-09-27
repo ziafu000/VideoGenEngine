@@ -216,16 +216,16 @@ Maintain visual consistency via **Ingredient Chips** (`<flow-character-ingredien
 - **Zero Physical Descriptor Rule:** When a character chip is attached, prompt text **MUST NOT** include any physical descriptions (hair color, armor details, face structure). The chip anchors 100% of visual identity. Focus prompt exclusively on: **Action, Expression, Camera Framing, Lighting/FX, Audio**.
 - **Celebrity Filter Hygiene:** Avoid character names that match celebrity names in plain text — use role descriptors instead (e.g. `the duelist`, `she`, `the warrior`, `him`).
 
-### 8.3. Dual-Tier Audio Architecture
-1. **Tier 1 — Flow Native Dialogue & Lip-Sync:**
-   - Omni 1.1 Flash natively synthesizes character voice + synchronized lip movement from prompt.
-   - Use for close-up shots with on-screen spoken dialogue.
-   - Prompt pattern: `[00:03 - 00:07] Close-up of <character> speaking: "Your line here", synced lip motion.`
-   - Append: `AUDIO: Clear [language] voiceover speaking: "Your line", [voice description], synced lip motion, [ambient].`
+### 8.3. Standardized Audio Architecture (Zero Voice Clash)
+1. **Layer 1 — Flow 100% SFX & Ambience ONLY:**
+   - Omni 1.1 Flash strictly generates environmental sound effects, foley, and combat audio.
+   - Dialogue injection is completely banned in Flow prompts to prevent voice clashing and typography hallucinations.
+   - Prompt pattern: `AUDIO: SFX ONLY — [detailed description of 3-4 scene sound effects]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
 
-2. **Tier 2 — ElevenLabs Voice Profiles (Narration & Inner Monologue):**
+2. **Layer 2 — ElevenLabs 100% Studio Dialogue & AI HUD:**
    - Configure each character's voice in `voice_profiles` (see storyboard schema above).
    - Engine auto-selects voice model and calibrates Radix UI sliders via CDP.
+   - `./videogen assemble` layers ElevenLabs voiceovers over pristine Flow ambient SFX via FFmpeg `amix=inputs=2:duration=first:dropout_transition=2:normalize=0`.
 
 ### 8.4. Dual-Zone Subtitle Architecture
 - **Format:** Advanced SubStation Alpha (`.ass`) via `libass`, two distinct typographic layers.

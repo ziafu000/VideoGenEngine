@@ -47,7 +47,7 @@
       "audio": {
         "voice_delay_sec": 1.2
       },
-      "prompt": "Widescreen 16:9 cinematic eye-level medium tracking shot: A dark futuristic dojo illuminated by flickering blue neon lights. Rain streaks down the exterior translucent glass wall. [00:00 - 00:04] The cyber warrior stands in a low defensive stance, right hand resting on the hilt of his sheathed katana. [00:04 - 00:07] Rapid whip-pan to: Extreme close-up of his glowing cyan cybernetic eye scanning the shadows. [00:07 - 00:10] Push-in medium shot: He steps forward as a digital grid flickers across the tatami floor. AUDIO: Clear Japanese character voiceover speaking: \"何者だ...？ どこから入ってきた？\", low calm tense tone, synced lip motion, heavy rain against glass, neon hum. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS."
+      "prompt": "Widescreen 16:9 cinematic eye-level medium tracking shot: A dark futuristic dojo illuminated by flickering blue neon lights. Rain streaks down the exterior translucent glass wall. [00:00 - 00:04] The cyber warrior stands in a low defensive stance, right hand resting on the hilt of his sheathed katana. [00:04 - 00:07] Rapid whip-pan to: Extreme close-up of his glowing cyan cybernetic eye scanning the shadows. [00:07 - 00:10] Push-in medium shot: He steps forward as a digital grid flickers across the tatami floor. AUDIO: SFX ONLY — heavy rain against glass, flickering neon hum, distant thunder rumble, crisp leather footstep on tatami. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS."
     },
     {
       "id": "shot_02",

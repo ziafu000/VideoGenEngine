@@ -124,6 +124,11 @@ Nhập 1 hoặc 2:
 ### 3.9. Character Asset Chip Binding Rule (Mode 2 — Series)
 When a user's Google Flow project has saved character assets and a shot uses `characters: ["CharacterName"]` in the storyboard, the engine attaches the visual reference chip via CDP (`@CharacterName`). This locks 100% of the character's visual identity (face, proportions, outfit, hair color). Prompt text for that shot **must NOT re-describe physical appearance** — focus exclusively on: Action, Expression, Camera, Lighting/FX, and Audio cues.
 
+### 3.10. Standardized Audio Architecture (Zero Voice Clash)
+- **Google Flow = 100% SFX & Ambience ONLY:** All prompts must strictly end with `AUDIO: SFX ONLY — [sound description]. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`. Prompt injection of character dialogue, quotes, or speech is strictly prohibited to eliminate voice clashing and typography hallucinations.
+- **ElevenLabs = 100% Studio Dialogue & AI HUD:** All character dialogue, inner monologue, and system alerts are synthesized via ElevenLabs (`./videogen voice <storyboard.json>`).
+- **Zero-Loss Studio Multiplexing:** `./videogen assemble` automatically maps ElevenLabs audio tracks to shots with subtitles, mixing with pristine Flow SFX via FFmpeg `amix=inputs=2:duration=first:dropout_transition=2:normalize=0`, locking subtitle `subStart` with audio `adelay` for perfect lip/speech synchronization.
+
 ---
 
 ## Maintaining this file

@@ -201,7 +201,7 @@ async function main() {
         await bridge.ensureBridge();
         const { data: sb } = loadStoryboard(sbArg);
         const targetShots = args.slice(2);
-        await tts.generateAllVoices(sb, targetShots);
+        await tts.generateAllVoices(sb, targetShots, sbArg);
         break;
       }
 
@@ -247,8 +247,8 @@ async function main() {
         const timelines = [];
         const delays = [];
 
-        let countFlowVoice = 0;
         let count11LabsVoice = 0;
+        let countMissingVoice = 0;
 
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
@@ -259,7 +259,7 @@ async function main() {
           if (fs.existsSync(vFile)) {
             videoFiles.push(vFile);
 
-            // Tự động phân loại: Ưu tiên nạp voiceover ElevenLabs cho toàn bộ shot có phụ đề/lời thoại
+            // Kiến trúc chuẩn hóa: 100% lời thoại và phụ đề do ElevenLabs đảm nhiệm
             const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
             const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
 
@@ -267,7 +267,10 @@ async function main() {
               count11LabsVoice++;
               audioFiles.push(aFile);
             } else {
-              if (hasSubOrVo) countFlowVoice++;
+              if (hasSubOrVo) {
+                countMissingVoice++;
+                console.warn(`    [!] CẢNH BÁO: ${shotId} có phụ đề/lời thoại nhưng chưa có file voice ElevenLabs tại ${aFile}!`);
+              }
               audioFiles.push(null);
             }
 
@@ -282,7 +285,10 @@ async function main() {
           }
         }
 
-        console.log(`[-] Tổng kết âm thanh: ${countFlowVoice} shot dùng Voice Flow gốc | ${count11LabsVoice} shot dùng Voice ElevenLabs backup.`);
+        console.log(`[-] Tổng kết âm thanh: ${count11LabsVoice} shot lồng tiếng ElevenLabs (100% Studio) | ${videoFiles.length - count11LabsVoice} shot thuần SFX Flow.`);
+        if (countMissingVoice > 0) {
+          console.warn(`[!] Chú ý: Có ${countMissingVoice} shot có lời thoại nhưng đang thiếu file voice ElevenLabs. Hãy chạy: ./videogen voice ${sbArg}`);
+        }
 
         if (videoFiles.length === 0) {
           console.error('[!] Không tìm thấy video clips nào trong thư mục renders/!');

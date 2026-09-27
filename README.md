@@ -37,10 +37,10 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
 3. 🎭 **Dual-Mode Production:**
    - **Mode 1: Faceless Explainer & Shorts (English):** 9:16 vertical, rapid 2.75 words/sec retention pacing, dynamic animated word-by-word subtitles, automated cinematic SFX (sub-bass impacts, scene swishes, accent pops).
    - **Mode 2: Original 3D CGI Anime Series:** 16:9 widescreen, multi-character asset consistency via `@Character` chips, multi-voice Japanese voice acting, and cinema-grade **Dual-Zone ASS Subtitles**.
-4. 🎙️ **Hybrid Voiceover Strategy & Lip-Sync:**
-   - **Google Flow Omni 1.1 Flash (Primary):** Injected directly into prompts (`AUDIO: Clear Japanese character voiceover speaking: "...", synced lip motion...`) to generate synchronized mouth movements (visemes) and spatial acoustics.
-   - **ElevenLabs (Secondary Backup):** Automated model and Radix UI slider calibration (Stability, Similarity, Style, Speed) via simulated CDP mouse events for off-screen narration, inner monologues, and backup dubbing.
-   - **Intelligent Audio Multiplexer:** `./videogen assemble` auto-detects Flow native speech vs SFX-only scenes to prevent double-voice echo, applying zero-gain FFmpeg mixing (`normalize=0`) to preserve 100% SFX dynamic range.
+4. 🎙️ **Standardized Audio Architecture (Zero Voice Clash):**
+   - **Google Flow Omni 1.1 Flash (100% SFX & Ambience):** Prompts strictly generate pure diegetic sound effects, foley, and environmental ambiance (`AUDIO: SFX ONLY — ...`). Dialogue injection is completely banned in Flow prompts to prevent voice clashing and typography hallucinations.
+   - **ElevenLabs (100% Studio Dialogue & AI HUD):** Automated model and Radix UI slider calibration (Stability, Similarity, Style, Speed) via simulated CDP mouse events for all character dialogue and system alerts.
+   - **Zero-Loss Audio Multiplexing:** `./videogen assemble` mixes studio ElevenLabs voice tracks over pristine Flow ambient SFX via FFmpeg `amix=inputs=2:duration=first:dropout_transition=2:normalize=0`, locking subtitle `subStart` with audio `adelay` for perfect lip/speech synchronization.
 5. 🔤 **Dual-Zone Subtitle Architecture 2.0 (`.ass` via `libass`):**
    - **Tier A (Dialogue & Inner Monologue):** Bottom-center white Arial (**34px**, 2.2px outline, 1.2px shadow) for high-contrast anime dialogue.
    - **Tier B (AI System HUD Captions):** Top-center cyan neon Consolas (**28px** bold, 1.8px outline) for sci-fi system and ancient protocol alerts.
@@ -258,10 +258,10 @@ Divide 10-second clips into 2–3 micro-scenes to eliminate static shots:
 AUDIO: SFX ONLY — energy deflection clangs, mechanical hum. NO MUSIC.
 ```
 
-### 3. Native Lip-Sync Prompting
-Omni 1.1 Flash can synthesize character speech with synchronized lip motion:
+### 3. Pure SFX & Clean Footage Prompting
+Omni 1.1 Flash generates cinema-grade ambient sound effects and diegetic audio without speech interference:
 ```
-AUDIO: Clear Japanese character voiceover speaking: "Kono sekai wa...", synced lip motion. NO MUSIC.
+AUDIO: SFX ONLY — echoing footsteps on stone, sharp metallic sheath draw, deep bass drone. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.
 ```
 
 ---

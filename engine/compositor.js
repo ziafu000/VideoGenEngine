@@ -93,12 +93,12 @@ async function compositeVideo({
   let cmd = '';
 
   if (hasVoiceTrack) {
-    console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (SFX + Voice gốc) + Voiceover ElevenLabs (chống chồng voice)...`);
+    console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (100% SFX & Ambiance) + Voiceover ElevenLabs (100% Lời thoại Studio)...`);
     filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -i ${JSON.stringify(masterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
   } else {
-    // 100% native Flow audio (Primary voice + SFX + lip-sync directly from Omni 1.1 Flash)
-    console.log(`    [-] Sử dụng toàn bộ dải âm thanh gốc từ Google Flow (Voice chính + SFX)...`);
+    // 100% pure Flow SFX audio (No dialogue track)
+    console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
     filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${assSubtitlePath}'[v];[0:a]volume=1.0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(rawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)}`;
   }

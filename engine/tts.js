@@ -313,14 +313,15 @@ async function generateClip(cdp, text, destFile, profile) {
 }
 
 // Generate all voices defined in a storyboard
-async function generateAllVoices(storyboardData, targetShotIds = null) {
+async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = null) {
   const profiles = { ...DEFAULT_PROFILES, ...(storyboardData.voice_profiles || {}) };
   const shots = storyboardData.shots || [];
   const cdp = await getElevenLabsClient();
 
+  const baseName = sbPath ? path.basename(sbPath, '.json') : '';
   const episodeName = storyboardData.series_id ||
-    (storyboardData.project && storyboardData.project.series ? `${storyboardData.project.series}_ep${String(storyboardData.project.episode || 1).padStart(2, '0')}`.replace(/[^a-zA-Z0-9_]/g, '_').toLowerCase() : '') ||
     (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : '') ||
+    baseName ||
     (storyboardData.series ? `ashel_ep${String(storyboardData.episode || 1).padStart(2, '0')}` : '') ||
     'ashel_ep02';
 
