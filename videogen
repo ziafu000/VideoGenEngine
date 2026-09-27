@@ -224,16 +224,40 @@ async function main() {
         const { data: sb } = loadStoryboard(sbArg);
         const shots = sb.shots || [];
 
-        // Build timelines from existing render files or default 10s
+        const baseName = path.basename(sbArg, '.json');
+        const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+        let epRenderDir = path.join(config.RENDERS_DIR, episodeName);
+        let audioDir = path.join(config.AUDIO_DIR, episodeName);
+        if (!fs.existsSync(audioDir) && fs.existsSync(path.join(config.AUDIO_DIR, baseName))) {
+          audioDir = path.join(config.AUDIO_DIR, baseName);
+        }
+
+        // Build timelines from existing render files (checking episode folder first) or default 10s
         const timelines = shots.map((s, idx) => {
           const shotId = s.id || `shot_${String(idx + 1).padStart(2, '0')}`;
-          const renderPath = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          let renderPath = path.join(epRenderDir, `${shotId}.mp4`);
+          if (!fs.existsSync(renderPath)) {
+            renderPath = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          }
           const dur = fs.existsSync(renderPath) ? compositor.getDuration(renderPath) : (s.duration_seconds || 10.0);
-          return { shotId, duration: dur };
+          const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+          const audioDur = fs.existsSync(aFile) ? compositor.getDuration(aFile) : 0;
+          return { shotId, duration: dur, audioDuration: audioDur };
         });
 
         const outAss = path.join(config.RENDERS_DIR, 'subtitles.ass');
         subtitles.generateSubtitles(sb, timelines, outAss);
+
+        // Also duplicate to episode directory if it exists
+        if (fs.existsSync(epRenderDir)) {
+          const epAss = path.join(epRenderDir, 'subtitles.ass');
+          const epSrt = path.join(epRenderDir, 'subtitles.srt');
+          fs.copyFileSync(outAss, epAss);
+          const rootSrt = path.join(config.RENDERS_DIR, 'subtitles.srt');
+          if (fs.existsSync(rootSrt)) {
+            fs.copyFileSync(rootSrt, epSrt);
+          }
+        }
         break;
       }
 
@@ -248,6 +272,7 @@ async function main() {
 
         const baseName = path.basename(sbArg, '.json');
         const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+        let epRenderDir = path.join(config.RENDERS_DIR, episodeName);
         let audioDir = path.join(config.AUDIO_DIR, episodeName);
         if (!fs.existsSync(audioDir) && fs.existsSync(path.join(config.AUDIO_DIR, baseName))) {
           audioDir = path.join(config.AUDIO_DIR, baseName);
@@ -263,7 +288,10 @@ async function main() {
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
           const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
-          const vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          let vFile = path.join(epRenderDir, `${shotId}.mp4`);
+          if (!fs.existsSync(vFile)) {
+            vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          }
           const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
 
           if (fs.existsSync(vFile)) {
