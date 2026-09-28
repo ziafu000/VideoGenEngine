@@ -44,7 +44,14 @@ async function ensureBridge() {
     const psCmd = `
       $listening = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue
       if (-not $listening) {
-          Start-Process 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -ArgumentList '--remote-debugging-port=9222'${extraChromeArgs}
+          $giaPhuLnk = "C:\\Users\\${winUser}\\Desktop\\Gia Phú - Chrome.lnk"
+          if (Test-Path $giaPhuLnk) {
+              $sh = New-Object -ComObject WScript.Shell
+              $target = $sh.CreateShortcut($giaPhuLnk)
+              Start-Process $target.TargetPath -ArgumentList $target.Arguments
+          } else {
+              Start-Process 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -ArgumentList '--remote-debugging-port=9222'${extraChromeArgs}
+          }
           Start-Sleep -Seconds 3
       }
       $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue

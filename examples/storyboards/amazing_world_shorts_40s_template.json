@@ -1,0 +1,80 @@
+{
+  "project_name": "amazing_world_shorts_40s",
+  "series_title": "Amazing World - Wonders of Nature & Science",
+  "episode_title": "Mystery of the Mariana Trench",
+  "aspect_ratio": "9:16",
+  "format": "shorts_40s",
+  "duration_seconds": 40,
+  "shots_count": 4,
+  "voice_profiles": {
+    "narrator": {
+      "voice_name": "Adam",
+      "voice_id": "pNInz6obpgDQGcFmaJgB",
+      "model_id": "eleven_multilingual_v2",
+      "description": "Deep, authoritative, cinematic documentary narrator",
+      "settings": {
+        "speed": 1.0,
+        "stability": 0.45,
+        "similarity_boost": 0.85,
+        "style_exaggeration": 0.20
+      }
+    }
+  },
+  "subtitle_style": {
+    "preset": "kinetic_neon_yellow",
+    "font_name": "Arial",
+    "font_size": 42,
+    "primary_color": "&H0000FFFF",
+    "outline_color": "&H00000000",
+    "outline_width": 3.0,
+    "shadow_depth": 1.5,
+    "alignment": 2,
+    "margin_v": 280
+  },
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration_sec": 10,
+      "hook_type": "visual_hook",
+      "flow_prompt": "Cinematic vertical 9:16 drone descent into deep pitch-black ocean abyss. Bioluminescent neon cyan and violet glowing jellyfish floating past the camera. Volumetric god rays fading into absolute darkness. National Geographic documentary aesthetic, 8k resolution, photorealistic. AUDIO: SFX ONLY — Deep underwater pressure hum, subtle water current sounds. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "At seven miles below the surface, in the deepest trench on Earth, exists a world where sunlight has never touched.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_02",
+      "duration_sec": 10,
+      "hook_type": "fact_01",
+      "flow_prompt": "Vertical 9:16 close-up of a bizarre translucent deep-sea creature with internal glowing organs slowly gliding over volcanic hydrothermal vents. Super-macro lens, cinematic lighting, ultra-detailed textures. AUDIO: SFX ONLY — Distant hydrothermal vent bubbling, deep underwater rumble. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "The pressure here is over one thousand times greater than at sea level. It would crush a steel submarine like a tin can.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_03",
+      "duration_sec": 10,
+      "hook_type": "fact_02",
+      "flow_prompt": "Vertical 9:16 wide shot inside a submerged crystal-like abyssal canyon. Eerie alien-like microbial mats emitting soft golden-green bioluminescence across the sea floor. Atmospheric volumetric light, photorealistic documentary footage. AUDIO: SFX ONLY — Eerie deep-sea ambient soundscape, low frequency resonant tones. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Yet scientists found life thriving here, feeding on toxic chemicals instead of oxygen, defying every rule of biology.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_04",
+      "duration_sec": 10,
+      "hook_type": "loop_outro",
+      "flow_prompt": "Vertical 9:16 slow tilt up from the deepest sea floor towards the distant surface, where microscopic glowing particles shimmer like stars in an underwater galaxy. Cinematic camera pull-back, hypnotic atmosphere. AUDIO: SFX ONLY — Gentle ocean swell, distant sonar ping fading away. NO MUSIC. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Which proves that our planet's greatest alien world isn't in outer space, but hidden right here beneath our oceans.",
+        "voice_delay_sec": 0.2
+      }
+    }
+  ]
+}
