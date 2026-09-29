@@ -161,15 +161,20 @@ async function main() {
         const targetShots = args.slice(2).filter(a => !a.startsWith('--'));
         const shots = sb.shots || [];
 
-        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title} [${resolution.toUpperCase()}] ===`);
+        const baseName = path.basename(sbArg, '.json');
+        const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+        const epRenderDir = path.join(config.RENDERS_DIR, episodeName);
+        if (!fs.existsSync(epRenderDir)) fs.mkdirSync(epRenderDir, { recursive: true });
+
+        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title || episodeName} [${resolution.toUpperCase()}] ===`);
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
           const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
           if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
 
-          const outFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+          const outFile = path.join(epRenderDir, `${shotId}.mp4`);
           if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
-            console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại, bỏ qua.`);
+            console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
             continue;
           }
 
@@ -195,6 +200,11 @@ async function main() {
 
             // 5. Download (Default: Cloud AI 1080p Full HD)
             await flow.downloadLatest(outFile, { resolution });
+
+            // Đồng bộ ra thư mục gốc renders/ để tương thích với các công cụ kiểm định
+            try {
+              fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
+            } catch {}
           } catch (err) {
             console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
           }
