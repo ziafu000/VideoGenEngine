@@ -32,36 +32,36 @@
   {
     "part": "Chỉ ",
     "start": 2029,
-    "end": 2247
+    "end": 2237
   },
   {
     "part": "với ",
-    "start": 2247,
-    "end": 2341
+    "start": 2237,
+    "end": 2331
   },
   {
-    "part": "1 ",
-    "start": 2341,
-    "end": 2487
+    "part": "một ",
+    "start": 2331,
+    "end": 2466
   },
   {
     "part": "gói ",
-    "start": 2487,
-    "end": 2664
+    "start": 2466,
+    "end": 2643
   },
   {
-    "part": "Google ",
-    "start": 2664,
+    "part": "Gu-gồ ",
+    "start": 2643,
     "end": 2997
   },
   {
-    "part": "AI ",
+    "part": "A-I ",
     "start": 2997,
-    "end": 3279
+    "end": 3289
   },
   {
     "part": "hai ",
-    "start": 3279,
+    "start": 3289,
     "end": 3424
   },
   {
@@ -87,71 +87,91 @@
   {
     "part": "mở ",
     "start": 4268,
-    "end": 4466
+    "end": 4445
   },
   {
     "part": "khóa ",
-    "start": 4466,
-    "end": 4695
+    "start": 4445,
+    "end": 4685
   },
   {
-    "part": "Antigravity ",
-    "start": 4695,
-    "end": 5331
+    "part": "An-ti ",
+    "start": 4685,
+    "end": 4987
+  },
+  {
+    "part": "Gra-vi-ti ",
+    "start": 4987,
+    "end": 5487
   },
   {
     "part": "với ",
-    "start": 5331,
-    "end": 5445
+    "start": 5487,
+    "end": 5602
   },
   {
-    "part": "Gemini ",
-    "start": 5445,
-    "end": 5810
+    "part": "Gie-mi-ni ",
+    "start": 5602,
+    "end": 6008
   },
   {
     "part": "3 ",
-    "start": 5810,
-    "end": 6029
+    "start": 6008,
+    "end": 6237
   },
   {
     "part": "và ",
-    "start": 6029,
-    "end": 6164
+    "start": 6237,
+    "end": 6372
   },
   {
-    "part": "Google ",
-    "start": 6164,
-    "end": 6508
+    "part": "Gu-gồ ",
+    "start": 6372,
+    "end": 6727
   },
   {
-    "part": "Flow ",
-    "start": 6508,
-    "end": 6716
+    "part": "Flâu ",
+    "start": 6727,
+    "end": 6945
   },
   {
     "part": "chứa ",
-    "start": 6716,
-    "end": 6893
+    "start": 6945,
+    "end": 7122
   },
   {
     "part": "hơn ",
-    "start": 6893,
-    "end": 7091
+    "start": 7122,
+    "end": 7320
   },
   {
-    "part": "3,500 ",
-    "start": 7091,
-    "end": 7945
+    "part": "ba ",
+    "start": 7320,
+    "end": 7466
   },
   {
-    "part": "credit ",
-    "start": 7945,
-    "end": 8258
+    "part": "nghìn ",
+    "start": 7466,
+    "end": 7706
+  },
+  {
+    "part": "năm ",
+    "start": 7706,
+    "end": 7893
+  },
+  {
+    "part": "trăm ",
+    "start": 7893,
+    "end": 8070
+  },
+  {
+    "part": "cre-đít ",
+    "start": 8070,
+    "end": 8383
   },
   {
     "part": "video!",
-    "start": 8258,
-    "end": 8633
+    "start": 8383,
+    "end": 8737
   }
 ]

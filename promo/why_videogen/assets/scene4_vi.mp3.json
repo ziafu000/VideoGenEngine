@@ -12,136 +12,166 @@
   {
     "part": "phí ",
     "start": 544,
-    "end": 767
+    "end": 756
   },
   {
-    "part": "150 ",
-    "start": 767,
-    "end": 1402
+    "part": "một ",
+    "start": 756,
+    "end": 936
+  },
+  {
+    "part": "trăm ",
+    "start": 936,
+    "end": 1201
+  },
+  {
+    "part": "năm ",
+    "start": 1201,
+    "end": 1286
+  },
+  {
+    "part": "mươi ",
+    "start": 1286,
+    "end": 1392
   },
   {
     "part": "đô ",
-    "start": 1402,
-    "end": 1561
+    "start": 1392,
+    "end": 1551
   },
   {
     "part": "mỗi ",
-    "start": 1561,
-    "end": 1763
+    "start": 1551,
+    "end": 1752
   },
   {
     "part": "tháng ",
-    "start": 1763,
-    "end": 1953
+    "start": 1752,
+    "end": 1943
   },
   {
     "part": "nữa! ",
-    "start": 1953,
-    "end": 2261
+    "start": 1943,
+    "end": 2250
   },
   {
     "part": "Chuyển ",
-    "start": 2963,
-    "end": 3196
+    "start": 2952,
+    "end": 3185
   },
   {
     "part": "ngay ",
-    "start": 3196,
-    "end": 3333
+    "start": 3185,
+    "end": 3323
   },
   {
     "part": "sang ",
-    "start": 3333,
-    "end": 3588
+    "start": 3323,
+    "end": 3577
   },
   {
     "part": "cỗ ",
-    "start": 3588,
-    "end": 3715
+    "start": 3577,
+    "end": 3704
   },
   {
     "part": "máy ",
-    "start": 3715,
+    "start": 3704,
     "end": 3852
   },
   {
     "part": "sản ",
     "start": 3852,
-    "end": 4033
+    "end": 4043
   },
   {
     "part": "xuất ",
-    "start": 4033,
-    "end": 4213
+    "start": 4043,
+    "end": 4181
   },
   {
-    "part": "1080p ",
-    "start": 4213,
-    "end": 4997
+    "part": "Full ",
+    "start": 4181,
+    "end": 4414
+  },
+  {
+    "part": "Hát-Đê ",
+    "start": 4414,
+    "end": 4763
   },
   {
     "part": "tự ",
-    "start": 4997,
-    "end": 5187
+    "start": 4764,
+    "end": 4954
   },
   {
     "part": "động ",
-    "start": 5187,
-    "end": 5410
+    "start": 4954,
+    "end": 5177
   },
   {
     "part": "chỉ ",
-    "start": 5410,
-    "end": 5622
+    "start": 5177,
+    "end": 5378
   },
   {
-    "part": "20 ",
-    "start": 5622,
-    "end": 5897
+    "part": "hai ",
+    "start": 5378,
+    "end": 5537
+  },
+  {
+    "part": "mươi ",
+    "start": 5537,
+    "end": 5643
   },
   {
     "part": "đô. ",
-    "start": 5897,
-    "end": 6130
+    "start": 5643,
+    "end": 5865
   },
   {
-    "part": "Star ",
-    "start": 6840,
-    "end": 7158
+    "part": "Thả ",
+    "start": 6575,
+    "end": 6755
+  },
+  {
+    "part": "sao ",
+    "start": 6755,
+    "end": 6967
   },
   {
     "part": "repo ",
-    "start": 7158,
-    "end": 7497
+    "start": 6967,
+    "end": 7232
   },
   {
-    "part": "VideoGen ",
-    "start": 7497,
-    "end": 8016
+    "part": "Vi-đê-ô-Gen ",
+    "start": 7232,
+    "end": 7814
   },
   {
     "part": "trên ",
-    "start": 8016,
-    "end": 8206
+    "start": 7814,
+    "end": 8005
   },
   {
-    "part": "GitHub ",
-    "start": 8206,
-    "end": 8588
+    "part": "Gít-hắp ",
+    "start": 8005,
+    "end": 8408
   },
   {
     "part": "ngay ",
-    "start": 8588,
-    "end": 8757
+    "start": 8408,
+    "end": 8577
   },
   {
     "part": "hôm ",
-    "start": 8757,
-    "end": 8916
+    "start": 8577,
+    "end": 8725
   },
   {
     "part": "nay!",
-    "start": 8916,
-    "end": 9138
+    "start": 8725,
+    "end": 8948
   }
 ]
