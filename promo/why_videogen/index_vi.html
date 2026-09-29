@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <title>Tại Sao Chọn VideoGen? Cuộc Cách Mạng Sản Xuất Video AI Chỉ 20 Đô</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body {
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08090d;
+        color: #f1f5f9;
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #08090d;
+      }
+
+      .ambient-bg {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at 20% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+          radial-gradient(circle at 80% 80%, rgba(139, 92, 246, 0.08) 0%, transparent 50%),
+          radial-gradient(circle at 50% 50%, rgba(16, 185, 129, 0.04) 0%, transparent 60%);
+        pointer-events: none;
+      }
+
+      .grid-pattern {
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        background-size: 60px 60px;
+        background-position: center center;
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      .progress-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1920px;
+        height: 5px;
+        background: rgba(255, 255, 255, 0.05);
+        z-index: 100;
+      }
+      .progress-bar {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, #ff3366, #3b82f6, #00f2fe, #10b981);
+        box-shadow: 0 0 16px rgba(0, 242, 254, 0.8);
+      }
+
+      .brand-pill {
+        position: absolute;
+        top: 36px;
+        right: 48px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 20px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 9999px;
+        backdrop-filter: blur(12px);
+        z-index: 90;
+      }
+      .brand-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #10b981;
+        box-shadow: 0 0 10px #10b981;
+      }
+      .brand-text {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #e2e8f0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="38"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div class="ambient-bg"></div>
+      <div class="grid-pattern"></div>
+
+      <div class="progress-container">
+        <div id="global-progress" class="progress-bar"></div>
+      </div>
+
+      <div class="brand-pill">
+        <div class="brand-dot"></div>
+        <div class="brand-text">VideoGen Engine • Sản Xuất Tự Động Hóa</div>
+      </div>
+
+      <!-- Sub-Composition Mounts -->
+      <div
+        id="slot-scene1"
+        data-composition-id="scene1"
+        data-composition-src="compositions_vi/scene1.html"
+        data-start="0"
+        data-duration="9.5"
+        data-track-index="0"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <div
+        id="slot-scene2"
+        data-composition-id="scene2"
+        data-composition-src="compositions_vi/scene2.html"
+        data-start="9.5"
+        data-duration="9.5"
+        data-track-index="1"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <div
+        id="slot-scene3"
+        data-composition-id="scene3"
+        data-composition-src="compositions_vi/scene3.html"
+        data-start="19.0"
+        data-duration="9.0"
+        data-track-index="2"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <div
+        id="slot-scene4"
+        data-composition-id="scene4"
+        data-composition-src="compositions_vi/scene4.html"
+        data-start="28.0"
+        data-duration="10.0"
+        data-track-index="3"
+        data-width="1920"
+        data-height="1080"
+      ></div>
+
+      <!-- Audio Layer -->
+      <audio id="bgm" src="assets/bgm.mp3" data-start="0" data-duration="38" data-volume="0.18"></audio>
+
+      <audio id="voice-s1" src="assets/scene1_vi.mp3" data-start="0.1" data-duration="9.46" data-volume="1.0"></audio>
+      <audio id="voice-s2" src="assets/scene2_vi.mp3" data-start="9.5" data-duration="9.34" data-volume="1.0"></audio>
+      <audio id="voice-s3" src="assets/scene3_vi.mp3" data-start="19.0" data-duration="8.90" data-volume="1.0"></audio>
+      <audio id="voice-s4" src="assets/scene4_vi.mp3" data-start="28.0" data-duration="9.86" data-volume="1.0"></audio>
+
+      <audio id="sfx-alarm" src="assets/sfx_alarm.mp3" data-start="3.2" data-duration="1.20" data-volume="0.45"></audio>
+      <audio id="sfx-whoosh1" src="assets/sfx_whoosh.mp3" data-start="9.2" data-duration="0.80" data-volume="0.35"></audio>
+      <audio id="sfx-unlock" src="assets/sfx_unlock.mp3" data-start="11.5" data-duration="1.80" data-volume="0.5"></audio>
+      <audio id="sfx-whoosh2" src="assets/sfx_whoosh.mp3" data-start="18.7" data-duration="0.80" data-volume="0.35"></audio>
+      <audio id="sfx-cli" src="assets/sfx_cli.mp3" data-start="19.6" data-duration="1.00" data-volume="0.45"></audio>
+      <audio id="sfx-whoosh3" src="assets/sfx_whoosh.mp3" data-start="27.7" data-duration="0.80" data-volume="0.35"></audio>
+      <audio id="sfx-star" src="assets/sfx_star.mp3" data-start="34.8" data-duration="2.00" data-volume="0.6"></audio>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#global-progress", { width: "0%" }, { width: "100%", duration: 38, ease: "none" }, 0);
+      window.__timelines["main"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -15,13 +15,35 @@
 
 ## 🎬 Why VideoGen? — The $20 AI Video Revolution
 
-<p align="center">
-  <a href="promo/why_videogen/why_videogen_1080p.mp4">
-    <img src="promo/why_videogen/preview.gif" alt="Why VideoGen Explainer Animation" width="100%" style="border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.5);" />
-  </a>
-  <br>
-  <em>🎬 <strong>Watch Full 1080p Animated Explainer:</strong> <a href="promo/why_videogen/why_videogen_1080p.mp4"><code>promo/why_videogen/why_videogen_1080p.mp4</code></a> (1920x1080 @ 30fps) — Rendered autonomously with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>. Composition source files live under <a href="promo/why_videogen/"><code>promo/why_videogen/</code></a>.</em>
-</p>
+<div align="center">
+  <table>
+    <tr>
+      <th width="50%" align="center">🇺🇸 English Edition (Master)</th>
+      <th width="50%" align="center">🇻🇳 Vietnamese Edition (Lồng Tiếng)</th>
+    </tr>
+    <tr>
+      <td align="center">
+        <a href="promo/why_videogen/why_videogen_1080p.mp4">
+          <img src="promo/why_videogen/preview.gif" alt="Why VideoGen Explainer Animation (English)" width="100%" style="border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);" />
+        </a>
+        <br>
+        🎬 <a href="promo/why_videogen/why_videogen_1080p.mp4"><strong>Watch Full 1080p English</strong></a><br>
+        <code>promo/why_videogen/why_videogen_1080p.mp4</code><br>
+        <small>Source: <a href="promo/why_videogen/index.html"><code>index.html</code></a> &bull; <a href="promo/why_videogen/compositions/"><code>compositions/</code></a></small>
+      </td>
+      <td align="center">
+        <a href="promo/why_videogen/why_videogen_vi_1080p.mp4">
+          <img src="promo/why_videogen/preview_vi.gif" alt="Why VideoGen Explainer Animation (Vietnamese)" width="100%" style="border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);" />
+        </a>
+        <br>
+        🎬 <a href="promo/why_videogen/why_videogen_vi_1080p.mp4"><strong>Xem Bản Full 1080p Tiếng Việt</strong></a><br>
+        <code>promo/why_videogen/why_videogen_vi_1080p.mp4</code><br>
+        <small>Source: <a href="promo/why_videogen/index_vi.html"><code>index_vi.html</code></a> &bull; <a href="promo/why_videogen/compositions_vi/"><code>compositions_vi/</code></a></small>
+      </td>
+    </tr>
+  </table>
+  <em>🎬 Rendered autonomously at 1920x1080 @ 30fps with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>. Both English and Vietnamese editions coexist with localized typography, word-level audio sync, and custom GSAP choreographies.</em>
+</div>
 
 ### 💡 The Cost-Effective Alternative to Claude + Higgsfield
 Building automated AI video pipelines traditionally relies on an expensive, fragmented stack: combining premium LLM subscriptions (like Claude Pro / API) with specialized video generation platforms (like Higgsfield) quickly escalates to **$150+ per month** in recurring fees and credit top-ups, while still leaving you with manual, brittle stitching.
