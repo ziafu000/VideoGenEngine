@@ -49,11 +49,19 @@ async function getStatus() {
   }
 }
 
-// 2. Clear attached characters and prompt text
+// 2. Clear attached characters, prompt text, and dismiss any stale error cards/toasts
 async function clearCharacters() {
   const cdp = await getFlowClient();
   try {
     return await cdp.evaluate(`(() => {
+      // Dismiss any failed generation cards
+      const delBtns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('delete_forever') || b.innerText.includes('Xóa') || b.getAttribute('aria-label') === 'Xóa'));
+      delBtns.forEach(b => b.click());
+
+      // Dismiss any lingering snackbars / toasts
+      const snackDismiss = Array.from(document.querySelectorAll('snack-bar-container button, .mat-mdc-snack-bar-container button')).find(b => b.innerText && (b.innerText.includes('Đóng') || b.innerText.includes('Close')));
+      if (snackDismiss) snackDismiss.click();
+
       const cancelButtons = Array.from(document.querySelectorAll('flow-ingredient-bar button, .ingredient-bar button, flow-ingredient-chip button, flow-ingredient-chip mat-icon')).filter(b => 
         b.innerText && (b.innerText.includes('cancel') || b.innerText.includes('close'))
       );
@@ -183,13 +191,17 @@ async function submitPrompt(promptText) {
 // Helper: Classify Google Flow prompt refusal or policy violation using TypeSafe Jev
 function classifyPromptRefusal(text) {
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
+  const lower = text.toLowerCase();
+  // Upscaling progress toasts or informational notifications are never prompt refusals
+  if (lower.includes('đang tăng') || lower.includes('độ phân giải') || lower.includes('upscaling') || lower.includes('quá trình này có thể mất')) {
+    return { choice: 'neutral', confidence: 1.0 };
+  }
   const res = jev.classify(text, {
     refusal: "prompt was refused, blocked or violates safety policy or community guidelines",
     error: "system error, capacity limit or generation failure occurred",
     neutral: "normal generation or progress status"
   });
   if (res.choice) return res;
-  const lower = text.toLowerCase();
   if (lower.includes('không thành công') || lower.includes('vi phạm') || lower.includes('policy') || lower.includes('violate') || lower.includes('blocked') || lower.includes('failed')) {
     return { choice: 'refusal', confidence: 0.9 };
   }
@@ -220,8 +232,8 @@ async function waitForRender(timeoutSec = 240) {
         const isActivelyPending = (hasPending || !!m) && !hasVideo;
         const isReady = (hasVideo || (hasThumb && !hasPending)) && !isActivelyPending;
 
-        const err = document.querySelector('.error-message, [role="alert"], snack-bar-container, .mat-mdc-snack-bar-container');
-        const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && (el.innerText.includes('Không thành công') || el.innerText.includes('vi phạm') || el.innerText.includes('policy') || el.innerText.includes('violate') || el.innerText.includes('failed')));
+        const err = document.querySelector('.error-message, [role="alert"]');
+        const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && (el.innerText.includes('Không thành công') || el.innerText.includes('vi phạm chính sách') || el.innerText.includes('policy') || el.innerText.includes('violate')));
 
         return {
           hasPending: isActivelyPending,
@@ -264,7 +276,7 @@ function getLatestMp4InDownloads() {
   const dir = config.WIN_DOWNLOADS_DIR;
   if (!fs.existsSync(dir)) return null;
   const files = fs.readdirSync(dir)
-    .filter(f => f.endsWith('.mp4') && !f.endsWith('.crdownload'))
+    .filter(f => f.endsWith('.mp4') && !f.endsWith('.crdownload') && !f.includes('why_videogen'))
     .map(f => {
       const full = path.join(dir, f);
       try {
