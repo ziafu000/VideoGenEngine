@@ -7,166 +7,186 @@
   {
     "part": "video ",
     "start": 476,
-    "end": 821
+    "end": 811
   },
   {
     "part": "bằng ",
-    "start": 821,
-    "end": 1095
+    "start": 811,
+    "end": 1075
   },
   {
-    "part": "AI ",
-    "start": 1095,
+    "part": "A-I ",
+    "start": 1075,
     "end": 1339
   },
   {
     "part": "từng ",
     "start": 1339,
-    "end": 1553
+    "end": 1573
   },
   {
     "part": "đắt ",
-    "start": 1553,
-    "end": 1685
+    "start": 1573,
+    "end": 1705
   },
   {
     "part": "đỏ ",
-    "start": 1685,
-    "end": 1908
+    "start": 1705,
+    "end": 1929
   },
   {
     "part": "đến ",
-    "start": 1908,
-    "end": 2091
+    "start": 1929,
+    "end": 2112
   },
   {
     "part": "phát ",
-    "start": 2091,
-    "end": 2264
+    "start": 2112,
+    "end": 2284
   },
   {
     "part": "điên! ",
-    "start": 2264,
-    "end": 2508
+    "start": 2284,
+    "end": 2528
   },
   {
     "part": "Hết ",
-    "start": 3180,
-    "end": 3362
+    "start": 3200,
+    "end": 3383
   },
   {
-    "part": "Claude ",
-    "start": 3363,
-    "end": 3617
+    "part": "Cờ-lốt ",
+    "start": 3383,
+    "end": 3657
   },
   {
-    "part": "rate ",
-    "start": 3617,
-    "end": 3779
+    "part": "nghẽn ",
+    "start": 3657,
+    "end": 3840
   },
   {
-    "part": "limit ",
-    "start": 3779,
-    "end": 4094
+    "part": "hạn ",
+    "start": 3840,
+    "end": 4003
+  },
+  {
+    "part": "mức ",
+    "start": 4003,
+    "end": 4165
   },
   {
     "part": "liên ",
-    "start": 4094,
-    "end": 4287
+    "start": 4165,
+    "end": 4348
   },
   {
     "part": "tục, ",
-    "start": 4287,
-    "end": 4511
+    "start": 4348,
+    "end": 4572
   },
   {
     "part": "lại ",
-    "start": 4684,
-    "end": 4856
+    "start": 4755,
+    "end": 4948
   },
   {
     "part": "đến ",
-    "start": 4856,
-    "end": 5029
+    "start": 4948,
+    "end": 5110
   },
   {
-    "part": "Higgsfield ",
-    "start": 5029,
-    "end": 5405
+    "part": "Hích-phiu ",
+    "start": 5110,
+    "end": 5415
   },
   {
     "part": "đốt ",
-    "start": 5405,
-    "end": 5568
+    "start": 5415,
+    "end": 5537
   },
   {
     "part": "sạch ",
-    "start": 5568,
-    "end": 5781
+    "start": 5537,
+    "end": 5751
   },
   {
-    "part": "credit, ",
-    "start": 5781,
-    "end": 6178
+    "part": "cre-đít, ",
+    "start": 5751,
+    "end": 6117
   },
   {
     "part": "ngốn ",
-    "start": 6320,
-    "end": 6533
+    "start": 6289,
+    "end": 6493
   },
   {
     "part": "hơn ",
-    "start": 6533,
-    "end": 6686
+    "start": 6493,
+    "end": 6645
   },
   {
-    "part": "150 ",
-    "start": 6686,
-    "end": 7275
+    "part": "một ",
+    "start": 6645,
+    "end": 6808
+  },
+  {
+    "part": "trăm ",
+    "start": 6808,
+    "end": 7052
+  },
+  {
+    "part": "năm ",
+    "start": 7052,
+    "end": 7133
+  },
+  {
+    "part": "mươi ",
+    "start": 7133,
+    "end": 7214
   },
   {
     "part": "đô ",
-    "start": 7275,
-    "end": 7417
+    "start": 7214,
+    "end": 7356
   },
   {
     "part": "mỗi ",
-    "start": 7417,
-    "end": 7590
+    "start": 7356,
+    "end": 7539
   },
   {
     "part": "tháng ",
-    "start": 7590,
-    "end": 7834
+    "start": 7539,
+    "end": 7783
   },
   {
     "part": "mà ",
-    "start": 7834,
-    "end": 7936
+    "start": 7783,
+    "end": 7895
   },
   {
     "part": "vẫn ",
-    "start": 7936,
-    "end": 8108
+    "start": 7895,
+    "end": 8078
   },
   {
     "part": "chưa ",
-    "start": 8108,
-    "end": 8261
+    "start": 8078,
+    "end": 8241
   },
   {
     "part": "đâu ",
-    "start": 8261,
-    "end": 8423
+    "start": 8241,
+    "end": 8403
   },
   {
     "part": "vào ",
-    "start": 8424,
-    "end": 8566
+    "start": 8403,
+    "end": 8545
   },
   {
     "part": "đâu!",
-    "start": 8566,
-    "end": 8769
+    "start": 8545,
+    "end": 8749
   }
 ]
