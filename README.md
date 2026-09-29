@@ -211,7 +211,9 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Google Flow image mode, upscales to 1080p, and syncs to drive. |
 | `./videogen archive <sb>` | **Archival** | Migrates all raw materials and master video to storage drive; purges temp files. |
 | `./videogen upload <sb>` | **YouTube** | Uploads master video directly to YouTube Studio as Unlisted via CDP with Jev verification. |
+| `./videogen facebook <sb> [video] [--draft]` | **Facebook Reels** | Uploads master 9:16 video to Facebook Reels via CDP (0 API cost). Use `--draft` for review. |
 | **`./videogen run <sb> [--720p]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
+| **`./videogen loop [sbs...] [--draft] [--no-upload] [--720p]`** | **Batch Production Loop** | **Automates continuous batch production across multiple storyboards or all `storyboards/*.json`.** |
 
 ---
 
