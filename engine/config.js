@@ -83,6 +83,7 @@ const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || `/mnt/c/Users/${WIN_U
 const DEST_ORIGINAL = process.env.DEST_ORIGINAL || null;
 const DEST_FINAL = process.env.DEST_FINAL || null;
 const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || (process.env.YOUTUBE_CHANNEL_ID ? `https://studio.youtube.com/channel/${process.env.YOUTUBE_CHANNEL_ID}` : 'https://studio.youtube.com');
+const FACEBOOK_REELS_URL = process.env.FACEBOOK_REELS_URL || 'https://business.facebook.com/latest/reels_composer';
 
 // Robust cross-platform path conversion (WSL to Windows)
 function toWinPath(p) {
@@ -143,6 +144,7 @@ module.exports = {
   DEST_ORIGINAL,
   DEST_FINAL,
   YOUTUBE_STUDIO_URL,
+  FACEBOOK_REELS_URL,
   getPowerShellCmd,
   toWinPath
 };
