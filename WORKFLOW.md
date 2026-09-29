@@ -323,3 +323,33 @@ Cross-platform distribution of 9:16 vertical Shorts to Facebook Pages and creato
 }
 ```
 If `facebook.caption` is omitted, the engine automatically formats the caption by combining `title` + `description` + `#hashtags` from the storyboard. Pre-flight screening is performed by TypeSafe Jev before submission.
+
+---
+
+### 8.10. Continuous Batch Production Loop (`./videogen loop`)
+Run fully automated, continuous batch video production across multiple storyboards or all files in `storyboards/*.json`:
+
+```bash
+# Process specific storyboard files in sequence
+./videogen loop storyboards/shorts_01.json storyboards/shorts_02.json
+
+# Process all storyboards discovered in storyboards/*.json
+./videogen loop
+
+# Save uploads as Drafts / Private (recommended for review workflows)
+./videogen loop --draft
+
+# Render, voice, and assemble only without uploading to platforms
+./videogen loop --no-upload
+
+# Use 720p direct CDN downloads for ultra-fast batch iterations
+./videogen loop --720p
+```
+
+#### Loop Pipeline Steps per Storyboard:
+1. **Google Flow Render:** Renders missing shots at 1080p (or 720p). Already rendered clips are detected and skipped.
+2. **ElevenLabs Voiceover:** Synthesizes character dialogue and narration. Existing voice files are preserved.
+3. **Master Assembly & Compositing:** Stitches video clips, synchronizes audio padding, generates dual-zone / shorts ASS subtitles, and mixes final master MP4 into `output/`.
+4. **Distribution / Upload:** Uploads final master video to YouTube Studio (Private/Draft) and/or Facebook Reels.
+5. **Quota Protection:** Stops the loop automatically if cloud render or TTS credit exhaustion is detected, safeguarding accounts.
+

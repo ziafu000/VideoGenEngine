@@ -16,6 +16,7 @@
  *   ./videogen upload <storyboard>         Upload to YouTube Studio via CDP
  *   ./videogen facebook <storyboard>       Upload to Facebook Reels via CDP
  *   ./videogen run <storyboard>            Run complete end-to-end production loop
+ *   ./videogen loop [storyboards...]       Continuous batch production & upload loop
  * ==============================================================================
  */
 
@@ -33,6 +34,7 @@ const thumbnail = require('./engine/thumbnail');
 const shorts = require('./engine/shorts');
 const tiktok = require('./engine/tiktok_uploader');
 const facebook = require('./engine/facebook');
+const pipelineLoop = require('./engine/pipeline_loop');
 
 function loadStoryboard(storyboardPath) {
   let candidates = [
@@ -122,6 +124,16 @@ Lệnh điều phối:
   ./videogen run <storyboard.json>
       CHẾ ĐỘ TỰ ĐỘNG KHÉP KÍN (A -> Z): Chạy toàn bộ chuỗi sản xuất từ Render -> Voice
       -> Assemble -> Verify -> Archive -> Upload!
+
+  ./videogen loop [storyboard_files...] [--draft] [--no-upload] [--720p]
+      VÒNG LẶP SẢN XUẤT TỰ ĐỘNG LIÊN TỤC (BATCH & CONTINUOUS PRODUCTION):
+      Sản xuất hàng loạt theo danh sách storyboard hoặc tự động quét storyboards/*.json:
+        Flow Render -> ElevenLabs Voice -> FFmpeg Master Assembly -> Upload.
+      Tự động nhận diện cảnh/audio đã tạo để tránh làm trùng lặp.
+      Cờ:
+        --draft: Đăng video ở chế độ Nháp (Facebook Reels) hoặc Riêng tư (YouTube).
+        --no-upload: Chỉ render, lồng tiếng và ghép master hoàn chỉnh; bỏ qua upload.
+        --720p: Render độ phân giải 720p (Direct CDN) thay vì 1080p Cloud Super-Resolution.
 ==============================================================================
 `);
 }
@@ -726,6 +738,24 @@ async function main() {
         console.log(`\n============================================================`);
         console.log(`✓ QUY TRÌNH SẢN XUẤT TỰ ĐỘNG ĐÃ HOÀN TẤT THÀNH CÔNG RỰC RỠ!`);
         console.log(`============================================================\n`);
+        break;
+      }
+
+      case 'loop': {
+        const isDraft = args.includes('--draft');
+        const noUpload = args.includes('--no-upload') || args.includes('--no-up');
+        const is720p = args.includes('--720p');
+        const resolution = is720p ? '720p' : '1080p';
+
+        // Storyboard paths are non-flag arguments after 'loop'
+        const sbArgs = args.slice(1).filter(a => !a.startsWith('--'));
+
+        await bridge.ensureBridge();
+        await pipelineLoop.runLoop(sbArgs, {
+          draft: isDraft,
+          noUpload,
+          resolution
+        });
         break;
       }
 
