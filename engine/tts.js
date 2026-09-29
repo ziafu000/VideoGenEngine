@@ -45,6 +45,24 @@ const DEFAULT_PROFILES = {
     stability: 0.50,
     similarity: 0.75,
     style: 0.00
+  },
+  narrator: {
+    voiceName: 'Brian',
+    searchKey: 'Brian',
+    model: 'eleven_v3',
+    speed: 1.05,
+    stability: 0.42,
+    similarity: 0.80,
+    style: 0.18
+  },
+  narrator_fresh: {
+    voiceName: 'Brian',
+    searchKey: 'Brian',
+    model: 'eleven_v3',
+    speed: 1.05,
+    stability: 0.42,
+    similarity: 0.80,
+    style: 0.18
   }
 };
 
@@ -316,69 +334,34 @@ async function generateClip(cdp, rawText, destFile, profile) {
 
   await sleep(1500);
 
-  // 6. Download from History panel
-  // Hover over top history item to reveal download button
-  const hoverCoords = await cdp.evaluate(`(() => {
-    const list = Array.from(document.querySelectorAll("span")).filter(e => e.parentElement && e.parentElement.className.includes("line-clamp-1"));
-    if (list.length === 0) return null;
-    const r = list[0].getBoundingClientRect();
-    return { x: r.left + r.width/2, y: r.top + r.height/2 };
-  })()`);
-
-  if (hoverCoords) {
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: hoverCoords.x, y: hoverCoords.y });
-    await sleep(400);
-  }
-
-  // Click Download icon on that row
-  const dlIconCoords = await cdp.evaluate(`(() => {
-    const btn = Array.from(document.querySelectorAll("button")).find(b => {
-      const r = b.getBoundingClientRect();
-      return b.getAttribute("aria-label") === "Download" && r.left > 1300;
-    });
-    if (!btn) return null;
-    const r = btn.getBoundingClientRect();
-    return { x: r.left + r.width/2, y: r.top + r.height/2 };
-  })()`);
-
-  if (dlIconCoords) {
-    await cdp.clickMouse(dlIconCoords.x, dlIconCoords.y);
-    await sleep(500);
-
-    // Click MP3 / 44.1kHz in the download dropdown
-    const mp3Coords = await cdp.evaluate(`(() => {
-      const item = Array.from(document.querySelectorAll("*")).find(e => e.innerText && e.innerText.includes("44.1kHz") && e.children.length === 0);
-      const btn = item ? item.closest("[role='menuitem'], button, div") : null;
-      if (!btn) return null;
-      const r = btn.getBoundingClientRect();
-      return { x: r.left + r.width/2, y: r.top + r.height/2 };
-    })()`);
-
-    if (mp3Coords) {
-      await cdp.clickMouse(mp3Coords.x, mp3Coords.y);
-    }
-  } else {
-    // Fallback to bottom player download button
-    await cdp.evaluate(`(() => {
-      const dl = document.querySelector('[data-testid="audio-player-download-button"]') || document.querySelector('button[aria-label="Download"]');
-      if (dl) dl.click();
-    })()`);
-  }
-
-  // 7. Capture downloaded file
+  // 6 & 7. Trigger download and capture new MP3 file
   let audioSaved = false;
-  for (let i = 0; i < 15; i++) {
-    await sleep(800);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await sleep(attempt === 0 ? 3000 : 2000);
+
+    await cdp.evaluate(`(() => {
+      const btn = document.querySelector('button[aria-label="Download Audio"]')
+        || document.querySelector('[data-testid="audio-player-download-button"]')
+        || document.querySelector('button[aria-label="Download"]');
+      if (btn) btn.click();
+    })()`);
+
+    await sleep(1500);
     const newest = getNewestDownload(config.WIN_DOWNLOADS_DIR);
-    if (newest && (!beforeDownload || newest.name !== beforeDownload.name || newest.time > beforeDownload.time)) {
-      const downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
-      try {
-        if (fs.existsSync(downloadedFile) && fs.statSync(downloadedFile).size > 2000) {
-          fs.copyFileSync(downloadedFile, destFile);
-          audioSaved = true;
-          break;
+    if (newest) {
+      const isNew = !beforeDownload || (newest.name !== beforeDownload.name) || (newest.time > beforeDownload.time);
+      if (isNew) {
+        const downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
+        try {
+          if (fs.existsSync(downloadedFile) && fs.statSync(downloadedFile).size > 2000) {
+            fs.copyFileSync(downloadedFile, destFile);
+            audioSaved = true;
+            break;
+          }
+        } catch (err) {
+          // Retry next loop
         }
-      } catch {}
+      }
     }
   }
 
@@ -418,10 +401,13 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
         continue;
       }
 
-      // Check text: Ưu tiên sub_text tiếng Việt hoặc vietnamese_subtitles
-      const voiceoverText = (s.audio && s.audio.voiceover && !/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf]/.test(s.audio.voiceover))
-        ? s.audio.voiceover
-        : (s.audio && s.audio.sub_text) || s.vietnamese_subtitles || s.audio.voiceover;
+      // Check text: Ưu tiên voice.text (chuẩn Shorts mới), rồi sub_text tiếng Việt hoặc vietnamese_subtitles
+      const voiceoverText = (s.voice && s.voice.text)
+        || ((s.audio && s.audio.voiceover && !/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf]/.test(s.audio.voiceover)) ? s.audio.voiceover : null)
+        || (s.audio && s.audio.sub_text)
+        || s.vietnamese_subtitles
+        || (s.audio && s.audio.voiceover)
+        || s.subtitles;
 
       if (!voiceoverText || voiceoverText.trim() === '' || voiceoverText.includes('Hết Tập')) {
         console.log(`[-] [${i + 1}/${shots.length}] ${shotId}: Không có lời thoại (SFX/Ambient/Outro) -> Bỏ qua.`);
@@ -434,8 +420,17 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
         continue;
       }
 
-      const speaker = (s.audio && (s.audio.speaker || s.audio.voice_model)) || s.speaker || s.voice_model || 'Ashel';
-      const prof = profiles[speaker] || DEFAULT_PROFILES[speaker] || DEFAULT_PROFILES.Ashel;
+      const speaker = (s.voice && (s.voice.speaker || s.voice.voice_model))
+        || (s.audio && (s.audio.speaker || s.audio.voice_model))
+        || s.speaker
+        || s.voice_model
+        || 'narrator';
+      const rawProf = profiles[speaker] || DEFAULT_PROFILES[speaker] || DEFAULT_PROFILES.narrator || DEFAULT_PROFILES.Ashel;
+      const prof = {
+        ...rawProf,
+        voiceName: rawProf.voiceName || rawProf.voice_name || 'Brian - Relatable Everyman',
+        searchKey: rawProf.searchKey || rawProf.search_key || 'Brian'
+      };
 
       console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice cho ${shotId} (Nhân vật: ${speaker} | Giọng: ${prof.voiceName})...`);
       await generateClip(cdp, voiceoverText, destFile, prof);

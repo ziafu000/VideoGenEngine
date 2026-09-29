@@ -316,17 +316,34 @@ async function downloadLatestDirect(targetFile) {
 
     console.log(`    [-] Tải nhanh qua Direct CDN (720p): ${videoSrc.slice(0, 60)}...`);
     
-    // Lấy cookie xác thực từ Chrome session để curl tải video trực tiếp từ domain flow.google.com mà không bị redirect đăng nhập
+    // Lấy cookie xác thực từ Chrome session nếu cần (chỉ cho flow.google.com, không áp dụng cho signed CDN flow-content.google)
     let cookieHeader = '';
+    if (!videoSrc.includes('flow-content.google')) {
+      try {
+        const cookieRes = await cdp.send('Network.getCookies', { urls: ['https://flow.google.com'] });
+        if (cookieRes && cookieRes.cookies && cookieRes.cookies.length > 0) {
+          const cookieStr = cookieRes.cookies.map(c => `${c.name}=${c.value}`).join('; ');
+          cookieHeader = `-H "Cookie: ${cookieStr}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"`;
+        }
+      } catch {}
+    }
+
     try {
-      const cookieRes = await cdp.send('Network.getCookies', { urls: ['https://flow.google.com'] });
-      if (cookieRes && cookieRes.cookies && cookieRes.cookies.length > 0) {
-        const cookieStr = cookieRes.cookies.map(c => `${c.name}=${c.value}`).join('; ');
-        cookieHeader = `-H "Cookie: ${cookieStr}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"`;
+      if (fs.existsSync(targetFile) || fs.lstatSync(targetFile).isSymbolicLink()) {
+        fs.unlinkSync(targetFile);
       }
     } catch {}
 
-    execSync(`curl -s -f -L ${cookieHeader} ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+    try {
+      execSync(`curl -s -f -L ${cookieHeader} ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+    } catch (curlErr) {
+      if (cookieHeader) {
+        // Fallback tải trực tiếp không kèm cookie
+        execSync(`curl -s -f -L ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+      } else {
+        throw curlErr;
+      }
+    }
 
     if (!fs.existsSync(targetFile) || fs.statSync(targetFile).size < 1000) {
       throw new Error(`File tải về không hợp lệ hoặc rỗng: ${targetFile}`);
@@ -340,6 +357,13 @@ async function downloadLatestDirect(targetFile) {
 
 // Helper: Classify Google Flow toast/message using TypeSafe Jev System One
 function classifyUpscaleToast(text) {
+  if (typeof text !== 'string') {
+    if (text && typeof text === 'object') {
+      text = text.value || text.text || text.message || JSON.stringify(text);
+    } else {
+      return { choice: 'neutral', confidence: 1.0 };
+    }
+  }
   if (!text || text.trim().length === 0) return { choice: 'neutral', confidence: 1.0 };
   const res = jev.classify(text, {
     in_progress: "video resolution is currently being upscaled or processed in background",
@@ -506,6 +530,12 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
     while (hasActiveCrdownload()) {
       await sleep(1000);
     }
+
+    try {
+      if (fs.existsSync(targetFile) || fs.lstatSync(targetFile).isSymbolicLink()) {
+        fs.unlinkSync(targetFile);
+      }
+    } catch {}
 
     fs.copyFileSync(downloadedFile.file, targetFile);
     const sizeMb = (fs.statSync(targetFile).size / 1024 / 1024).toFixed(2);

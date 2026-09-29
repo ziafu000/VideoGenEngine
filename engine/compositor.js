@@ -23,7 +23,9 @@ async function compositeVideo({
   outputVideoPath,
   voiceVolume = 1.0,
   ambientVolume = 0.30,
-  delays = []
+  delays = [],
+  aspectRatio = '16:9',
+  burnSubtitles = true
 }) {
   const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
@@ -31,6 +33,7 @@ async function compositeVideo({
   console.log(`=== BẮT ĐẦU QUÁ TRÌNH GHÉP NỐI & HẬU KỲ (COMPOSITOR) ===`);
   console.log(`Số phân cảnh video: ${videoFiles.length}`);
   console.log(`Số file voiceover: ${audioFiles.length}`);
+  console.log(`Tỷ lệ khung hình: ${aspectRatio} | Hardsub: ${burnSubtitles ? 'BẬT' : 'TẮT (Clean Footage)'}`);
 
   // 1. Measure video durations & prepare audio padding
   const paddedAudioList = path.join(tempDir, 'audio_concat.txt');
@@ -90,25 +93,32 @@ async function compositeVideo({
   execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winVideoConcatList)} -c copy ${JSON.stringify(winRawMaster)} 2>/dev/null`);
   console.log(`[✓] Đã nối xong raw master video: ${getDuration(rawMaster).toFixed(2)}s`);
 
-  // 4. Final Compositing: Audio mix (voice + ambient) + 1080p Lanczos upscale + Subtitle burn
-  console.log(`[-] Đang hòa âm đa tầng, upscale 1080p Full HD và burn phụ đề ASS...`);
+  // 4. Final Compositing: Audio mix (voice + ambient) + 1080p Lanczos upscale + Optional Subtitle burn
+  console.log(`[-] Đang hòa âm đa tầng, upscale 1080p Full HD${burnSubtitles ? ' và burn phụ đề ASS' : ''}...`);
   const outDir = path.dirname(outputVideoPath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const hasVoiceTrack = audioFiles && audioFiles.some(f => f && fs.existsSync(f));
-  const winAssSubtitlePath = config.toWinPath(assSubtitlePath).replace(/\\/g, '/').replace(/:/g, '\\\\:');
+  const shouldBurnSubtitles = Boolean(burnSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath));
+  const winAssSubtitlePath = shouldBurnSubtitles ? config.toWinPath(assSubtitlePath).replace(/\\/g, '/').replace(/:/g, '\\\\:') : '';
   const winOutputVideoPath = config.toWinPath(outputVideoPath);
+
+  const isVertical = aspectRatio === '9:16';
+  const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
+  const subFilter = shouldBurnSubtitles ? `,subtitles='${winAssSubtitlePath}'` : '';
+  const videoFilter = `${scaleFilter}${subFilter}`;
+
   let filterStr = '';
   let cmd = '';
 
   if (hasVoiceTrack) {
     console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (100% SFX & Ambiance) + Voiceover ElevenLabs (100% Lời thoại Studio)...`);
-    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${winAssSubtitlePath}'[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
+    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
   } else {
     // 100% pure Flow SFX audio (No dialogue track)
     console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
-    filterStr = `[0:v]scale=1920:1080:flags=lanczos,subtitles='${winAssSubtitlePath}'[v];[0:a]volume=1.0[a]`;
+    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=1.0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
   }
 

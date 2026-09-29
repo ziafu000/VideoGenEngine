@@ -186,8 +186,9 @@ async function main() {
             }
 
             // 3. Submit prompt
-            console.log(`    [-] Gửi câu lệnh: "${s.prompt.slice(0, 50)}..."`);
-            await flow.submitPrompt(s.prompt);
+            const promptText = s.flow_prompt || s.prompt || '';
+            console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
+            await flow.submitPrompt(promptText);
 
             // 4. Wait
             await flow.waitForRender(240);
@@ -298,7 +299,7 @@ async function main() {
             videoFiles.push(vFile);
 
             // Kiến trúc chuẩn hóa: 100% lời thoại và phụ đề do ElevenLabs đảm nhiệm
-            const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
+            const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
             const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
 
             if (hasAudioFile) {
@@ -312,7 +313,9 @@ async function main() {
               audioFiles.push(null);
             }
 
-            const delaySec = (s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.3;
+            const delaySec = (s.voice && typeof s.voice.voice_delay_sec === 'number') 
+              ? s.voice.voice_delay_sec 
+              : ((s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.3);
             delays.push(delaySec);
 
             timelines.push({
@@ -337,13 +340,20 @@ async function main() {
         const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
         subtitles.generateSubtitles(sb, timelines, assPath);
 
+        const isShorts = (sb.aspect_ratio === '9:16') ||
+                         (sb.format === 'shorts_40s') ||
+                         (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
+        const noHardsub = sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+
         const masterOutput = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
         await compositor.compositeVideo({
           videoFiles,
           audioFiles,
-          assSubtitlePath: assPath,
+          assSubtitlePath: noHardsub ? null : assPath,
           outputVideoPath: masterOutput,
-          delays
+          delays,
+          aspectRatio: isShorts ? '9:16' : '16:9',
+          burnSubtitles: !noHardsub
         });
         break;
       }
@@ -507,23 +517,33 @@ async function main() {
           break;
         }
         const { data: sb } = loadStoryboard(sbArg || 'storyboards/example_anime_series.json');
-        const title = (sb.project && sb.project.title) || sb.title || 'Video Project';
-        const desc = (sb.project && sb.project.series) || 'Original AI Series';
+        
+        const baseName = path.basename(sbArg || '', '.json');
+        const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+        let latestMaster = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
+        if (!fs.existsSync(latestMaster)) {
+          const mp4s = fs.readdirSync(config.OUTPUT_DIR)
+            .filter(f => f.endsWith('.mp4'))
+            .map(f => ({ path: path.join(config.OUTPUT_DIR, f), mtime: fs.statSync(path.join(config.OUTPUT_DIR, f)).mtimeMs }))
+            .sort((a, b) => b.mtime - a.mtime);
+          if (mp4s.length > 0) latestMaster = mp4s[0].path;
+        }
 
-        const latestMaster = fs.readdirSync(config.OUTPUT_DIR)
-          .filter(f => f.endsWith('.mp4'))
-          .map(f => path.join(config.OUTPUT_DIR, f))[0];
-
-        if (!latestMaster) {
+        if (!latestMaster || !fs.existsSync(latestMaster)) {
           console.error('[!] Không tìm thấy video thành phẩm trong output/ để tải lên!');
           process.exit(1);
         }
+
+        const yt = sb.youtube || {};
+        const title = yt.title || (sb.project && sb.project.title) || (sb.series_title ? `${sb.series_title} - ${sb.episode_title}` : sb.title) || 'Video Project';
+        const desc = yt.description || (sb.project && sb.project.series) || 'Original Video from ZFStudio';
+        const visibility = yt.visibility || 'unlisted';
 
         await youtube.uploadVideo({
           videoPath: latestMaster,
           title,
           description: desc,
-          visibility: 'unlisted'
+          visibility
         });
         break;
       }
@@ -591,13 +611,20 @@ async function main() {
         const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
         subtitles.generateSubtitles(sb, timelines, assPath);
 
+        const isShorts = (sb.aspect_ratio === '9:16') ||
+                         (sb.format === 'shorts_40s') ||
+                         (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
+        const noHardsub = sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+
         const safeTitle = ((sb.project && sb.project.title) || sb.title || 'video').replace(/\s+/g, '_');
         const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
         await compositor.compositeVideo({
           videoFiles,
           audioFiles,
-          assSubtitlePath: assPath,
-          outputVideoPath: masterOutput
+          assSubtitlePath: noHardsub ? null : assPath,
+          outputVideoPath: masterOutput,
+          aspectRatio: isShorts ? '9:16' : '16:9',
+          burnSubtitles: !noHardsub
         });
 
         // 5. Verify frames

@@ -66,7 +66,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
  * @param {string} outputPath 
  */
 function generateSubtitles(storyboardData, clipTimelines, outputPath) {
-  const isShorts = storyboardData.project && storyboardData.project.mode === 'shorts';
+  const isShorts = (storyboardData.aspect_ratio === '9:16') ||
+                   (storyboardData.format === 'shorts_40s') ||
+                   (storyboardData.project && (storyboardData.project.mode === 'shorts' || storyboardData.project.aspect_ratio === '9:16'));
   const customStyles = storyboardData.subtitle_style || (storyboardData.project && storyboardData.project.subtitle_style) || {};
   let assContent = isShorts ? SHORTS_HEADER : getDualZoneHeader(customStyles);
 
@@ -88,7 +90,7 @@ function generateSubtitles(storyboardData, clipTimelines, outputPath) {
 
     if (shot) {
       const layer = audioConf.sub_layer || shot.subtitle_layer || 'bottom';
-      const text = audioConf.sub_text || shot.vietnamese_subtitles || shot.subtitles || '';
+      const text = (shot.voice && shot.voice.text) || audioConf.sub_text || shot.vietnamese_subtitles || shot.subtitles || '';
       const sysText = audioConf.sys_sub || shot.system_vietnamese || '';
 
       if (layer === 'dual') {
