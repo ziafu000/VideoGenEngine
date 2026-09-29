@@ -151,6 +151,7 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 | `./videogen thumb <sb> [prompt]` | Thumbnails | Generates 4 cinematic 16:9 thumbnails, upscales to 1080p. |
 | `./videogen archive <sb>` | Archival | Migrates materials to `DEST_ORIGINAL`, master to `DEST_FINAL`, purges temp dirs. |
 | `./videogen upload <sb>` | YouTube Upload | Uploads master video to YouTube Studio as Unlisted via CDP. |
+| `./videogen facebook <sb> [video] [--draft]` | Facebook Reels Upload | Uploads 9:16 Shorts to Facebook Reels via Chrome CDP (Publish or Draft). |
 | **`./videogen run <sb> [--720p]`** | **Full A→Z Pipeline** | **Executes the complete autonomous pipeline end-to-end.** |
 
 ---
@@ -281,3 +282,44 @@ This migrates all raw clips, voiceover MP3s, and the storyboard backup to `DEST_
 - Operates on `studio.youtube.com` via CDP (zero YouTube Data API quota cost).
 - TypeSafe Jev pre-screens title and description before submission.
 - Sets visibility to **Unlisted** by default and returns the shareable `https://youtu.be/...` link.
+
+### 8.9. Automated Facebook Reels Uploading (Meta Business Suite / Facebook)
+Cross-platform distribution of 9:16 vertical Shorts to Facebook Pages and creator profiles via Chrome CDP (zero API cost, no expiring Meta OAuth tokens, no app review).
+
+#### Browser Setup in Chrome:
+1. Ensure the Chrome CDP bridge is active:
+   ```bash
+   ./videogen bridge
+   ```
+2. In the Windows Chrome `AutomationProfile` browser window, navigate to `https://www.facebook.com` and log in to your account.
+3. Switch to your targeted Facebook Page or creator profile (via the profile switcher in the top right).
+4. Verify the active tab and readiness:
+   ```bash
+   ./videogen facebook status
+   # or: node engine/facebook_uploader.js status
+   ```
+
+#### Usage & Publish Posture:
+```bash
+# Publish immediately using storyboard metadata
+./videogen facebook storyboards/<project>.json
+
+# Upload specific video file
+./videogen facebook storyboards/<project>.json output/my_video_1080p.mp4
+
+# Save as draft on Facebook for manual review before release
+./videogen facebook storyboards/<project>.json --draft
+```
+
+#### Storyboard Metadata Configuration:
+```json
+{
+  "facebook": {
+    "title": "Mystery of the Mariana Trench",
+    "caption": "Mystery of the Mariana Trench 🌊 Defying the rules of biology!\n\n#deepsea #oceanlife #nature #reels",
+    "hashtags": ["deepsea", "oceanlife", "nature", "reels"],
+    "publish_mode": "publish"
+  }
+}
+```
+If `facebook.caption` is omitted, the engine automatically formats the caption by combining `title` + `description` + `#hashtags` from the storyboard. Pre-flight screening is performed by TypeSafe Jev before submission.
