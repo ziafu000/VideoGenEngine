@@ -13,17 +13,33 @@
 
 ---
 
-## 🌟 Why VideoGen?
+## 🎬 Why VideoGen? — The $20 AI Video Revolution
 
-### 🚀 The Cost-Effective Alternative to Claude + Higgsfield
-Building automated AI video pipelines traditionally relies on an expensive, fragmented stack: combining premium LLM subscriptions (like Claude Pro / API) with specialized video generation platforms (like Higgsfield) quickly escalates to hundreds of dollars per month in recurring fees and credit top-ups, while still leaving you with manual, brittle stitching.
+<p align="center">
+  <a href="promo/why_videogen/why_videogen_1080p.mp4">
+    <img src="promo/why_videogen/preview.gif" alt="Why VideoGen Explainer Animation" width="100%" style="border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.5);" />
+  </a>
+  <br>
+  <em>🎬 <strong>Watch Full 1080p Animated Explainer:</strong> <a href="promo/why_videogen/why_videogen_1080p.mp4"><code>promo/why_videogen/why_videogen_1080p.mp4</code></a> (1920x1080 @ 30fps) — Rendered autonomously with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>. Composition source files live under <a href="promo/why_videogen/"><code>promo/why_videogen/</code></a>.</em>
+</p>
 
-**VideoGen Engine v2.0** provides a smarter, unified, and drastically cheaper alternative:
+### 💡 The Cost-Effective Alternative to Claude + Higgsfield
+Building automated AI video pipelines traditionally relies on an expensive, fragmented stack: combining premium LLM subscriptions (like Claude Pro / API) with specialized video generation platforms (like Higgsfield) quickly escalates to **$150+ per month** in recurring fees and credit top-ups, while still leaving you with manual, brittle stitching.
+
+| Feature / Metric | The Fragmented Traditional Stack | VideoGen Autonomous Engine |
+| :--- | :--- | :--- |
+| **Monthly Cost** | **$150+ / month** (Claude Pro + Higgsfield credits) | **$20 / month** (Your existing Google AI plan) |
+| **Agent Intelligence** | Claude rate limits every 5 hours | **Antigravity** (Gemini 3 Pro / 3.8 Flash, unmetered) |
+| **Video Capacity** | ~10–20 clips before credit depletion | **>3,500 Video Credits** on Google Flow monthly |
+| **Video Resolution** | 720p base web downloads | **1080p Cloud Super-Resolution** (with 70ms Jev fallback) |
+| **Character Consistency**| Prompt guesswork & face drifts | **`@Character` Asset Chips** locked via Chrome CDP |
+| **Voice & Subtitles** | Clashing AI dialogue & manual subtitle burn | **ElevenLabs Voice + Cinema Dual-Zone ASS Subtitles** |
+| **Automation** | Hours of manual clicking & Premiere assembling | **1-Command CLI Orchestration** (`./videogen run`) |
 
 * **The Single Google AI Pro Subscription Advantage:** With just **one** standard Google AI Pro subscription (~$20/month), you solve both halves of the production pipeline:
-  1. **Agent Intelligence:** Access to premier frontier models (Gemini / Antigravity) to drive your autonomous coding and directing agent.
+  1. **Agent Intelligence:** Access to premier frontier models (Gemini 3 Pro / Antigravity) to drive your autonomous coding and directing agent.
   2. **Cinema-Grade Video Credits:** Massive credit pools on Google Flow powered by **Omni 1.1 Flash** — delivering exceptional temporal consistency, 3D character asset chips (`@Character`), native lip-sync, and cinematic rendering without per-second API surcharges.
-* **Radical Cost Reduction Without Sacrificing Quality:** Outperforms or matches commercial Claude + Higgsfield outputs in visual fidelity, character consistency, and storytelling pacing at a fraction of the cost.
+* **Radical Cost Reduction Without Sacrificing Quality:** Outperforms commercial Claude + Higgsfield outputs in visual fidelity, character consistency, and storytelling pacing at **10x lower cost**.
 * **Token-Efficient Agent Architecture:** Specially engineered to protect your LLM context window. Instead of forcing the AI agent to write massive ephemeral scripts, guess video editing parameters, or burn thousands of prompt tokens per scene, the engine provides pre-compiled, battle-tested modular CLI scripts (`./videogen`). The agent acts strictly as an executive director calling deterministic commands, keeping token consumption near zero.
 
 ---

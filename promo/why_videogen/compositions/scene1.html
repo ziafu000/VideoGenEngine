@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          padding: 60px 100px 70px 100px;
+          color: #f1f5f9;
+          font-family: 'Inter', system-ui, sans-serif;
+          box-sizing: border-box;
+        }
+
+        .scene-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          margin-bottom: 40px;
+        }
+
+        .badge-danger {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 18px;
+          border-radius: 9999px;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+          background: rgba(239, 68, 68, 0.16);
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          color: #f87171;
+        }
+
+        .scene-title {
+          font-size: 52px;
+          font-weight: 800;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+          color: #ffffff;
+        }
+        .highlight-red { color: #f87171; }
+
+        .scene-subtitle {
+          font-size: 24px;
+          font-weight: 500;
+          color: #94a3b8;
+          margin-top: 10px;
+          letter-spacing: -0.01em;
+        }
+
+        .s1-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 40px;
+          flex: 1;
+          align-items: center;
+        }
+
+        .s1-modals-col {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        .alert-card {
+          background: rgba(239, 68, 68, 0.08);
+          border: 1.5px solid rgba(239, 68, 68, 0.35);
+          border-radius: 20px;
+          padding: 28px 32px;
+          display: flex;
+          gap: 20px;
+          align-items: center;
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+        }
+        .alert-icon-box {
+          width: 64px;
+          height: 64px;
+          border-radius: 16px;
+          background: rgba(239, 68, 68, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .alert-content h4 {
+          font-size: 22px;
+          font-weight: 700;
+          color: #fca5a5;
+          margin-bottom: 6px;
+        }
+        .alert-content p {
+          font-size: 16px;
+          color: #cbd5e1;
+          line-height: 1.4;
+        }
+
+        .s1-cost-col {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          border-radius: 24px;
+          padding: 44px;
+          position: relative;
+          overflow: hidden;
+        }
+        .wallet-visual {
+          width: 90px;
+          height: 90px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 16px;
+          filter: drop-shadow(0 10px 25px rgba(239, 68, 68, 0.4));
+        }
+        .cost-label {
+          font-size: 16px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.15em;
+          color: #94a3b8;
+          margin-bottom: 8px;
+        }
+        .cost-ticker {
+          font-size: 96px;
+          font-weight: 900;
+          letter-spacing: -0.04em;
+          color: #ef4444;
+          text-shadow: 0 0 30px rgba(239, 68, 68, 0.6);
+          margin-bottom: 12px;
+          line-height: 1;
+        }
+        .cost-drain-tag {
+          font-size: 19px;
+          font-weight: 600;
+          color: #fca5a5;
+          background: rgba(239, 68, 68, 0.15);
+          padding: 8px 24px;
+          border-radius: 9999px;
+          border: 1px solid rgba(239, 68, 68, 0.35);
+        }
+      </style>
+
+      <div id="root" data-composition-id="scene1" data-width="1920" data-height="1080">
+        <div id="s1-header" class="scene-header">
+          <div class="badge-danger">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            The Expensive AI Trap
+          </div>
+          <h1 class="scene-title">AI Video Creation <span class="highlight-red">Shouldn't Drain</span> Your Wallet</h1>
+          <p class="scene-subtitle">Fragile workflows, restrictive rate limits, and runaway monthly credit bills.</p>
+        </div>
+
+        <div class="s1-grid">
+          <div class="s1-modals-col">
+            <div id="s1-card1" class="alert-card">
+              <div class="alert-icon-box">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+              </div>
+              <div class="alert-content">
+                <h4>Claude Rate Limit Reached</h4>
+                <p>5-hour usage limit reached. Your video storyboard generation is paused until 4:12 PM.</p>
+              </div>
+            </div>
+
+            <div id="s1-card2" class="alert-card">
+              <div class="alert-icon-box">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="7" width="16" height="10" rx="2" ry="2"></rect>
+                  <line x1="22" y1="11" x2="22" y2="13"></line>
+                  <line x1="6" y1="10" x2="6" y2="14" stroke="#ef4444" stroke-width="3"></line>
+                </svg>
+              </div>
+              <div class="alert-content">
+                <h4>Higgsfield Credits Depleted</h4>
+                <p>Balance: 0 / 1,000 video credits. Top up $50 to generate 3 more 5-second video clips.</p>
+              </div>
+            </div>
+          </div>
+
+          <div id="s1-cost-card" class="s1-cost-col">
+            <div id="wallet-icon" class="wallet-visual">
+              <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"></path>
+                <path d="M3 5v14a2 2 0 0 0 2 2h16v-5"></path>
+                <path d="M18 12a2 2 0 0 0 0 4h4v-4Z"></path>
+                <circle cx="18" cy="14" r="1" fill="#ef4444"></circle>
+              </svg>
+            </div>
+            <div class="cost-label">Monthly Creator Drain</div>
+            <div id="cost-ticker" class="cost-ticker">$0</div>
+            <div class="cost-drain-tag">Per Month • Manual Clicking • 720p Limits</div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const tl = gsap.timeline({ paused: true });
+
+        tl.fromTo("#s1-header", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 0.1);
+        tl.fromTo("#s1-card1", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power2.out" }, 0.8);
+        tl.fromTo("#s1-card2", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power2.out" }, 2.0);
+        tl.fromTo("#s1-cost-card", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.7, ease: "back.out(1.5)" }, 2.8);
+        tl.fromTo("#wallet-icon", { y: -15, rotation: -8 }, { y: 15, rotation: 8, repeat: 4, yoyo: true, duration: 0.6, ease: "sine.inOut" }, 3.0);
+
+        const tickerObj = { val: 0 };
+        tl.to(tickerObj, {
+          val: 150,
+          duration: 1.8,
+          ease: "power2.inOut",
+          onUpdate: () => {
+            const el = document.getElementById("cost-ticker");
+            if (el) el.textContent = "$" + Math.round(tickerObj.val) + "+";
+          }
+        }, 3.4);
+
+        tl.to("#root", { opacity: 0, y: -20, duration: 0.5, ease: "power2.in" }, 8.9);
+
+        window.__timelines["scene1"] = tl;
+        tl.seek(0);
+      </script>
+    </template>
+  </body>
+</html>
