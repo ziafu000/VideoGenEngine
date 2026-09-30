@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync, execFileSync } = require('child_process');
 const config = require('./config');
 
@@ -23,13 +24,29 @@ async function compositeVideo({
   subtitles_path,
   outputVideoPath,
   voiceVolume = 1.0,
-  ambientVolume = 0.30,
+  ambientVolume = 0.25,
+  bgmPath = null,
+  bgmVolume = 0.18,
   delays = [],
   aspectRatio = '16:9',
   burnSubtitles = true
 }) {
   const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+
+  // 0. MD5 duplicate check across audio files (Voice Doubling Prevention)
+  const seenAudioHashes = new Map();
+  for (let i = 0; i < audioFiles.length; i++) {
+    const aFile = audioFiles[i];
+    if (aFile && fs.existsSync(aFile)) {
+      const hash = crypto.createHash('md5').update(fs.readFileSync(aFile)).digest('hex');
+      if (seenAudioHashes.has(hash)) {
+        const prevIdx = seenAudioHashes.get(hash);
+        throw new Error(`PHÁT HIỆN LỖI LẶP VOICE (Voice Doubling): Phân cảnh ${i + 1} (${path.basename(aFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${hash}. Dừng quy trình xuất master.`);
+      }
+      seenAudioHashes.set(hash, i);
+    }
+  }
 
   const activeSubPath = subtitles_path !== undefined ? subtitles_path : assSubtitlePath;
   const effectiveBurnSubtitles = Boolean(burnSubtitles && activeSubPath && fs.existsSync(activeSubPath));
@@ -112,15 +129,30 @@ async function compositeVideo({
   const subFilter = shouldBurnSubtitles ? `,subtitles='${winAssSubtitlePath}'` : '';
   const videoFilter = `${scaleFilter}${subFilter}`;
 
+  // Resolve BGM (Background Music)
+  const defaultBgm = path.join(config.PROJECT_DIR, 'assets', 'bgm.mp3');
+  const effectiveBgm = (bgmPath && fs.existsSync(bgmPath)) ? bgmPath : (fs.existsSync(defaultBgm) ? defaultBgm : null);
+  const winBgm = effectiveBgm ? config.toWinPath(effectiveBgm) : null;
+  const rawDur = getDuration(rawMaster);
+  const fadeOutStart = Math.max(0, rawDur - 2.0).toFixed(2);
+
   let filterStr = '';
   let cmd = '';
 
-  if (hasVoiceTrack) {
-    console.log(`    [-] Hòa âm đa tầng: Dải âm gốc Flow (100% SFX & Ambiance) + Voiceover ElevenLabs (100% Lời thoại Studio)...`);
-    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=1.0[a_bg];[1:a]volume=${voiceVolume}[a_voice];[a_bg][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
+  if (hasVoiceTrack && effectiveBgm) {
+    console.log(`    [-] Hòa âm đa tầng 3 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover ElevenLabs (${(voiceVolume * 100).toFixed(0)}% Lời thoại) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền bí ẩn)...`);
+    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${voiceVolume}[a_voice];[2:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm];[a_sfx][a_voice][a_bgm]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -ss 8.5 -stream_loop -1 -i ${JSON.stringify(winBgm)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
+  } else if (hasVoiceTrack && !effectiveBgm) {
+    console.log(`    [-] Hòa âm đa tầng 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover ElevenLabs (${(voiceVolume * 100).toFixed(0)}% Lời thoại)...`);
+    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${voiceVolume}[a_voice];[a_sfx][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
+  } else if (!hasVoiceTrack && effectiveBgm) {
+    console.log(`    [-] Hòa âm 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
+    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm];[a_sfx][a_bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
+    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -ss 8.5 -stream_loop -1 -i ${JSON.stringify(winBgm)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
   } else {
-    // 100% pure Flow SFX audio (No dialogue track)
+    // 100% pure Flow SFX audio (No dialogue track, no BGM)
     console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
     filterStr = `[0:v]${videoFilter}[v];[0:a]volume=1.0[a]`;
     cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;

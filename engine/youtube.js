@@ -8,12 +8,13 @@ async function uploadVideo({
   title,
   description = '',
   visibility = 'unlisted',
-  thumbnail = null
+  thumbnail = null,
+  schedule = null
 }) {
   console.log(`=== YOUTUBE STUDIO UPLOAD AUTOMATION ===`);
   console.log(`Video: ${videoPath}`);
   console.log(`Title: ${title}`);
-  console.log(`Visibility: ${visibility}`);
+  console.log(`Visibility: ${schedule ? `SCHEDULED (${schedule})` : visibility}`);
 
   // Pre-flight title/description screening with TypeSafe Jev if available
   try {
@@ -29,6 +30,9 @@ async function uploadVideo({
   const args = ['upload', '--video', videoPath, '--title', title, '--description', description, '--visibility', visibility];
   if (thumbnail) {
     args.push('--thumbnail', thumbnail);
+  }
+  if (schedule) {
+    args.push('--schedule', schedule);
   }
 
   return new Promise((resolve, reject) => {

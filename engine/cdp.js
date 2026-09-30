@@ -1,19 +1,28 @@
+const EventEmitter = require('events');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const config = require('./config');
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-class CDPClient {
+class CDPClient extends EventEmitter {
   constructor(wsUrl) {
+    super();
     this.wsUrl = wsUrl;
     this.ws = new WebSocket(wsUrl);
     this.msgId = 1;
     this.pending = new Map();
 
     this.ready = new Promise((resolve, reject) => {
-      this.ws.onopen = resolve;
+      this.ws.onopen = async () => {
+        try {
+          await this.enableDialogHandling().catch(() => {});
+        } catch {}
+        resolve();
+      };
       this.ws.onerror = (err) => {
         for (const [id, p] of this.pending.entries()) {
           p.reject(new Error(`WebSocket error: ${err.message || err}`));
@@ -39,6 +48,12 @@ class CDPClient {
             reject(new Error(`CDP Error (${data.error.code}): ${data.error.message}`));
           } else {
             resolve(data.result);
+          }
+        } else if (data.method) {
+          this.emit(data.method, data.params);
+          if (data.method === 'Page.javascriptDialogOpening') {
+            console.log(`[CDP] Auto-accepting JavaScript dialog: "${data.params?.message || ''}"`);
+            this.send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
           }
         }
       } catch (err) {
@@ -85,7 +100,64 @@ class CDPClient {
       returnByValue,
       awaitPromise: true
     });
+    if (res && res.exceptionDetails) {
+      throw new Error(res.exceptionDetails.exception?.description || 'Runtime.evaluate exception');
+    }
     return res && res.result ? res.result.value : null;
+  }
+
+  async eval(expr, returnByValue = true) {
+    return this.evaluate(expr, returnByValue);
+  }
+
+  async enableDialogHandling() {
+    try {
+      await this.send('Page.enable');
+      await this.evaluate('window.onbeforeunload = null;');
+    } catch {}
+  }
+
+  async captureScreenshot(filePath = null) {
+    try {
+      await this.send('Page.enable').catch(() => {});
+      const res = await this.send('Page.captureScreenshot', { format: 'png' });
+      if (res && res.data) {
+        const buf = Buffer.from(res.data, 'base64');
+        if (filePath) {
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, buf);
+          console.log(`[CDP Screenshot] Đã chụp ảnh màn hình lưu tại: ${filePath}`);
+        }
+        return buf;
+      }
+    } catch (e) {
+      console.warn('[CDP Screenshot Error]', e.message);
+    }
+    return null;
+  }
+
+  async dismissModals() {
+    try {
+      return await this.evaluate(`(() => {
+        const clicked = [];
+        const leaveKeywords = ['Leave', 'Rời khỏi', 'Discard', 'Hủy', 'Xác nhận', 'Thoát', 'Got it', 'Đã hiểu', 'Allow', 'Cho phép', 'Close', 'Đóng', 'Not now', 'Để sau'];
+        const btns = Array.from(document.querySelectorAll('button, div[role="button"], [aria-label]'));
+        for (const b of btns) {
+          const text = (b.innerText || b.getAttribute('aria-label') || '').trim();
+          if (leaveKeywords.some(kw => text === kw || text.startsWith(kw))) {
+            const isModal = b.closest('[role="dialog"], [role="alertdialog"], .modal, .TUXModal, ytcp-dialog, tp-yt-paper-dialog');
+            if (isModal) {
+              b.click();
+              clicked.push(text);
+            }
+          }
+        }
+        return clicked;
+      })()`);
+    } catch {
+      return [];
+    }
   }
 
   async clickMouse(x, y) {

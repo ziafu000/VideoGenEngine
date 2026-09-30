@@ -54,6 +54,8 @@ async function uploadSingleShortToTikTok({
 
   const cdp = await getClientForPage('tiktok');
   try {
+    await cdp.enableDialogHandling();
+    await cdp.dismissModals();
     await cdp.send('DOM.enable');
 
     // 1. Dọn dẹp cache draft IndexedDB và chuyển hướng về Upload sạch
@@ -403,6 +405,11 @@ async function uploadSingleShortToTikTok({
     }
 
     return { success: true, video: winVideo };
+  } catch (err) {
+    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `tt_error_${Date.now()}.png`);
+    await cdp.captureScreenshot(errorScreenshot).catch(() => {});
+    console.error(`[!] Lỗi TikTok upload: ${err.message}. Đã chụp màn hình chẩn đoán tại: ${errorScreenshot}`);
+    throw err;
   } finally {
     cdp.close();
   }

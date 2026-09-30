@@ -289,10 +289,14 @@ async function uploadReel({
   await client.ready;
 
   try {
+    await client.enableDialogHandling();
+    await client.dismissModals();
+
     // Luôn điều hướng tới Reels Composer sạch sẽ cho mỗi lần upload
     console.log(`[-] Điều hướng tới Reels Composer: ${DEFAULT_COMPOSER_URL}...`);
     await client.send('Page.navigate', { url: DEFAULT_COMPOSER_URL });
     await sleep(5000);
+    await client.dismissModals();
 
     // Kiểm tra đăng nhập
     const isLogin = await client.evaluate(`(() => {
@@ -714,6 +718,9 @@ async function uploadReel({
 
     return result;
   } catch (err) {
+    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `fb_error_${Date.now()}.png`);
+    await client.captureScreenshot(errorScreenshot).catch(() => {});
+    console.error(`[!] Lỗi Facebook Reels upload: ${err.message}. Đã chụp màn hình chẩn đoán tại: ${errorScreenshot}`);
     client.close();
     throw err;
   }

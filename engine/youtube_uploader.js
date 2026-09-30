@@ -2,18 +2,19 @@
 /**
  * engine/youtube_uploader.js: Automated YouTube Studio Video Uploader via Chrome DevTools Protocol.
  *
- * Supports uploading unlisted/private/public videos directly via YouTube Creator Studio UI
+ * Supports uploading and scheduling videos directly via YouTube Creator Studio UI
  * without consuming YouTube Data API v3 quota (0 API cost).
  *
  * Usage:
  *   node engine/youtube_uploader.js status
- *   node engine/youtube_uploader.js upload --video <path> [--title <title>] [--description <desc>] [--visibility <unlisted|private|public>] [--thumbnail <path>]
+ *   node engine/youtube_uploader.js upload --video <path> [--title <title>] [--description <desc>] [--visibility <unlisted|private|public|scheduled>] [--thumbnail <path>] [--schedule "DD/MM/YYYY HH:mm"]
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
+const { CDPClient, sleep } = require('./cdp');
 const jev = require('./jev');
 
 const PROXY_BASE = config.CDP_URL;
@@ -59,78 +60,63 @@ function postPut(url, method = 'POST') {
   });
 }
 
-class CDPClient {
-  constructor(wsUrl) {
-    this.wsUrl = wsUrl;
-    this.ws = null;
-    this.msgId = 0;
-    this.pending = new Map();
-  }
-
-  async connect() {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.wsUrl);
-      this.ws.onopen = () => resolve();
-      this.ws.onerror = (err) => reject(err);
-      this.ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.id && this.pending.has(msg.id)) {
-            const { resolve, reject } = this.pending.get(msg.id);
-            this.pending.delete(msg.id);
-            if (msg.error) {
-              reject(new Error(msg.error.message || JSON.stringify(msg.error)));
-            } else {
-              resolve(msg.result);
-            }
-          }
-        } catch {}
-      };
-    });
-  }
-
-  send(method, params = {}) {
-    return new Promise((resolve, reject) => {
-      const id = ++this.msgId;
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
-    });
-  }
-
-  async eval(expr) {
-    const res = await this.send('Runtime.evaluate', {
-      expression: expr,
-      returnByValue: true,
-      awaitPromise: true
-    });
-    if (res.exceptionDetails) {
-      throw new Error(res.exceptionDetails.exception?.description || 'Runtime.evaluate exception');
-    }
-    return res.result ? res.result.value : undefined;
-  }
-
-  close() {
-    if (this.ws) {
-      this.ws.close();
-    }
-  }
-}
-
 async function getStudioTab() {
   const tabs = await fetchJson(`${PROXY_BASE}/json/list`);
   let studioTab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('studio.youtube.com'));
   if (!studioTab) {
     studioTab = await postPut(`${PROXY_BASE}/json/new?${STUDIO_URL}`, 'PUT');
-    await new Promise(r => setTimeout(r, 4000));
+    await sleep(4000);
   }
   return studioTab;
+}
+
+function parseScheduleTime(schedule) {
+  if (!schedule) return null;
+  const str = String(schedule).trim();
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10);
+    const year = parseInt(dmyMatch[3], 10);
+    const hour = dmyMatch[4].padStart(2, '0');
+    const min = dmyMatch[5].padStart(2, '0');
+    return {
+      day,
+      month,
+      year,
+      hour,
+      min,
+      time: `${hour}:${min}`,
+      formattedDate: `${day} thg ${month}, ${year}`,
+      altDate: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+    };
+  }
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[T\s]+(\d{1,2}):(\d{2})/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10);
+    const day = parseInt(ymdMatch[3], 10);
+    const hour = ymdMatch[4].padStart(2, '0');
+    const min = ymdMatch[5].padStart(2, '0');
+    return {
+      day,
+      month,
+      year,
+      hour,
+      min,
+      time: `${hour}:${min}`,
+      formattedDate: `${day} thg ${month}, ${year}`,
+      altDate: `${String(day).padStart(2, '0')}/${String(month).padStart(2, '0')}/${year}`
+    };
+  }
+  return null;
 }
 
 async function cmdStatus() {
   try {
     const studioTab = await getStudioTab();
     const client = new CDPClient(studioTab.webSocketDebuggerUrl);
-    await client.connect();
+    await client.ready;
 
     const status = await client.eval(`(() => {
       const url = window.location.href;
@@ -166,7 +152,8 @@ async function cmdUpload(args) {
 
   const title = args.title || path.basename(videoFile, path.extname(videoFile));
   const description = args.description || '';
-  const visibility = (args.visibility || 'unlisted').toLowerCase();
+  const schedData = parseScheduleTime(args.schedule);
+  const visibility = schedData ? 'scheduled' : ((args.visibility || 'unlisted').toLowerCase());
   const thumbnail = args.thumbnail && fs.existsSync(args.thumbnail) ? args.thumbnail : null;
 
   const winVideoPath = config.toWinPath(videoFile);
@@ -175,13 +162,16 @@ async function cmdUpload(args) {
   console.error(`[-] Chuẩn bị upload video lên YouTube Studio...`);
   console.error(`  - Video: ${videoFile} (Windows: ${winVideoPath})`);
   console.error(`  - Tiêu đề: ${title}`);
-  console.error(`  - Chế độ hiển thị: ${visibility.toUpperCase()}`);
+  console.error(`  - Chế độ: ${schedData ? `LÊN LỊCH (${schedData.formattedDate} lúc ${schedData.time})` : visibility.toUpperCase()}`);
 
   const studioTab = await getStudioTab();
   const client = new CDPClient(studioTab.webSocketDebuggerUrl);
-  await client.connect();
+  await client.ready;
 
   try {
+    await client.enableDialogHandling();
+    await client.dismissModals();
+
     // 1. Kiểm tra trạng thái đăng nhập
     const isLogin = await client.eval(`(() => {
       return !window.location.href.includes('accounts.google.com') && !window.location.href.includes('signin');
@@ -195,7 +185,8 @@ async function cmdUpload(args) {
     console.error(`[-] Chuẩn bị giao diện Studio sạch...`);
     const studioUrl = config.YOUTUBE_STUDIO_URL || 'https://studio.youtube.com';
     await client.send('Page.navigate', { url: studioUrl });
-    await new Promise(r => setTimeout(r, 4000));
+    await sleep(4000);
+    await client.dismissModals();
 
     // 2. Kích hoạt menu Tạo / Tải video lên
     console.error(`[-] Mở hộp thoại tải video lên trên YouTube Studio...`);
@@ -214,7 +205,7 @@ async function cmdUpload(args) {
       return 'NO_BTN';
     })()`);
 
-    await new Promise(r => setTimeout(r, 1500));
+    await sleep(1500);
 
     if (openedDialog === 'CREATE_CLICKED') {
       await client.eval(`(() => {
@@ -222,7 +213,7 @@ async function cmdUpload(args) {
         const upItem = items.find(i => i.innerText && (i.innerText.includes('Tải video lên') || i.innerText.includes('Upload videos')));
         if (upItem) upItem.click();
       })()`);
-      await new Promise(r => setTimeout(r, 2000));
+      await sleep(2000);
     }
 
     // 3. Tìm phần tử input file và nạp file video qua CDP DOM.setFileInputFiles
@@ -230,7 +221,7 @@ async function cmdUpload(args) {
     await client.send('DOM.enable');
 
     let nodeId = 0;
-    for (let attempt = 0; attempt < 15; attempt++) {
+    for (let attempt = 0; attempt < 20; attempt++) {
       const evalRes = await client.send('Runtime.evaluate', {
         expression: 'document.querySelector("input[type=\'file\']")'
       });
@@ -255,7 +246,7 @@ async function cmdUpload(args) {
         break;
       }
 
-      await new Promise(r => setTimeout(r, 1000));
+      await sleep(1000);
     }
 
     if (!nodeId) {
@@ -269,10 +260,10 @@ async function cmdUpload(args) {
 
     console.error(`✓ Đã nạp file video thành công! Chờ YouTube xử lý metadata dialog...`);
 
-    // 4. Chờ metadata editor xuất hiện (tối đa 30s)
+    // 4. Chờ metadata editor xuất hiện (tối đa 35s)
     let editorReady = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
+    for (let i = 0; i < 35; i++) {
+      await sleep(1000);
       editorReady = await client.eval(`(() => {
         const titleBox = document.querySelector('#textbox[aria-label*="Tiêu đề"], #textbox[aria-label*="Title"], ytcp-social-suggestions-textbox#title-textarea');
         return !!titleBox;
@@ -328,7 +319,7 @@ async function cmdUpload(args) {
       }
     }
 
-    await new Promise(r => setTimeout(r, 1000));
+    await sleep(1000);
 
     // 7. Vượt qua các bước: Bước 1 (Chi tiết) -> Bước 2 (Thành phần) -> Bước 3 (Kiểm tra) -> Bước 4 (Hiển thị)
     console.error(`[-] Điều hướng qua các bước kiểm tra (Checks) sang bước Hiển thị...`);
@@ -337,20 +328,110 @@ async function cmdUpload(args) {
         const nextBtn = document.querySelector('#next-button, button#next-button, ytcp-button#next-button');
         if (nextBtn) nextBtn.click();
       })()`);
-      await new Promise(r => setTimeout(r, 1500));
+      await sleep(1500);
     }
 
-    // 8. Chọn chế độ hiển thị: UNLISTED / PRIVATE / PUBLIC
-    console.error(`[-] Thiết lập chế độ hiển thị: ${visibility.toUpperCase()}...`);
-    await client.eval(`((vis) => {
-      const radioName = vis === 'public' ? 'PUBLIC' : (vis === 'private' ? 'PRIVATE' : 'UNLISTED');
-      const radio = document.querySelector(\`tp-yt-paper-radio-button[name="\${radioName}"]\`);
-      if (radio) {
-        radio.click();
-      }
-    })(${JSON.stringify(visibility)})`);
+    // 8. Chọn chế độ hiển thị hoặc Lên lịch
+    if (schedData) {
+      console.error(`[-] Cấu hình LÊN LỊCH: ${schedData.formattedDate} lúc ${schedData.time}...`);
+      // Kích hoạt radio Lên lịch
+      const scheduleOpened = await client.eval(`(() => {
+        const schedRadio = document.querySelector('#schedule-radio-button #radioContainer, #schedule-radio-button, tp-yt-paper-radio-button[name="SCHEDULE"], #second-container-checkbox');
+        if (schedRadio) {
+          schedRadio.click();
+          return true;
+        }
+        const allRadios = Array.from(document.querySelectorAll('tp-yt-paper-radio-button'));
+        const match = allRadios.find(r => (r.innerText || '').includes('Lên lịch') || (r.innerText || '').includes('Schedule'));
+        if (match) {
+          match.click();
+          return true;
+        }
+        return false;
+      })()`);
 
-    await new Promise(r => setTimeout(r, 1000));
+      if (!scheduleOpened) {
+        throw new Error('Không tìm thấy nút tùy chọn Lên lịch (Schedule) trên YouTube Studio');
+      }
+
+      await sleep(1500);
+
+      // Chờ ytcp-datetime-picker xuất hiện
+      let pickerFound = false;
+      for (let pAttempt = 0; pAttempt < 15; pAttempt++) {
+        pickerFound = await client.eval(`(() => !!document.querySelector('ytcp-datetime-picker'))()`);
+        if (pickerFound) break;
+        await sleep(800);
+      }
+
+      if (!pickerFound) {
+        throw new Error('ytcp-datetime-picker không xuất hiện sau khi chọn Lên lịch');
+      }
+
+      // Điền Date
+      console.error(`    [-] Điền ngày: ${schedData.formattedDate}...`);
+      await client.eval(`((dFormatted, dAlt, dDay) => {
+        const picker = document.querySelector('ytcp-datetime-picker');
+        if (!picker) return false;
+
+        const dateTrigger = picker.querySelector('#datepicker-trigger') || picker.querySelector('ytcp-dropdown-trigger');
+        if (dateTrigger) dateTrigger.click();
+
+        const dateInput = picker.querySelector('#datepicker-trigger input') || picker.querySelector('input');
+        if (dateInput) {
+          dateInput.focus();
+          dateInput.value = dFormatted;
+          dateInput.dispatchEvent(new Event('input', { bubbles: true }));
+          dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+          return 'INPUT_VALUE_SET';
+        }
+
+        // Click day in opened calendar dialog
+        const dayEls = Array.from(document.querySelectorAll('tp-yt-paper-dialog .day, ytcp-date-picker .day, [role="gridcell"]'));
+        const targetDayEl = dayEls.find(d => (d.innerText || '').trim() === String(dDay));
+        if (targetDayEl) {
+          targetDayEl.click();
+          return 'DAY_CLICKED';
+        }
+
+        return 'TRIGGER_CLICKED';
+      })(${JSON.stringify(schedData.formattedDate)}, ${JSON.stringify(schedData.altDate)}, ${schedData.day})`);
+
+      await sleep(1000);
+
+      // Điền Time
+      console.error(`    [-] Điền giờ: ${schedData.time}...`);
+      await client.eval(`((tStr) => {
+        const picker = document.querySelector('ytcp-datetime-picker');
+        if (!picker) return false;
+
+        const timeInput = picker.querySelector('.scheduled-info-container input, #time-of-day-input input, input.ytcp-datetime-picker') ||
+          Array.from(picker.querySelectorAll('input')).find(i => /^[0-9]{1,2}:[0-9]{2}/.test(i.value || ''));
+
+        if (timeInput) {
+          timeInput.focus();
+          timeInput.value = tStr;
+          timeInput.dispatchEvent(new Event('input', { bubbles: true }));
+          timeInput.dispatchEvent(new Event('change', { bubbles: true }));
+          timeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+          return true;
+        }
+        return false;
+      })(${JSON.stringify(schedData.time)})`);
+
+      await sleep(1500);
+
+    } else {
+      console.error(`[-] Thiết lập chế độ hiển thị: ${visibility.toUpperCase()}...`);
+      await client.eval(`((vis) => {
+        const radioName = vis === 'public' ? 'PUBLIC' : (vis === 'private' ? 'PRIVATE' : 'UNLISTED');
+        const radio = document.querySelector(\`tp-yt-paper-radio-button[name="\${radioName}"]\`);
+        if (radio) {
+          radio.click();
+        }
+      })(${JSON.stringify(visibility)})`);
+      await sleep(1000);
+    }
 
     // 9. Lấy đường link YouTube xem trước
     const videoUrl = await client.eval(`(() => {
@@ -359,7 +440,7 @@ async function cmdUpload(args) {
     })()`);
 
     console.error(`[-] Lưu cài đặt xuất bản video...`);
-    // 10. Bấm nút LƯU / XUẤT BẢN (#done-button)
+    // 10. Bấm nút LƯU / XUẤT BẢN / LÊN LỊCH (#done-button)
     await client.eval(`(() => {
       const doneBtn = document.querySelector('#done-button, button#done-button, ytcp-button#done-button');
       if (doneBtn) doneBtn.click();
@@ -367,8 +448,8 @@ async function cmdUpload(args) {
 
     // 11. Chờ xác nhận và đóng dialog
     let finalUrl = videoUrl;
-    for (let w = 0; w < 10; w++) {
-      await new Promise(r => setTimeout(r, 1000));
+    for (let w = 0; w < 12; w++) {
+      await sleep(1000);
       const confirmedUrl = await client.eval(`(() => {
         const link = document.querySelector('a[href*="youtu.be"], .share-url a');
         const closeBtn = document.querySelector('#close-button, ytcp-button#close-button');
@@ -404,18 +485,20 @@ async function cmdUpload(args) {
       video_id: videoId,
       video_url: finalUrl,
       title: title,
-      visibility: visibility,
+      visibility: schedData ? `scheduled (${schedData.formattedDate} ${schedData.time})` : visibility,
       uploaded_at: new Date().toISOString()
     };
 
     console.log(JSON.stringify(outputResult, null, 2));
-    console.error(`\n✓ ĐÃ UPLOAD THÀNH CÔNG LÊN YOUTUBE!`);
+    console.error(`\n✓ ĐÃ UPLOAD / LÊN LỊCH THÀNH CÔNG LÊN YOUTUBE!`);
     console.error(`  -> Link: ${finalUrl || 'Đang cập nhật'}`);
-    console.error(`  -> Trạng thái: ${visibility.toUpperCase()}\n`);
+    console.error(`  -> Chế độ: ${schedData ? `LÊN LỊCH (${schedData.formattedDate} ${schedData.time})` : visibility.toUpperCase()}\n`);
 
   } catch (err) {
+    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `yt_error_${Date.now()}.png`);
+    await client.captureScreenshot(errorScreenshot).catch(() => {});
     client.close();
-    console.error(JSON.stringify({ success: false, error: err.message }, null, 2));
+    console.error(JSON.stringify({ success: false, error: err.message, screenshot: errorScreenshot }, null, 2));
     process.exit(1);
   }
 }
@@ -448,7 +531,7 @@ async function main() {
     const parsed = parseArgs(args.slice(1));
     await cmdUpload(parsed);
   } else {
-    console.error('Usage: youtube_uploader.js {status | upload --video <path> [--title <t>] [--description <d>] [--visibility <unlisted|private|public>]}');
+    console.error('Usage: youtube_uploader.js {status | upload --video <path> [--title <t>] [--description <d>] [--visibility <unlisted|private|public>] [--schedule "DD/MM/YYYY HH:mm"]}');
     process.exit(1);
   }
 }
