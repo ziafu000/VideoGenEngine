@@ -1,0 +1,35 @@
+# Creator IP & Local Production Assets (100% Private)
+/assets/
+/storyboards/
+storyboards/
+assets/
+
+# Local private environment config
+.env
+.env.local
+*.env
+
+# Local operational & scratch scripts (Agent / Dev private scripts)
+scripts/
+
+# Media & temporary generated files
+/renders/*
+!/renders/.gitkeep
+/audio/*
+!/audio/.gitkeep
+/output/*
+!/output/.gitkeep
+renders/
+audio/
+output/
+/backup/
+
+# OS, Temp & Logs
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.crdownload
+__pycache__/
+*.pyc
+.treehouse/

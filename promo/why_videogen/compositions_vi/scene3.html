@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          padding: 60px 100px 70px 100px;
+          color: #f1f5f9;
+          font-family: 'Inter', system-ui, sans-serif;
+          box-sizing: border-box;
+        }
+
+        .scene-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          margin-bottom: 36px;
+        }
+
+        .badge-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 18px;
+          border-radius: 9999px;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+          background: rgba(59, 130, 246, 0.18);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+          color: #60a5fa;
+        }
+
+        .scene-title {
+          font-size: 52px;
+          font-weight: 800;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+          color: #ffffff;
+        }
+        .highlight-blue { color: #38bdf8; }
+
+        .scene-subtitle {
+          font-size: 24px;
+          font-weight: 500;
+          color: #94a3b8;
+          margin-top: 10px;
+          letter-spacing: -0.01em;
+        }
+
+        .s3-grid {
+          display: grid;
+          grid-template-columns: 1.15fr 0.85fr;
+          gap: 36px;
+          flex: 1;
+          align-items: center;
+        }
+
+        .terminal-card {
+          background: #0d1117;
+          border: 1.5px solid rgba(59, 130, 246, 0.35);
+          border-radius: 20px;
+          overflow: hidden;
+          box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 30px rgba(59, 130, 246, 0.15);
+        }
+        .terminal-header {
+          background: #161b22;
+          padding: 14px 20px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .term-dot {
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+        }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+        .term-title {
+          margin-left: 12px;
+          font-size: 13px;
+          font-family: monospace;
+          color: #8b949e;
+        }
+        .terminal-body {
+          padding: 24px;
+          font-family: monospace;
+          font-size: 15px;
+          line-height: 1.6;
+        }
+        .term-line-cmd {
+          color: #38bdf8;
+          font-weight: 700;
+          margin-bottom: 14px;
+          font-size: 16px;
+        }
+        .term-prompt {
+          color: #a855f7;
+        }
+        .term-log {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          color: #cbd5e1;
+          margin-bottom: 8px;
+        }
+        .log-tag {
+          color: #10b981;
+          font-weight: 700;
+        }
+
+        .pipeline-col {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .pipe-node {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          border-radius: 16px;
+          padding: 16px 20px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          backdrop-filter: blur(12px);
+        }
+        .node-num {
+          width: 34px;
+          height: 34px;
+          border-radius: 10px;
+          background: rgba(59, 130, 246, 0.25);
+          border: 1px solid rgba(59, 130, 246, 0.45);
+          color: #60a5fa;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 800;
+          font-size: 16px;
+          flex-shrink: 0;
+        }
+        .node-content h5 {
+          font-size: 17px;
+          font-weight: 700;
+          color: #ffffff;
+        }
+        .node-content p {
+          font-size: 13px;
+          color: #94a3b8;
+        }
+      </style>
+
+      <div id="root" data-composition-id="scene3" data-width="1920" data-height="1080">
+        <div id="s3-header" class="scene-header">
+          <div class="badge-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+            Mảnh Ghép Hoàn Hảo
+          </div>
+          <h1 class="scene-title">Khám Phá <span class="highlight-blue">VideoGen</span>: Cỗ Máy CLI Tự Động Hóa</h1>
+          <p class="scene-subtitle">Orchestrator mã nguồn mở kết nối các gói tài khoản trình duyệt sẵn có với 0 đồng phí API.</p>
+        </div>
+
+        <div class="s3-grid">
+          <div id="s3-term" class="terminal-card">
+            <div class="terminal-header">
+              <div class="term-dot dot-red"></div>
+              <div class="term-dot dot-yellow"></div>
+              <div class="term-dot dot-green"></div>
+              <span class="term-title">terminal — videogen engine</span>
+            </div>
+            <div class="terminal-body">
+              <div class="term-line-cmd"><span class="term-prompt">user@linux:~$</span> ./videogen render storyboard.json</div>
+              <div id="s3-log1" class="term-log"><span class="log-tag">[CDP]</span> Khóa định danh nhân vật: @Ashel (Visual Identity Locked)</div>
+              <div id="s3-log2" class="term-log"><span class="log-tag">[FLOW]</span> Render siêu phân giải 1080p Cloud Super-Resolution...</div>
+              <div id="s3-log3" class="term-log"><span class="log-tag">[VOICE]</span> ElevenLabs Brian cân chỉnh: stability=0.42 style=0.18</div>
+              <div id="s3-log4" class="term-log"><span class="log-tag">[MIX]</span> FFmpeg hòa âm phụ đề Dual-Zone ASS + SFX điện ảnh</div>
+              <div id="s3-log5" class="term-log"><span class="log-tag">[XONG]</span> Xuất video hoàn chỉnh: output/final_master_1080p.mp4</div>
+            </div>
+          </div>
+
+          <div class="pipeline-col">
+            <div id="s3-pipe1" class="pipe-node">
+              <div class="node-num">1</div>
+              <div class="node-content">
+                <h5>Storyboard Cấu Trúc</h5>
+                <p>Formula prompt JSON chuẩn & visual chip nhân vật</p>
+              </div>
+            </div>
+            <div id="s3-pipe2" class="pipe-node">
+              <div class="node-num">2</div>
+              <div class="node-content">
+                <h5>Upscale 1080p Đám Mây</h5>
+                <p>Veo 2 & Omni 1.1 Flash qua Chrome CDP Bridge</p>
+              </div>
+            </div>
+            <div id="s3-pipe3" class="pipe-node">
+              <div class="node-num">3</div>
+              <div class="node-content">
+                <h5>Giọng Đọc & Phụ Đề ASS</h5>
+                <p>Thoại ElevenLabs + phụ đề động Dual-Zone</p>
+              </div>
+            </div>
+            <div id="s3-pipe4" class="pipe-node">
+              <div class="node-num">4</div>
+              <div class="node-content">
+                <h5>Hòa Âm Master FFmpeg</h5>
+                <p>Khử voice clashing, xuất bản phẩm điện ảnh</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const tl = gsap.timeline({ paused: true });
+
+        tl.fromTo("#s3-header", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 0.1);
+        tl.fromTo("#s3-term", { opacity: 0, scale: 0.95 }, { opacity: 1, scale: 1, duration: 0.7, ease: "power2.out" }, 0.6);
+
+        tl.fromTo("#s3-pipe1", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.4 }, 1.2);
+        tl.fromTo("#s3-log1", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4 }, 1.4);
+
+        tl.fromTo("#s3-pipe2", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.4 }, 2.5);
+        tl.fromTo("#s3-log2", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4 }, 2.7);
+
+        tl.fromTo("#s3-pipe3", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.4 }, 4.5);
+        tl.fromTo("#s3-log3", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4 }, 4.7);
+
+        tl.fromTo("#s3-pipe4", { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 0.4 }, 6.0);
+        tl.fromTo("#s3-log4", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4 }, 6.2);
+        tl.fromTo("#s3-log5", { opacity: 0, x: 20 }, { opacity: 1, x: 0, duration: 0.4 }, 7.0);
+
+        tl.to("#root", { opacity: 0, y: -20, duration: 0.5, ease: "power2.in" }, 8.4);
+
+        window.__timelines["scene3"] = tl;
+        tl.seek(0);
+      </script>
+    </template>
+  </body>
+</html>
