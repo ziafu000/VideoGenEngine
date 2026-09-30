@@ -334,8 +334,16 @@ async function cmdUpload(args) {
     // 8. Chọn chế độ hiển thị hoặc Lên lịch
     if (schedData) {
       console.error(`[-] Cấu hình LÊN LỊCH: ${schedData.formattedDate} lúc ${schedData.time}...`);
-      // Kích hoạt radio Lên lịch
+      // Kích hoạt accordion/radio Lên lịch
       const scheduleOpened = await client.eval(`(() => {
+        // 1. New YouTube Studio UI: #second-container with expand button
+        const expandBtn = document.querySelector('#second-container-expand-button, #second-container .early-access-header, [tooltip-label*="expand"]');
+        if (expandBtn) {
+          expandBtn.click();
+          return true;
+        }
+
+        // 2. Radio button format
         const schedRadio = document.querySelector('#schedule-radio-button #radioContainer, #schedule-radio-button, tp-yt-paper-radio-button[name="SCHEDULE"], #second-container-checkbox');
         if (schedRadio) {
           schedRadio.click();
@@ -368,57 +376,75 @@ async function cmdUpload(args) {
         throw new Error('ytcp-datetime-picker không xuất hiện sau khi chọn Lên lịch');
       }
 
-      // Điền Date
-      console.error(`    [-] Điền ngày: ${schedData.formattedDate}...`);
-      await client.eval(`((dFormatted, dAlt, dDay) => {
-        const picker = document.querySelector('ytcp-datetime-picker');
-        if (!picker) return false;
+      // Điền Date & Time qua Polymer component model
+      console.error(`    [-] Điền ngày & giờ: ${schedData.year}-${schedData.month}-${schedData.day} ${schedData.time}...`);
+      const setDateRes = await client.eval(`((targetYear, targetMonth, targetDay, targetTime) => {
+        try {
+          const picker = document.querySelector('ytcp-datetime-picker');
+          const datePicker = document.querySelector('ytcp-date-picker');
+          const parent = document.querySelector('ytcp-video-visibility-select');
+          if (!picker) return { ok: false, error: 'no picker' };
 
-        const dateTrigger = picker.querySelector('#datepicker-trigger') || picker.querySelector('ytcp-dropdown-trigger');
-        if (dateTrigger) dateTrigger.click();
+          // 1. Trích xuất target day object từ ytcp-scrollable-calendar nếu có
+          let dateObj = { year: targetYear, month: targetMonth - 1, day: targetDay };
+          const list = document.querySelector('ytcp-scrollable-calendar tp-yt-iron-list');
+          if (list && list.items) {
+            for (const item of list.items) {
+              if (item.weeks) {
+                const found = item.weeks.flat().find(d => d.date && d.date.year === targetYear && d.date.month === (targetMonth - 1) && d.date.day === targetDay);
+                if (found && found.date) {
+                  dateObj = found.date;
+                  break;
+                }
+              }
+            }
+          }
 
-        const dateInput = picker.querySelector('#datepicker-trigger input') || picker.querySelector('input');
-        if (dateInput) {
-          dateInput.focus();
-          dateInput.value = dFormatted;
-          dateInput.dispatchEvent(new Event('input', { bubbles: true }));
-          dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-          return 'INPUT_VALUE_SET';
+          // 2. Dispatch qua datePicker.fire('ytcp-date-picker-selected', dateObj)
+          if (datePicker && typeof datePicker.fire === 'function') {
+            datePicker.fire('ytcp-date-picker-selected', dateObj);
+          } else if (datePicker && typeof datePicker.onDateClicked === 'function') {
+            datePicker.onDateClicked({ detail: dateObj });
+          }
+
+          // 3. Tính toán seconds từ targetTime ("08:00" -> 28800, "13:00" -> 46800)
+          const [hStr, mStr] = (targetTime || '08:00').split(':');
+          const hours = parseInt(hStr, 10) || 0;
+          const mins = parseInt(mStr, 10) || 0;
+          const totalSeconds = hours * 3600 + mins * 60;
+
+          // 4. Set time trên picker model và parent visibility-select
+          if (picker.set) {
+            picker.set('model.selectedTimeOfDayValue', totalSeconds);
+            picker.set('renderData.selectedTimeOfDayString', targetTime);
+          }
+          if (parent && parent.set) {
+            parent.set('model.schedulingDate.selectedTimeOfDayValue', totalSeconds);
+          }
+
+          const paperInput = picker.querySelector('#textbox');
+          if (paperInput) {
+            paperInput.value = targetTime;
+            const inp = paperInput.querySelector('input');
+            if (inp) inp.value = targetTime;
+          }
+
+          if (parent && typeof parent.onScheduledVisibilityChange === 'function') {
+            parent.onScheduledVisibilityChange({ detail: picker.model });
+          }
+
+          return {
+            ok: true,
+            dateString: picker.get ? picker.get('renderData.dateString') : null,
+            timeString: targetTime,
+            parentModel: parent ? parent.model.schedulingDate : null
+          };
+        } catch(err) {
+          return { ok: false, error: err.message, stack: err.stack };
         }
+      })(${schedData.year}, ${schedData.month}, ${schedData.day}, ${JSON.stringify(schedData.time)})`);
 
-        // Click day in opened calendar dialog
-        const dayEls = Array.from(document.querySelectorAll('tp-yt-paper-dialog .day, ytcp-date-picker .day, [role="gridcell"]'));
-        const targetDayEl = dayEls.find(d => (d.innerText || '').trim() === String(dDay));
-        if (targetDayEl) {
-          targetDayEl.click();
-          return 'DAY_CLICKED';
-        }
-
-        return 'TRIGGER_CLICKED';
-      })(${JSON.stringify(schedData.formattedDate)}, ${JSON.stringify(schedData.altDate)}, ${schedData.day})`);
-
-      await sleep(1000);
-
-      // Điền Time
-      console.error(`    [-] Điền giờ: ${schedData.time}...`);
-      await client.eval(`((tStr) => {
-        const picker = document.querySelector('ytcp-datetime-picker');
-        if (!picker) return false;
-
-        const timeInput = picker.querySelector('.scheduled-info-container input, #time-of-day-input input, input.ytcp-datetime-picker') ||
-          Array.from(picker.querySelectorAll('input')).find(i => /^[0-9]{1,2}:[0-9]{2}/.test(i.value || ''));
-
-        if (timeInput) {
-          timeInput.focus();
-          timeInput.value = tStr;
-          timeInput.dispatchEvent(new Event('input', { bubbles: true }));
-          timeInput.dispatchEvent(new Event('change', { bubbles: true }));
-          timeInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
-          return true;
-        }
-        return false;
-      })(${JSON.stringify(schedData.time)})`);
-
+      console.error(`    [+] Kết quả chọn ngày giờ:`, JSON.stringify(setDateRes));
       await sleep(1500);
 
     } else {

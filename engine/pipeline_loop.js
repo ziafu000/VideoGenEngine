@@ -102,7 +102,7 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     draft = false,
     noUpload = false,
     resolution = '1080p',
-    targetPlatform = 'youtube',
+    targetPlatform = 'all',
     skipBridge = false,
     skipRender = false,
     skipVoice = false
@@ -403,6 +403,7 @@ async function runLoop(storyboardPaths = [], options = {}) {
     draft = false,
     noUpload = false,
     resolution = '1080p',
+    targetPlatform = 'all',
     delayMs = 5000,
     stopOnQuota = true
   } = options;
@@ -437,7 +438,8 @@ async function runLoop(storyboardPaths = [], options = {}) {
       const res = await runPipelineForStoryboard(sbItem, {
         draft,
         noUpload,
-        resolution
+        resolution,
+        targetPlatform
       });
       completed.push(res);
 

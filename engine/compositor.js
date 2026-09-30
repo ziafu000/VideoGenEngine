@@ -26,7 +26,7 @@ async function compositeVideo({
   voiceVolume = 1.0,
   ambientVolume = 0.25,
   bgmPath = null,
-  bgmVolume = 0.18,
+  bgmVolume = 0.13,
   delays = [],
   aspectRatio = '16:9',
   burnSubtitles = true
