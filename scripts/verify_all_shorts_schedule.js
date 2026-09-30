@@ -106,10 +106,10 @@ const EXPECTED_SCHEDULE = [
   { id: 'eV8b2NUmGeA', title: 'Hố Xanh Vĩ Đại Belize', expectedDate: '03 thg 10, 2026', expectedTime: '13:00' },
   { id: 'Vp6yaCEkiI4', title: 'Dòng Sông Sôi Amazon', expectedDate: '04 thg 10, 2026', expectedTime: '08:00' },
   { id: '4BdY3m3vZEI', title: 'Rừng Uốn Cong Ba Lan', expectedDate: '04 thg 10, 2026', expectedTime: '13:00' },
-  { id: 'wBor9OY_ddI', title: 'Đảo Búp Bê Ma Quái (Shorts 13)', expectedDate: '05 thg 10, 2026', expectedTime: '08:00' },
-  { id: 'pwBD5_5kjAo', title: 'Núi Bàn Roraima (Shorts 14)', expectedDate: '05 thg 10, 2026', expectedTime: '13:00' },
-  { id: 'woL6j--lpt0', title: 'Mạch Nước Phun Fly Geyser (Shorts 15)', expectedDate: '06 thg 10, 2026', expectedTime: '08:00' },
-  { id: 'HkK9TyCpxcs', title: 'Hang Tinh Thể Khổng Lồ Naica (Shorts 16)', expectedDate: '06 thg 10, 2026', expectedTime: '13:00' }
+  { id: 'ZMOgsG0psGk', title: 'Đảo Búp Bê Ma Quái (Shorts 13)', expectedDate: '05 thg 10, 2026', expectedTime: '08:00' },
+  { id: '9jNwKf7MrOM', title: 'Núi Bàn Roraima (Shorts 14)', expectedDate: '05 thg 10, 2026', expectedTime: '13:00' },
+  { id: 'WRyj1ML3nCY', title: 'Mạch Nước Phun Fly Geyser (Shorts 15)', expectedDate: '06 thg 10, 2026', expectedTime: '08:00' },
+  { id: 'N05zWGVfc3Q', title: 'Hang Tinh Thể Khổng Lồ Naica (Shorts 16)', expectedDate: '06 thg 10, 2026', expectedTime: '13:00' }
 ];
 
 async function main() {

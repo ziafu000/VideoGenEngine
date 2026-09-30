@@ -20,6 +20,53 @@ const DEFAULT_COMPOSER_URL = config.FACEBOOK_REELS_URL || 'https://business.face
 const FALLBACK_REELS_URL = 'https://www.facebook.com/reels/create';
 
 /**
+ * Parse schedule date/time into standard { date, time, hour, min } format for Meta Business Suite.
+ */
+function parseScheduleTime(schedule) {
+  if (!schedule) return null;
+  if (typeof schedule === 'object' && schedule.date && schedule.time) {
+    const parts = schedule.time.split(':');
+    return {
+      date: schedule.date,
+      time: schedule.time,
+      hour: parts[0]?.padStart(2, '0') || '08',
+      min: parts[1]?.padStart(2, '0') || '00'
+    };
+  }
+  const str = String(schedule).trim();
+  // Check DD/MM/YYYY HH:mm
+  const dmyMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    const hour = dmyMatch[4].padStart(2, '0');
+    const min = dmyMatch[5].padStart(2, '0');
+    return { date: `${day}/${month}/${year}`, time: `${hour}:${min}`, hour, min };
+  }
+  // Check YYYY-MM-DD HH:mm or ISO
+  const ymdMatch = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[T\s]+(\d{1,2}):(\d{2})/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    const hour = ymdMatch[4].padStart(2, '0');
+    const min = ymdMatch[5].padStart(2, '0');
+    return { date: `${day}/${month}/${year}`, time: `${hour}:${min}`, hour, min };
+  }
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hour = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return { date: `${day}/${month}/${year}`, time: `${hour}:${min}`, hour, min };
+  }
+  return null;
+}
+
+/**
  * Format and build caption with title, description, and hashtags from storyboard data.
  */
 function buildCaption(storyboard, customCaption = '') {
@@ -159,6 +206,7 @@ async function uploadReel({
   caption = '',
   title = '',
   draft = false,
+  schedule = null,
   storyboard = null
 }) {
   if (!videoPath || !fs.existsSync(videoPath)) {
@@ -169,11 +217,15 @@ async function uploadReel({
   const finalCaption = buildCaption(storyboard, caption) || title || path.basename(videoPath, path.extname(videoPath));
   const winVideoPath = config.toWinPath(videoPath);
 
+  const schedTarget = schedule || (storyboard?.facebook?.schedule) || (storyboard?.schedule) || null;
+  const schedData = parseScheduleTime(schedTarget);
+  const postureLabel = draft ? 'LƯU BẢN NHÁP (DRAFT)' : (schedData ? `LÊN LỊCH (${schedData.date} lúc ${schedData.time})` : 'XUẤT BẢN NGAY (PUBLISH)');
+
   console.log(`\n============================================================`);
   console.log(`>>> FACEBOOK REELS UPLOAD AUTOMATION (CDP)`);
   console.log(`    - Video: ${videoPath}`);
   console.log(`    - Windows Path: ${winVideoPath}`);
-  console.log(`    - Chế độ đăng: ${draft ? 'LƯU BẢN NHÁP (DRAFT)' : 'XUẤT BẢN NGAY (PUBLISH)'}`);
+  console.log(`    - Chế độ đăng: ${postureLabel}`);
   console.log(`    - Caption:\n${finalCaption.split('\n').map(l => '        ' + l).join('\n')}`);
   console.log(`============================================================\n`);
 
@@ -419,8 +471,8 @@ async function uploadReel({
       console.log(`    [✓] Đã điền caption và hashtags tại Bước 3!`);
     }
 
-    // 7. Thực hiện Đăng (Publish) hoặc Lưu bản nháp (Save as draft)
-    console.log(`[-] [6/6] Thiết lập chế độ xuất bản: ${draft ? 'LƯU BẢN NHÁP (DRAFT)' : 'XUẤT BẢN NGAY (PUBLISH)'}...`);
+    // 7. Thực hiện Đăng (Publish), Lên lịch (Schedule) hoặc Lưu bản nháp (Draft)
+    console.log(`[-] [6/6] Thiết lập chế độ xuất bản: ${postureLabel}...`);
 
     if (draft) {
       // Chọn tùy chọn "Lưu làm bản nháp" (Meta Business Suite radio button)
@@ -432,12 +484,56 @@ async function uploadReel({
         }
       })()`);
       await sleep(1500);
+    } else if (schedData) {
+      // Chọn tùy chọn "Lên lịch" và điền ngày giờ
+      console.log(`    [-] Chọn tùy chọn "Lên lịch" và nhập thời gian: ${schedData.date} ${schedData.time}...`);
+      await client.evaluate(`(() => {
+        const elements = Array.from(document.querySelectorAll('div[role="button"], div[role="radio"], span, div, label'));
+        const schedOpt = elements.find(el => {
+          const t = el.innerText?.trim();
+          return t === 'Lên lịch' || t === 'Schedule' || t === 'Lên lịch đăng bài';
+        });
+        if (schedOpt) {
+          (schedOpt.closest('div[role="radio"]') || schedOpt.closest('div[role="button"]') || schedOpt).click();
+        }
+      })()`);
+      await sleep(1500);
+
+      await client.evaluate(`((dVal, hVal, mVal) => {
+        // Date input
+        const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"], input[placeholder*="ngày"], input[type="text"][value*="202"]');
+        if (dateInput) {
+          dateInput.focus();
+          dateInput.value = dVal;
+          dateInput.dispatchEvent(new Event('input', { bubbles: true }));
+          dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Hour input
+        const hourInput = document.querySelector('input[aria-label*="giờ"], input[aria-label*="hour" i], input[aria-label*="Hour" i]');
+        if (hourInput) {
+          hourInput.focus();
+          hourInput.value = hVal;
+          hourInput.dispatchEvent(new Event('input', { bubbles: true }));
+          hourInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // Minute input
+        const minInput = document.querySelector('input[aria-label*="phút"], input[aria-label*="minute" i], input[aria-label*="Minute" i]');
+        if (minInput) {
+          minInput.focus();
+          minInput.value = mVal;
+          minInput.dispatchEvent(new Event('input', { bubbles: true }));
+          minInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      })(${JSON.stringify(schedData.date)}, ${JSON.stringify(schedData.hour)}, ${JSON.stringify(schedData.min)})`);
+      await sleep(1500);
     }
 
-    // Bấm nút Submit (Đăng / Chia sẻ / Lưu)
+    // Bấm nút Submit (Đăng / Lên lịch / Lưu)
     let actionDone = false;
     for (let attempt = 0; attempt < 10; attempt++) {
-      actionDone = await client.evaluate(`((isDraft) => {
+      actionDone = await client.evaluate(`((isDraft, isSchedule) => {
         const btns = Array.from(document.querySelectorAll('div[role="button"], button'));
         if (isDraft) {
           const draftBtns = btns.filter(b => {
@@ -448,6 +544,16 @@ async function uploadReel({
           if (targetBtn) {
             targetBtn.click();
             return { clicked: true, action: 'DRAFT', text: targetBtn.innerText?.trim() };
+          }
+        } else if (isSchedule) {
+          const schedBtns = btns.filter(b => {
+            const t = (b.innerText || '').trim();
+            return (t === 'Lên lịch' || t === 'Schedule' || t === 'Lên lịch đăng') && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+          });
+          const targetBtn = schedBtns[schedBtns.length - 1];
+          if (targetBtn) {
+            targetBtn.click();
+            return { clicked: true, action: 'SCHEDULE', text: targetBtn.innerText?.trim() };
           }
         } else {
           const publishBtns = btns.filter(b => {
@@ -461,17 +567,17 @@ async function uploadReel({
           }
         }
         return null;
-      })(${JSON.stringify(draft)})`);
+      })(${JSON.stringify(draft)}, ${JSON.stringify(!!schedData)})`);
 
       if (actionDone && actionDone.clicked) {
-        console.log(`    [✓] Đã kích hoạt lệnh ${actionDone.text || (draft ? 'Lưu bản nháp' : 'Chia sẻ')} thành công!`);
+        console.log(`    [✓] Đã kích hoạt lệnh ${actionDone.text || (draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ'))} thành công!`);
         break;
       }
       await sleep(1000);
     }
 
     if (!actionDone) {
-      throw new Error(`Không tìm thấy nút ${draft ? 'Lưu bản nháp' : 'Chia sẻ / Đăng'} trên giao diện Facebook Reels.`);
+      throw new Error(`Không tìm thấy nút ${draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ / Đăng')} trên giao diện Facebook Reels.`);
     }
 
     // 8. Chờ xác nhận kết quả
@@ -504,15 +610,16 @@ async function uploadReel({
       success: true,
       video: videoPath,
       caption: finalCaption,
-      posture: draft ? 'draft' : 'published',
+      posture: draft ? 'draft' : (schedData ? 'scheduled' : 'published'),
+      schedule: schedData,
       confirmed,
       uploaded_at: new Date().toISOString()
     };
 
     console.log(`\n============================================================`);
-    console.log(`✓ ĐÃ ${draft ? 'LƯU BẢN NHÁP' : 'XUẤT BẢN THÀNH CÔNG'} LÊN FACEBOOK REELS!`);
+    console.log(`✓ ĐÃ ${draft ? 'LƯU BẢN NHÁP' : (schedData ? 'LÊN LỊCH THÀNH CÔNG' : 'XUẤT BẢN THÀNH CÔNG')} LÊN FACEBOOK REELS!`);
     console.log(`  - File: ${videoPath}`);
-    console.log(`  - Trạng thái: ${draft ? 'Bản nháp (Draft)' : 'Đã đăng (Published)'}`);
+    console.log(`  - Trạng thái: ${draft ? 'Bản nháp (Draft)' : (schedData ? `Đã lên lịch (${schedData.date} lúc ${schedData.time})` : 'Đã đăng (Published)')}`);
     console.log(`============================================================\n`);
 
     return result;
@@ -561,6 +668,7 @@ async function cmdUpload(args) {
   }
 
   const draft = !!args.draft;
+  const schedule = args.schedule || null;
   const caption = args.caption || '';
   const title = args.title || '';
 
@@ -570,6 +678,7 @@ async function cmdUpload(args) {
       caption,
       title,
       draft,
+      schedule,
       storyboard: sb
     });
     console.log(JSON.stringify({ ok: true, result: res }, null, 2));
@@ -591,7 +700,7 @@ async function main() {
   } else {
     console.log(`Cách dùng:
   node engine/facebook_uploader.js status
-  node engine/facebook_uploader.js upload --video <video_path> [--caption <text>] [--title <title>] [--draft] [--storyboard <path>]`);
+  node engine/facebook_uploader.js upload --video <video_path> [--caption <text>] [--title <title>] [--draft] [--schedule <datetime>] [--storyboard <path>]`);
     process.exit(1);
   }
 }
@@ -608,5 +717,6 @@ module.exports = {
   cmdStatus,
   cmdUpload,
   getFacebookTab,
-  buildCaption
+  buildCaption,
+  parseScheduleTime
 };

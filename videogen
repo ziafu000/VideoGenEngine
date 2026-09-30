@@ -293,9 +293,10 @@ async function main() {
       case 'assemble': {
         const sbArg = args[1];
         if (!sbArg) {
-          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen assemble <storyboard.json>');
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen assemble <storyboard.json> [--no-subs]');
           process.exit(1);
         }
+        const noSubsFlag = args.includes('--no-subs') || args.includes('--no-sub');
         const { data: sb } = loadStoryboard(sbArg);
         const shots = sb.shots || [];
 
@@ -364,20 +365,24 @@ async function main() {
           process.exit(1);
         }
 
-        // Generate matching ASS subtitles
-        const assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
-        subtitles.generateSubtitles(sb, timelines, assPath);
-
         const isShorts = (sb.aspect_ratio === '9:16') ||
                          (sb.format === 'shorts_40s') ||
                          (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
-        const noHardsub = sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+        const noHardsub = noSubsFlag || sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+
+        // Generate matching ASS subtitles only if hardsub is enabled
+        let assPath = null;
+        if (!noHardsub) {
+          assPath = path.join(config.RENDERS_DIR, 'master_subtitles.ass');
+          subtitles.generateSubtitles(sb, timelines, assPath);
+        }
 
         const masterOutput = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
         await compositor.compositeVideo({
           videoFiles,
           audioFiles,
           assSubtitlePath: noHardsub ? null : assPath,
+          subtitles_path: noHardsub ? null : assPath,
           outputVideoPath: masterOutput,
           delays,
           aspectRatio: isShorts ? '9:16' : '16:9',
@@ -578,7 +583,18 @@ async function main() {
 
       case 'facebook': {
         const isDraft = args.includes('--draft');
-        const nonFlagArgs = args.filter(a => a !== '--draft');
+        const schedIdx = args.indexOf('--schedule');
+        let scheduleVal = null;
+        if (schedIdx !== -1 && args[schedIdx + 1] && !args[schedIdx + 1].startsWith('--')) {
+          scheduleVal = args[schedIdx + 1];
+        }
+
+        const nonFlagArgs = args.filter((a, idx) => {
+          if (a === '--draft') return false;
+          if (a === '--schedule') return false;
+          if (schedIdx !== -1 && idx === schedIdx + 1) return false;
+          return true;
+        });
         const sbArg = nonFlagArgs[1];
 
         if (!sbArg) {
@@ -636,6 +652,7 @@ async function main() {
         await facebook.uploadReel({
           videoPath: videoToUpload,
           draft: isDraft,
+          schedule: scheduleVal,
           storyboard: sb
         });
         break;
