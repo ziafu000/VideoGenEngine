@@ -336,30 +336,81 @@ async function generateClip(cdp, rawText, destFile, profile) {
 
   // 6 & 7. Trigger download and capture new MP3 file
   let audioSaved = false;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    await sleep(attempt === 0 ? 3000 : 2000);
 
-    await cdp.evaluate(`(() => {
-      const btn = document.querySelector('button[aria-label="Download Audio"]')
-        || document.querySelector('[data-testid="audio-player-download-button"]')
-        || document.querySelector('button[aria-label="Download"]');
-      if (btn) btn.click();
-    })()`);
-
-    await sleep(1500);
-    const newest = getNewestDownload(config.WIN_DOWNLOADS_DIR);
-    if (newest) {
-      const isNew = !beforeDownload || (newest.name !== beforeDownload.name) || (newest.time > beforeDownload.time);
-      if (isNew) {
-        const downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
+  // Direct fetch from ElevenLabs internal API via browser session
+  try {
+    const b64Data = await cdp.send('Runtime.evaluate', {
+      expression: `(async () => {
         try {
-          if (fs.existsSync(downloadedFile) && fs.statSync(downloadedFile).size > 2000) {
-            fs.copyFileSync(downloadedFile, destFile);
-            audioSaved = true;
-            break;
+          const key = Object.keys(localStorage).find(k => k.startsWith('firebase:authUser'));
+          if (!key) return { error: 'no_auth' };
+          const user = JSON.parse(localStorage.getItem(key));
+          const token = user?.stsTokenManager?.accessToken;
+          if (!token) return { error: 'no_token' };
+
+          // Fetch latest history item
+          const histRes = await fetch('https://api.us.elevenlabs.io/v1/history?page_size=5&source=TTS', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          const histData = await histRes.json();
+          const latestItem = histData.history && histData.history[0];
+          if (!latestItem || !latestItem.history_item_id) return { error: 'no_history_item' };
+
+          const audioRes = await fetch('https://api.us.elevenlabs.io/v1/history/' + latestItem.history_item_id + '/audio', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          const buffer = await audioRes.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          let binary = '';
+          const len = bytes.byteLength;
+          for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
           }
-        } catch (err) {
-          // Retry next loop
+          return { ok: true, b64: btoa(binary), size: len };
+        } catch (e) {
+          return { error: e.message };
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true
+    });
+
+    const resVal = b64Data?.result?.value;
+    if (resVal && resVal.ok && resVal.b64 && resVal.size > 2000) {
+      const buffer = Buffer.from(resVal.b64, 'base64');
+      fs.writeFileSync(destFile, buffer);
+      audioSaved = true;
+    }
+  } catch (err) {
+    // Fallback to DOM button click
+  }
+
+  if (!audioSaved) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await sleep(attempt === 0 ? 3000 : 2000);
+
+      await cdp.evaluate(`(() => {
+        const btn = document.querySelector('button[aria-label="Download Audio"]')
+          || document.querySelector('[data-testid="audio-player-download-button"]')
+          || document.querySelector('button[aria-label="Download"]');
+        if (btn) btn.click();
+      })()`);
+
+      await sleep(1500);
+      const newest = getNewestDownload(config.WIN_DOWNLOADS_DIR);
+      if (newest) {
+        const isNew = !beforeDownload || (newest.name !== beforeDownload.name) || (newest.time > beforeDownload.time);
+        if (isNew) {
+          const downloadedFile = path.join(config.WIN_DOWNLOADS_DIR, newest.name);
+          try {
+            if (fs.existsSync(downloadedFile) && fs.statSync(downloadedFile).size > 2000) {
+              fs.copyFileSync(downloadedFile, destFile);
+              audioSaved = true;
+              break;
+            }
+          } catch (err) {
+            // Retry next loop
+          }
         }
       }
     }
