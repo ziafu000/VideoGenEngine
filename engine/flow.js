@@ -232,8 +232,10 @@ async function waitForRender(timeoutSec = 240) {
         const isActivelyPending = (hasPending || !!m) && !hasVideo;
         const isReady = (hasVideo || (hasThumb && !hasPending)) && !isActivelyPending;
 
-        const err = document.querySelector('.error-message, [role="alert"]');
-        const refusal = Array.from(document.querySelectorAll('*')).find(el => el.innerText && (el.innerText.includes('Không thành công') || el.innerText.includes('vi phạm chính sách') || el.innerText.includes('policy') || el.innerText.includes('violate')));
+        const err = tile0.querySelector('.error-message, [role="alert"]');
+        const refusal = tile0.innerText && (tile0.innerText.includes('Không thành công') || tile0.innerText.includes('vi phạm chính sách') || tile0.innerText.includes('policy') || tile0.innerText.includes('violate'))
+          ? tile0.innerText
+          : null;
 
         return {
           hasPending: isActivelyPending,

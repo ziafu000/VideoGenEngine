@@ -777,6 +777,8 @@ async function main() {
         const noUpload = args.includes('--no-upload') || args.includes('--no-up');
         const is720p = args.includes('--720p');
         const resolution = is720p ? '720p' : '1080p';
+        const platformArg = args.find(a => a.startsWith('--platform='));
+        const targetPlatform = platformArg ? platformArg.split('=')[1] : 'all';
 
         // Storyboard paths are non-flag arguments after 'loop'
         const sbArgs = args.slice(1).filter(a => !a.startsWith('--'));
@@ -785,7 +787,8 @@ async function main() {
         await pipelineLoop.runLoop(sbArgs, {
           draft: isDraft,
           noUpload,
-          resolution
+          resolution,
+          targetPlatform
         });
         break;
       }
