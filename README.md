@@ -48,7 +48,6 @@
       </td>
     </tr>
   </table>
-  <em>🎬 Rendered autonomously at 1920x1080 @ 30fps with <a href="https://github.com/heygen-com/hyperframes">HyperFrames</a>. Both English and Vietnamese editions coexist with localized typography, word-level audio sync, and custom GSAP choreographies.</em>
 </div>
 
 ### 💡 The Cost-Effective Alternative to Claude + Higgsfield
