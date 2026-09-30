@@ -20,6 +20,7 @@ async function compositeVideo({
   videoFiles,
   audioFiles,
   assSubtitlePath,
+  subtitles_path,
   outputVideoPath,
   voiceVolume = 1.0,
   ambientVolume = 0.30,
@@ -30,10 +31,13 @@ async function compositeVideo({
   const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
+  const activeSubPath = subtitles_path !== undefined ? subtitles_path : assSubtitlePath;
+  const effectiveBurnSubtitles = Boolean(burnSubtitles && activeSubPath && fs.existsSync(activeSubPath));
+
   console.log(`=== BẮT ĐẦU QUÁ TRÌNH GHÉP NỐI & HẬU KỲ (COMPOSITOR) ===`);
   console.log(`Số phân cảnh video: ${videoFiles.length}`);
   console.log(`Số file voiceover: ${audioFiles.length}`);
-  console.log(`Tỷ lệ khung hình: ${aspectRatio} | Hardsub: ${burnSubtitles ? 'BẬT' : 'TẮT (Clean Footage)'}`);
+  console.log(`Tỷ lệ khung hình: ${aspectRatio} | Hardsub: ${effectiveBurnSubtitles ? 'BẬT' : 'TẮT (Clean Footage)'}`);
 
   // 1. Measure video durations & prepare audio padding
   const paddedAudioList = path.join(tempDir, 'audio_concat.txt');
@@ -99,8 +103,8 @@ async function compositeVideo({
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const hasVoiceTrack = audioFiles && audioFiles.some(f => f && fs.existsSync(f));
-  const shouldBurnSubtitles = Boolean(burnSubtitles && assSubtitlePath && fs.existsSync(assSubtitlePath));
-  const winAssSubtitlePath = shouldBurnSubtitles ? config.toWinPath(assSubtitlePath).replace(/\\/g, '/').replace(/:/g, '\\\\:') : '';
+  const shouldBurnSubtitles = effectiveBurnSubtitles;
+  const winAssSubtitlePath = shouldBurnSubtitles ? config.toWinPath(activeSubPath).replace(/\\/g, '/').replace(/:/g, '\\\\:') : '';
   const winOutputVideoPath = config.toWinPath(outputVideoPath);
 
   const isVertical = aspectRatio === '9:16';

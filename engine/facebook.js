@@ -8,6 +8,7 @@ async function uploadReel({
   caption = '',
   title = '',
   draft = false,
+  schedule = null,
   storyboard = null
 }) {
   return await uploader.uploadReel({
@@ -15,6 +16,7 @@ async function uploadReel({
     caption,
     title,
     draft,
+    schedule,
     storyboard
   });
 }
