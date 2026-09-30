@@ -88,7 +88,11 @@ async function listPages() {
 
 async function getClientForPage(urlPattern) {
   const pages = await listPages();
-  const page = pages.find(p => p.type === 'page' && p.url && (typeof urlPattern === 'string' ? p.url.includes(urlPattern) : urlPattern.test(p.url)));
+  const page = pages.find(p => p.type === 'page' && p.url && (
+    typeof urlPattern === 'string'
+      ? (p.url.startsWith('http') && p.url.includes(urlPattern) && (!p.url.includes('stripe') && !p.url.includes('inner.html')))
+      : urlPattern.test(p.url)
+  ));
   if (!page) {
     throw new Error(`No open page found matching pattern: ${urlPattern}`);
   }
