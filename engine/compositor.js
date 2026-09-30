@@ -48,6 +48,20 @@ async function compositeVideo({
     }
   }
 
+  // 0b. MD5 duplicate check across video files (Video Doubling Prevention)
+  const seenVideoHashes = new Map();
+  for (let i = 0; i < videoFiles.length; i++) {
+    const vFile = videoFiles[i];
+    if (vFile && fs.existsSync(vFile)) {
+      const vHash = crypto.createHash('md5').update(fs.readFileSync(vFile)).digest('hex');
+      if (seenVideoHashes.has(vHash)) {
+        const prevIdx = seenVideoHashes.get(vHash);
+        throw new Error(`PHÁT HIỆN LỖI LẶP VIDEO (Video Doubling): Phân cảnh ${i + 1} (${path.basename(vFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${vHash}. Dừng quy trình xuất master.`);
+      }
+      seenVideoHashes.set(vHash, i);
+    }
+  }
+
   const activeSubPath = subtitles_path !== undefined ? subtitles_path : assSubtitlePath;
   const effectiveBurnSubtitles = Boolean(burnSubtitles && activeSubPath && fs.existsSync(activeSubPath));
 

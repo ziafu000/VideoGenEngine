@@ -132,9 +132,53 @@ async function testRunLoop() {
   console.log('  [PASS] runLoop handled error queue correctly.\n');
 }
 
+// 6. Anti-Video Doubling Assertion Test
+console.log('Test 6: Anti-Video Doubling compositor assertion test...');
+async function testAntiVideoDoubling() {
+  const compositor = require('../engine/compositor');
+  const tempTestDir = path.join(config.PROJECT_DIR, 'renders', 'test_video_doubling');
+  if (!fs.existsSync(tempTestDir)) fs.mkdirSync(tempTestDir, { recursive: true });
+
+  const v1 = path.join(tempTestDir, 'v1.mp4');
+  const v2 = path.join(tempTestDir, 'v2.mp4');
+  const a1 = path.join(tempTestDir, 'a1.mp3');
+  const a2 = path.join(tempTestDir, 'a2.mp3');
+  const out = path.join(tempTestDir, 'out.mp4');
+
+  try {
+    const { execSync } = require('child_process');
+    execSync(`ffmpeg -y -f lavfi -i color=c=red:s=320x240:d=1 -t 1 -c:v libx264 ${JSON.stringify(v1)} 2>/dev/null`);
+    fs.copyFileSync(v1, v2); // Exact duplicate video MD5
+    execSync(`ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t 1 -c:a libmp3lame ${JSON.stringify(a1)} 2>/dev/null`);
+    execSync(`ffmpeg -y -f lavfi -i sine=f=440 -t 1 -c:a libmp3lame ${JSON.stringify(a2)} 2>/dev/null`);
+
+    let caught = false;
+    try {
+      await compositor.compositeVideo({
+        videoFiles: [v1, v2],
+        audioFiles: [a1, a2],
+        outputVideoPath: out
+      });
+    } catch (e) {
+      if (e.message.includes('PHÁT HIỆN LỖI LẶP VIDEO')) {
+        caught = true;
+      } else {
+        throw e;
+      }
+    }
+    assert.strictEqual(caught, true, 'Compositor must reject duplicate video files with identical MD5');
+    console.log('  [PASS] Anti-Video Doubling assertion caught duplicate video shot successfully.\n');
+  } finally {
+    try {
+      if (fs.existsSync(tempTestDir)) fs.rmSync(tempTestDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
 (async () => {
   await testPipelineExecution();
   await testRunLoop();
+  await testAntiVideoDoubling();
   console.log('=== ALL PIPELINE LOOP TESTS PASSED SUCCESSFULLY ===');
   process.exit(0);
 })().catch(err => {
