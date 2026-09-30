@@ -16,7 +16,7 @@ const config = require('./config');
 const { CDPClient, listPages, sleep } = require('./cdp');
 const jev = require('./jev');
 
-const DEFAULT_COMPOSER_URL = config.FACEBOOK_REELS_URL || 'https://business.facebook.com/latest/reels_composer';
+const DEFAULT_COMPOSER_URL = config.FACEBOOK_REELS_URL || 'https://business.facebook.com/latest/reels_composer?asset_id=1295811423621912';
 const FALLBACK_REELS_URL = 'https://www.facebook.com/reels/create';
 
 /**
@@ -370,7 +370,7 @@ async function uploadReel({
         return { has100Pct, isNextEnabled };
       })()`);
 
-      if (checkState.has100Pct || checkState.isNextEnabled) {
+      if (checkState && (checkState.has100Pct || checkState.isNextEnabled)) {
         videoProcessed = true;
         console.log(`    [✓] Video đã tải lên hoàn tất và sẵn sàng!`);
         break;
@@ -583,8 +583,34 @@ async function uploadReel({
     // 8. Chờ xác nhận kết quả
     console.log(`[-] Đang chờ xác nhận từ Facebook...`);
     let confirmed = false;
-    for (let w = 0; w < 15; w++) {
+    for (let w = 0; w < 20; w++) {
       await sleep(1500);
+
+      // Xử lý modal hoàn tất "Đang xử lý thước phim" với nút "Xong"
+      const modalHandled = await client.evaluate(`(() => {
+        const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
+        const processingDialog = dialogs.find(d => (d.innerText || '').includes('xử lý thước phim') || (d.innerText || '').includes('đăng thước phim'));
+        if (processingDialog) {
+          const btns = Array.from(processingDialog.querySelectorAll('button, div[role="button"]'));
+          const xongBtn = btns.find(b => {
+            const t = (b.innerText || '').trim();
+            return t === 'Xong' || t === 'Done' || t === 'Đóng' || t === 'Close';
+          });
+          if (xongBtn) {
+            xongBtn.click();
+            return { closed: true, text: xongBtn.innerText?.trim() };
+          }
+        }
+        return null;
+      })()`);
+
+      if (modalHandled && modalHandled.closed) {
+        console.log(`    [✓] Đã đóng modal xác nhận hoàn tất (${modalHandled.text})!`);
+        confirmed = true;
+        await sleep(1500);
+        break;
+      }
+
       const confirmState = await client.evaluate(`(() => {
         const toast = document.querySelector('[role="alert"], [data-visualcompletion="toast"]');
         const toastText = toast ? toast.innerText : '';
