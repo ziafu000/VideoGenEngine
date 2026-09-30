@@ -199,6 +199,49 @@ async function cmdStatus() {
 }
 
 /**
+ * Helper to set spinbox value via CDP mouse/keyboard + React property descriptor.
+ */
+async function setSpinboxValue(client, selector, valStr) {
+  const coords = await client.evaluate(`((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    el.focus();
+    el.select();
+    const r = el.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  })(${JSON.stringify(selector)})`);
+
+  if (coords) {
+    await client.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+    await client.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: coords.x, y: coords.y, button: 'left', clickCount: 1 });
+    await sleep(100);
+
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', commands: ['selectAll'] });
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp' });
+    await sleep(50);
+
+    for (const char of String(valStr)) {
+      await client.send('Input.dispatchKeyEvent', { type: 'keyDown', text: char, unmodifiedText: char, key: char });
+      await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: char });
+      await sleep(50);
+    }
+  }
+
+  // Also apply React property descriptor setter + events
+  await client.evaluate(`((sel, val) => {
+    const el = document.querySelector(sel);
+    if (el) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+      if (nativeSetter) nativeSetter.call(el, val);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('blur', { bubbles: true }));
+    }
+  })(${JSON.stringify(selector)}, ${JSON.stringify(valStr)})`);
+  await sleep(300);
+}
+
+/**
  * Core Reel upload automation function.
  */
 async function uploadReel({
@@ -246,18 +289,10 @@ async function uploadReel({
   await client.ready;
 
   try {
-    // Đảm bảo tab ở giao diện tạo Reels (Meta Business Suite hoặc Facebook Reels Creator)
-    const pageCheck = await client.evaluate(`(() => {
-      const url = window.location.href;
-      const isComposer = url.includes('reels_composer') || url.includes('reels/create') || document.title.includes('Tạo thước phim');
-      return { url, isComposer };
-    })()`);
-
-    if (!pageCheck.isComposer) {
-      console.log(`[-] Điều hướng tới Reels Composer: ${DEFAULT_COMPOSER_URL}...`);
-      await client.send('Page.navigate', { url: DEFAULT_COMPOSER_URL });
-      await sleep(5000);
-    }
+    // Luôn điều hướng tới Reels Composer sạch sẽ cho mỗi lần upload
+    console.log(`[-] Điều hướng tới Reels Composer: ${DEFAULT_COMPOSER_URL}...`);
+    await client.send('Page.navigate', { url: DEFAULT_COMPOSER_URL });
+    await sleep(5000);
 
     // Kiểm tra đăng nhập
     const isLogin = await client.evaluate(`(() => {
@@ -276,7 +311,11 @@ async function uploadReel({
     await client.send('DOM.enable');
 
     await client.evaluate(`(() => {
+      // Xóa input cũ nếu có
+      const old = document.getElementById('meta_reels_file_input');
+      if (old) old.remove();
       window.__transientFileInput = null;
+
       if (!window.__origInputClick) {
         window.__origInputClick = HTMLInputElement.prototype.click;
         HTMLInputElement.prototype.click = function() {
@@ -295,8 +334,8 @@ async function uploadReel({
         .filter(el => ['Đóng', 'Close', 'Để sau', 'Not now'].includes(el.innerText?.trim()))
         .forEach(el => { try { (el.closest('[role="button"]') || el).click(); } catch {} });
 
-      // Nếu chưa có file input trên DOM, click nút 'Thêm video' để kích hoạt input
-      if (!document.querySelector('input[type="file"]')) {
+      // Click nút 'Thêm video' để kích hoạt input
+      if (!document.querySelector('#meta_reels_file_input')) {
         const b = Array.from(document.querySelectorAll('div[role="button"], button')).find(el => {
           const t = el.innerText?.trim();
           return t?.includes('Thêm video') || t?.includes('Add video');
@@ -311,12 +350,25 @@ async function uploadReel({
 
     // 3. Tìm NodeId của file input trên DOM
     let nodeId = 0;
-    for (let attempt = 0; attempt < 25; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
+      // Đảm bảo click "Thêm video" nếu file input chưa xuất hiện
+      await client.evaluate(`(() => {
+        if (!document.querySelector('#meta_reels_file_input')) {
+          const b = Array.from(document.querySelectorAll('div[role="button"], button')).find(el => {
+            const t = el.innerText?.trim();
+            return t?.includes('Thêm video') || t?.includes('Add video');
+          });
+          if (b) {
+            (b.closest('[role="button"]') || b).click();
+          }
+        }
+      })()`);
+
       try {
         const doc = await client.send('DOM.getDocument', { depth: -1 });
         const fileNode = await client.send('DOM.querySelector', {
           nodeId: doc.root.nodeId,
-          selector: '#meta_reels_file_input, input[type="file"][accept*="video"], input[type="file"]'
+          selector: '#meta_reels_file_input'
         });
         if (fileNode && fileNode.nodeId) {
           nodeId = fileNode.nodeId;
@@ -326,7 +378,7 @@ async function uploadReel({
 
       try {
         const evalRes = await client.send('Runtime.evaluate', {
-          expression: 'document.querySelector("#meta_reels_file_input, input[type=\'file\']")'
+          expression: 'document.querySelector("#meta_reels_file_input")'
         });
         if (evalRes.result && evalRes.result.objectId) {
           const nodeDesc = await client.send('DOM.requestNode', { objectId: evalRes.result.objectId });
@@ -354,7 +406,7 @@ async function uploadReel({
     // 4. Chờ video xử lý hoàn tất (tiến trình đạt 100% hoặc nút Tiếp sáng)
     console.log(`[-] [3/6] Chờ Facebook xử lý video và sẵn sàng chuyển bước...`);
     let videoProcessed = false;
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 80; i++) {
       await sleep(1500);
       await dismissObstacles(client);
 
@@ -372,14 +424,14 @@ async function uploadReel({
 
       if (checkState && (checkState.has100Pct || checkState.isNextEnabled)) {
         videoProcessed = true;
-        console.log(`    [✓] Video đã tải lên hoàn tất và sẵn sàng!`);
+        console.log(`\n    [✓] Video đã tải lên hoàn tất và sẵn sàng!`);
         break;
       }
       process.stdout.write(`\r    ... Đang chờ xử lý video: ${((i + 1) * 1.5).toFixed(0)}s`);
     }
 
     if (!videoProcessed) {
-      console.warn(`\n    [!] Hết thời gian chờ 100%, thử tiếp tục chuyển bước...`);
+      throw new Error('Video chưa tải lên/xử lý xong trên Facebook sau 120s.');
     }
 
     // 5. Điền Caption & Hashtags nếu ô mô tả xuất hiện ở Bước 1 (Meta Business Suite)
@@ -489,45 +541,38 @@ async function uploadReel({
       console.log(`    [-] Chọn tùy chọn "Lên lịch" và nhập thời gian: ${schedData.date} ${schedData.time}...`);
       await client.evaluate(`(() => {
         const elements = Array.from(document.querySelectorAll('div[role="button"], div[role="radio"], span, div, label'));
-        const schedOpt = elements.find(el => {
-          const t = el.innerText?.trim();
-          return t === 'Lên lịch' || t === 'Schedule' || t === 'Lên lịch đăng bài';
-        });
+        const schedOpt = elements.find(el => el.children.length === 0 && (el.innerText?.trim() === 'Lên lịch' || el.innerText?.trim() === 'Schedule'));
         if (schedOpt) {
-          (schedOpt.closest('div[role="radio"]') || schedOpt.closest('div[role="button"]') || schedOpt).click();
+          const target = schedOpt.closest('[role="button"]') || schedOpt.closest('[role="radio"]') || schedOpt;
+          const kProps = Object.keys(target).find(k => k.startsWith('__reactProps'));
+          if (kProps && target[kProps]?.onClick) {
+            target[kProps].onClick({ preventDefault: () => {}, stopPropagation: () => {} });
+          } else {
+            target.click();
+          }
         }
       })()`);
       await sleep(1500);
 
-      await client.evaluate(`((dVal, hVal, mVal) => {
-        // Date input
-        const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"], input[placeholder*="ngày"], input[type="text"][value*="202"]');
+      // Điền Date input bằng React property descriptor
+      await client.evaluate(`((dVal) => {
+        const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
+          Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.value || '').includes('2026') || (i.getAttribute('aria-label') || '').includes('ngày'));
         if (dateInput) {
           dateInput.focus();
-          dateInput.value = dVal;
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(dateInput, dVal);
           dateInput.dispatchEvent(new Event('input', { bubbles: true }));
           dateInput.dispatchEvent(new Event('change', { bubbles: true }));
+          dateInput.dispatchEvent(new Event('blur', { bubbles: true }));
         }
+      })(${JSON.stringify(schedData.date)})`);
+      await sleep(500);
 
-        // Hour input
-        const hourInput = document.querySelector('input[aria-label*="giờ"], input[aria-label*="hour" i], input[aria-label*="Hour" i]');
-        if (hourInput) {
-          hourInput.focus();
-          hourInput.value = hVal;
-          hourInput.dispatchEvent(new Event('input', { bubbles: true }));
-          hourInput.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // Minute input
-        const minInput = document.querySelector('input[aria-label*="phút"], input[aria-label*="minute" i], input[aria-label*="Minute" i]');
-        if (minInput) {
-          minInput.focus();
-          minInput.value = mVal;
-          minInput.dispatchEvent(new Event('input', { bubbles: true }));
-          minInput.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      })(${JSON.stringify(schedData.date)}, ${JSON.stringify(schedData.hour)}, ${JSON.stringify(schedData.min)})`);
-      await sleep(1500);
+      // Điền Giờ và Phút bằng spinbox keyboard + React property descriptor
+      await setSpinboxValue(client, 'input[aria-label*="giờ"], input[aria-label*="hour" i]', schedData.hour);
+      await setSpinboxValue(client, 'input[aria-label*="phút"], input[aria-label*="minute" i]', schedData.min);
+      await sleep(1000);
     }
 
     // Bấm nút Submit (Đăng / Lên lịch / Lưu)
@@ -538,7 +583,8 @@ async function uploadReel({
         if (isDraft) {
           const draftBtns = btns.filter(b => {
             const t = (b.innerText || '').trim();
-            return (t === 'Lưu' || t === 'Save' || t === 'Lưu làm bản nháp' || t === 'Save as draft') && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+            const isRadio = b.hasAttribute('aria-pressed') || b.closest('[role="group"]');
+            return (t === 'Lưu' || t === 'Save' || t === 'Lưu làm bản nháp' || t === 'Save as draft') && !isRadio && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
           });
           const targetBtn = draftBtns[draftBtns.length - 1];
           if (targetBtn) {
@@ -548,17 +594,23 @@ async function uploadReel({
         } else if (isSchedule) {
           const schedBtns = btns.filter(b => {
             const t = (b.innerText || '').trim();
-            return (t === 'Lên lịch' || t === 'Schedule' || t === 'Lên lịch đăng') && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+            const isRadio = b.hasAttribute('aria-pressed') || b.closest('[role="group"]');
+            return (t === 'Lên lịch' || t === 'Schedule' || t === 'Lên lịch đăng') && !isRadio;
           });
           const targetBtn = schedBtns[schedBtns.length - 1];
-          if (targetBtn) {
-            targetBtn.click();
-            return { clicked: true, action: 'SCHEDULE', text: targetBtn.innerText?.trim() };
+          if (!targetBtn) {
+            return { error: 'SCHEDULE_BTN_NOT_FOUND' };
           }
+          if (targetBtn.disabled || targetBtn.getAttribute('aria-disabled') === 'true') {
+            return { error: 'SCHEDULE_BTN_DISABLED' };
+          }
+          targetBtn.click();
+          return { clicked: true, action: 'SCHEDULE', text: targetBtn.innerText?.trim() };
         } else {
           const publishBtns = btns.filter(b => {
             const t = (b.innerText || '').trim();
-            return (t === 'Chia sẻ' || t === 'Đăng' || t === 'Post' || t === 'Publish' || t === 'Đăng ngay' || t === 'Share') && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
+            const isRadio = b.hasAttribute('aria-pressed') || b.closest('[role="group"]');
+            return (t === 'Chia sẻ' || t === 'Đăng' || t === 'Post' || t === 'Publish' || t === 'Đăng ngay' || t === 'Share') && !isRadio && !b.disabled && b.getAttribute('aria-disabled') !== 'true';
           });
           const targetBtn = publishBtns[publishBtns.length - 1];
           if (targetBtn) {
@@ -569,15 +621,24 @@ async function uploadReel({
         return null;
       })(${JSON.stringify(draft)}, ${JSON.stringify(!!schedData)})`);
 
-      if (actionDone && actionDone.clicked) {
-        console.log(`    [✓] Đã kích hoạt lệnh ${actionDone.text || (draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ'))} thành công!`);
-        break;
+      if (actionDone) {
+        if (actionDone.error) {
+          if (actionDone.error === 'SCHEDULE_BTN_DISABLED') {
+            throw new Error(`[LỖI LÊN LỊCH] Nút "Lên lịch" đang bị vô hiệu hóa (disabled). Kiểm tra thời gian lên lịch (${schedData.date} ${schedData.time}) có hợp lệ không! TUYỆT ĐỐI KHÔNG FALLBACK sang Đăng ngay.`);
+          }
+          if (actionDone.error === 'SCHEDULE_BTN_NOT_FOUND' && attempt === 9) {
+            throw new Error(`[LỖI LÊN LỊCH] Không tìm thấy nút "Lên lịch" trên Facebook Reels composer. TUYỆT ĐỐI KHÔNG FALLBACK sang Đăng ngay.`);
+          }
+        } else if (actionDone.clicked) {
+          console.log(`    [✓] Đã kích hoạt lệnh ${actionDone.text || (draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ'))} thành công!`);
+          break;
+        }
       }
       await sleep(1000);
     }
 
-    if (!actionDone) {
-      throw new Error(`Không tìm thấy nút ${draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ / Đăng')} trên giao diện Facebook Reels.`);
+    if (!actionDone || !actionDone.clicked) {
+      throw new Error(`Không thể thực hiện hành động ${draft ? 'Lưu bản nháp' : (schedData ? 'Lên lịch' : 'Chia sẻ / Đăng')} trên giao diện Facebook Reels.`);
     }
 
     // 8. Chờ xác nhận kết quả
@@ -589,7 +650,10 @@ async function uploadReel({
       // Xử lý modal hoàn tất "Đang xử lý thước phim" với nút "Xong"
       const modalHandled = await client.evaluate(`(() => {
         const dialogs = Array.from(document.querySelectorAll('[role="dialog"]'));
-        const processingDialog = dialogs.find(d => (d.innerText || '').includes('xử lý thước phim') || (d.innerText || '').includes('đăng thước phim'));
+        const processingDialog = dialogs.find(d => {
+          const t = (d.innerText || '').toLowerCase();
+          return t.includes('xử lý thước phim') || t.includes('đăng thước phim') || t.includes('lên lịch') || t.includes('thước phim');
+        });
         if (processingDialog) {
           const btns = Array.from(processingDialog.querySelectorAll('button, div[role="button"]'));
           const xongBtn = btns.find(b => {
@@ -614,7 +678,7 @@ async function uploadReel({
       const confirmState = await client.evaluate(`(() => {
         const toast = document.querySelector('[role="alert"], [data-visualcompletion="toast"]');
         const toastText = toast ? toast.innerText : '';
-        const hasReelSuccess = toastText.includes('thước phim') || toastText.includes('reel') || toastText.includes('bản nháp') || toastText.includes('draft');
+        const hasReelSuccess = toastText.includes('thước phim') || toastText.includes('reel') || toastText.includes('bản nháp') || toastText.includes('draft') || toastText.includes('lên lịch') || toastText.includes('scheduled');
         const url = window.location.href;
         return {
           hasSuccessToast: hasReelSuccess,
