@@ -147,23 +147,11 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
       const s = shots[i];
       const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
       const outFile = path.join(epRenderDir, `${shotId}.mp4`);
-      const rootOutFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
 
-      // Kiểm tra file có sẵn
+      // Kiểm tra file có sẵn trong thư mục riêng của tập (tuyệt đối không lấy từ root renders/ để tránh trùng clip giữa các tập)
       if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
         const sizeMb = (fs.statSync(outFile).size / 1024 / 1024).toFixed(2);
-        console.log(`    [✓] [${i + 1}/${shots.length}] ${shotId}: Đã có sẵn (${sizeMb} MB), bỏ qua render.`);
-        if (!fs.existsSync(rootOutFile)) {
-          try { fs.copyFileSync(outFile, rootOutFile); } catch {}
-        }
-        renderResults.push({ shotId, status: 'cached', file: outFile });
-        continue;
-      }
-
-      if (fs.existsSync(rootOutFile) && fs.statSync(rootOutFile).size > 1000) {
-        const sizeMb = (fs.statSync(rootOutFile).size / 1024 / 1024).toFixed(2);
-        console.log(`    [✓] [${i + 1}/${shots.length}] ${shotId}: Đã có sẵn tại root renders/ (${sizeMb} MB), đồng bộ.`);
-        try { fs.copyFileSync(rootOutFile, outFile); } catch {}
+        console.log(`    [✓] [${i + 1}/${shots.length}] ${shotId}: Đã có sẵn trong ${episodeName} (${sizeMb} MB), bỏ qua render.`);
         renderResults.push({ shotId, status: 'cached', file: outFile });
         continue;
       }
@@ -184,10 +172,6 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
       await flow.submitPrompt(prompt);
       await flow.waitForRender(240);
       await flow.downloadLatest(outFile, { resolution });
-
-      try {
-        fs.copyFileSync(outFile, rootOutFile);
-      } catch {}
 
       renderResults.push({ shotId, status: 'rendered', file: outFile });
     }
