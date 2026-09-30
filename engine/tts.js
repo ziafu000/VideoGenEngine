@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 const jev = require('./jev');
@@ -232,7 +233,38 @@ function cleanDialogueText(text) {
     .trim();
 }
 
-async function generateClip(cdp, rawText, destFile, profile) {
+// Helper: Retrieve the latest history item from ElevenLabs internal API
+async function getLatestHistoryItem(cdp) {
+  try {
+    const res = await cdp.send('Runtime.evaluate', {
+      expression: `(async () => {
+        try {
+          const key = Object.keys(localStorage).find(k => k.startsWith('firebase:authUser'));
+          if (!key) return null;
+          const user = JSON.parse(localStorage.getItem(key));
+          const token = user?.stsTokenManager?.accessToken;
+          if (!token) return null;
+
+          const histRes = await fetch('https://api.us.elevenlabs.io/v1/history?page_size=5&source=TTS', {
+            headers: { 'Authorization': 'Bearer ' + token }
+          });
+          const histData = await histRes.json();
+          const item = histData.history && histData.history[0];
+          return item ? { id: item.history_item_id, text: item.text, date_unix: item.date_unix } : null;
+        } catch (e) {
+          return null;
+        }
+      })()`,
+      awaitPromise: true,
+      returnByValue: true
+    });
+    return res?.result?.value || null;
+  } catch {
+    return null;
+  }
+}
+
+async function generateClip(cdp, rawText, destFile, profile, previousAudioHashes = new Set(), knownPrevHistoryId = null) {
   const text = cleanDialogueText(rawText);
   if (!text || text.length === 0) {
     console.log(`    [-] Văn bản rỗng, bỏ qua.`);
@@ -250,20 +282,68 @@ async function generateClip(cdp, rawText, destFile, profile) {
   // 1. Select Voice
   await setVoice(cdp, profile);
 
-  // 2. Set text in ProseMirror editor
-  console.log(`    [-] Nhập văn bản TTS: "${text.slice(0, 45)}..."`);
+  // 2. Query previous latest history item to detect index update
+  const initialLatest = await getLatestHistoryItem(cdp);
+  const previousHistoryId = knownPrevHistoryId || (initialLatest ? initialLatest.id : null);
+  if (previousHistoryId) {
+    console.log(`    [-] History item trước đó: ${previousHistoryId.slice(0, 10)}...`);
+  }
+
+  // 3. Thoroughly clear and set text in ProseMirror editor (prevent voice accumulation / doubling)
+  console.log(`    [-] Xóa trắng editor và nhập văn bản TTS: "${text.slice(0, 45)}..."`);
   await cdp.evaluate(`(() => {
+    // 3a. Try native Clear text button if present
+    const clearBtn = document.querySelector('button[aria-label="Clear text"], button[data-agent-tooltip="Clear text"]');
+    if (clearBtn) clearBtn.click();
+
+    // 3b. Select all and delete contents inside ProseMirror
     const pm = document.querySelector(".ProseMirror, [contenteditable=\\"true\\"]");
     if (pm) {
       pm.focus();
       document.execCommand("selectAll", false, null);
+      document.execCommand("delete", false, null);
+      pm.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  })()`);
+  await sleep(300);
+
+  // Verify editor is cleared, then insert text
+  await cdp.evaluate(`(() => {
+    const pm = document.querySelector(".ProseMirror, [contenteditable=\\"true\\"]");
+    if (pm) {
+      pm.focus();
+      // Double check if text remained, clear again
+      const cur = (pm.innerText || "").trim();
+      if (cur.length > 0 && !cur.includes("Type your text")) {
+        document.execCommand("selectAll", false, null);
+        document.execCommand("delete", false, null);
+      }
       document.execCommand("insertText", false, ${JSON.stringify(text)});
       pm.dispatchEvent(new Event("input", { bubbles: true }));
     }
   })()`);
-  await sleep(600);
+  await sleep(400);
 
-  // 3. Ensure History tab is open on the right panel & search is clean
+  // 4. Validate editor text
+  const editorInspection = await cdp.evaluate(`(() => {
+    const pm = document.querySelector(".ProseMirror, [contenteditable=\\"true\\"]");
+    return pm ? (pm.innerText || '').trim() : '';
+  })()`);
+  if (!editorInspection || (!editorInspection.includes(text.slice(0, 20)) && !editorInspection.includes(text.slice(-20)))) {
+    console.warn(`    [!] Cảnh báo editor text chưa đồng bộ. Thực hiện chèn lại khẩn cấp...`);
+    await cdp.evaluate(`(() => {
+      const pm = document.querySelector(".ProseMirror, [contenteditable=\\"true\\"]");
+      if (pm) {
+        pm.focus();
+        document.execCommand("selectAll", false, null);
+        document.execCommand("insertText", false, ${JSON.stringify(text)});
+        pm.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    })()`);
+    await sleep(400);
+  }
+
+  // 5. Ensure History tab is open on the right panel & search is clean
   await cdp.evaluate(`(() => {
     const tab = Array.from(document.querySelectorAll("button, [role=\\"tab\\"]")).find(e => e.innerText === "History");
     if (tab) tab.click();
@@ -277,7 +357,7 @@ async function generateClip(cdp, rawText, destFile, profile) {
   })()`);
   await sleep(400);
 
-  // 4. Click generate speech button via DOM click
+  // 6. Click generate speech button via DOM click
   console.log(`    [-] Bấm Generate speech (Eleven v3)...`);
   const clicked = await cdp.evaluate(`(() => {
     const btn = document.querySelector('[data-testid="tts-generate"]') ||
@@ -293,7 +373,7 @@ async function generateClip(cdp, rawText, destFile, profile) {
     throw new Error('Nút Generate speech bị vô hiệu hóa hoặc không tìm thấy!');
   }
 
-  // 5. Wait for generation to start and finish
+  // 7. Wait for generation to start and finish
   let ready = false;
   let sawLoading = false;
   process.stdout.write('    [-] Đang tổng hợp âm thanh: ');
@@ -334,12 +414,15 @@ async function generateClip(cdp, rawText, destFile, profile) {
 
   await sleep(1500);
 
-  // 6 & 7. Trigger download and capture new MP3 file
+  // 8. Poll for the specific NEW history item (strict check against previousHistoryId and target text)
   let audioSaved = false;
+  let matchedHistoryItem = null;
+  const targetSnippet = text.replace(/\\s+/g, ' ').trim().toLowerCase().slice(0, 30);
 
-  // Direct fetch from ElevenLabs internal API via browser session
-  try {
-    const b64Data = await cdp.send('Runtime.evaluate', {
+  process.stdout.write('    [-] Chờ index audio mới trong ElevenLabs history: ');
+  for (let poll = 0; poll < 20; poll++) {
+    await sleep(1000);
+    const histRes = await cdp.send('Runtime.evaluate', {
       expression: `(async () => {
         try {
           const key = Object.keys(localStorage).find(k => k.startsWith('firebase:authUser'));
@@ -348,25 +431,18 @@ async function generateClip(cdp, rawText, destFile, profile) {
           const token = user?.stsTokenManager?.accessToken;
           if (!token) return { error: 'no_token' };
 
-          // Fetch latest history item
-          const histRes = await fetch('https://api.us.elevenlabs.io/v1/history?page_size=5&source=TTS', {
+          const res = await fetch('https://api.us.elevenlabs.io/v1/history?page_size=5&source=TTS', {
             headers: { 'Authorization': 'Bearer ' + token }
           });
-          const histData = await histRes.json();
-          const latestItem = histData.history && histData.history[0];
-          if (!latestItem || !latestItem.history_item_id) return { error: 'no_history_item' };
-
-          const audioRes = await fetch('https://api.us.elevenlabs.io/v1/history/' + latestItem.history_item_id + '/audio', {
-            headers: { 'Authorization': 'Bearer ' + token }
-          });
-          const buffer = await audioRes.arrayBuffer();
-          const bytes = new Uint8Array(buffer);
-          let binary = '';
-          const len = bytes.byteLength;
-          for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-          }
-          return { ok: true, b64: btoa(binary), size: len };
+          const data = await res.json();
+          const items = data.history || [];
+          return {
+            ok: true,
+            items: items.map(h => {
+              const textVal = h.text || (h.dialogue && Array.isArray(h.dialogue) && h.dialogue[0]?.text) || '';
+              return { id: h.history_item_id, text: textVal, date_unix: h.date_unix };
+            })
+          };
         } catch (e) {
           return { error: e.message };
         }
@@ -375,17 +451,67 @@ async function generateClip(cdp, rawText, destFile, profile) {
       returnByValue: true
     });
 
-    const resVal = b64Data?.result?.value;
-    if (resVal && resVal.ok && resVal.b64 && resVal.size > 2000) {
-      const buffer = Buffer.from(resVal.b64, 'base64');
-      fs.writeFileSync(destFile, buffer);
-      audioSaved = true;
+    const items = histRes?.result?.value?.items || [];
+    // Strict requirement: item must have different history_item_id than previous shot AND non-empty matching text
+    const match = items.find(it => {
+      if (previousHistoryId && it.id === previousHistoryId) return false;
+      if (!it.id) return false;
+      const itText = (it.text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      if (!itText || itText.length < 5) return false;
+      return itText.includes(targetSnippet) || (itText.length >= 10 && targetSnippet.includes(itText.slice(0, 20)));
+    });
+
+    if (match) {
+      matchedHistoryItem = match;
+      process.stdout.write(` ✓ [ID: ${match.id.slice(0, 8)}]\n`);
+      break;
+    } else {
+      process.stdout.write('.');
     }
-  } catch (err) {
-    // Fallback to DOM button click
   }
 
+  if (matchedHistoryItem && matchedHistoryItem.id) {
+    try {
+      const b64Data = await cdp.send('Runtime.evaluate', {
+        expression: `(async () => {
+          try {
+            const key = Object.keys(localStorage).find(k => k.startsWith('firebase:authUser'));
+            const user = JSON.parse(localStorage.getItem(key));
+            const token = user?.stsTokenManager?.accessToken;
+
+            const audioRes = await fetch('https://api.us.elevenlabs.io/v1/history/' + ${JSON.stringify(matchedHistoryItem.id)} + '/audio', {
+              headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const buffer = await audioRes.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const len = bytes.byteLength;
+            for (let i = 0; i < len; i++) {
+              binary += String.fromCharCode(bytes[i]);
+            }
+            return { ok: true, b64: btoa(binary), size: len };
+          } catch (e) {
+            return { error: e.message };
+          }
+        })()`,
+        awaitPromise: true,
+        returnByValue: true
+      });
+
+      const resVal = b64Data?.result?.value;
+      if (resVal && resVal.ok && resVal.b64 && resVal.size > 2000) {
+        const buffer = Buffer.from(resVal.b64, 'base64');
+        fs.writeFileSync(destFile, buffer);
+        audioSaved = true;
+      }
+    } catch (err) {
+      console.warn(`    [!] Lỗi fetch audio trực tiếp: ${err.message}`);
+    }
+  }
+
+  // Fallback to UI download if direct API fetch failed
   if (!audioSaved) {
+    console.warn(`    [!] Fallback sang tải qua UI button...`);
     for (let attempt = 0; attempt < 8; attempt++) {
       await sleep(attempt === 0 ? 3000 : 2000);
 
@@ -420,8 +546,15 @@ async function generateClip(cdp, rawText, destFile, profile) {
     throw new Error('Không thể tải hoặc lưu file MP3 từ ElevenLabs!');
   }
 
-  console.log(`    [✓] Đã lưu voice clip: ${destFile} (${fs.statSync(destFile).size} bytes)`);
-  return destFile;
+  // 9. Check MD5 checksum against previous shots in the same storyboard
+  const fileHash = crypto.createHash('md5').update(fs.readFileSync(destFile)).digest('hex');
+  if (previousAudioHashes.has(fileHash)) {
+    throw new Error(`PHÁT HIỆN LỖI LẶP VOICE: File vừa tạo (${path.basename(destFile)}) có MD5 trùng 100% với một shot trước đó (${fileHash})! Dừng lại ngay lập tức.`);
+  }
+  previousAudioHashes.add(fileHash);
+
+  console.log(`    [✓] Đã lưu voice clip: ${destFile} (${fs.statSync(destFile).size} bytes | MD5: ${fileHash.slice(0, 10)})`);
+  return { file: destFile, historyId: matchedHistoryItem ? matchedHistoryItem.id : null, hash: fileHash };
 }
 
 // Generate all voices defined in a storyboard
@@ -442,6 +575,19 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
 
   console.log(`\n=== BẮT ĐẦU TỔNG HỢP VOICE TIẾNG VIỆT (ELEVEN V3): ${episodeName.toUpperCase()} ===`);
   console.log(`Thư mục đích: ${outDir}`);
+
+  const seenHashes = new Set();
+  let lastHistoryId = null;
+
+  // Track hashes of already existing files
+  for (let i = 0; i < shots.length; i++) {
+    const sId = shots[i].id || `shot_${String(i + 1).padStart(2, '0')}`;
+    const existingFile = path.join(outDir, `voice_${sId}.mp3`);
+    if (fs.existsSync(existingFile) && fs.statSync(existingFile).size > 2000) {
+      const h = crypto.createHash('md5').update(fs.readFileSync(existingFile)).digest('hex');
+      seenHashes.add(h);
+    }
+  }
 
   try {
     for (let i = 0; i < shots.length; i++) {
@@ -484,7 +630,13 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
       };
 
       console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice cho ${shotId} (Nhân vật: ${speaker} | Giọng: ${prof.voiceName})...`);
-      await generateClip(cdp, voiceoverText, destFile, prof);
+      const clipRes = await generateClip(cdp, voiceoverText, destFile, prof, seenHashes, lastHistoryId);
+      if (clipRes && clipRes.historyId) {
+        lastHistoryId = clipRes.historyId;
+      }
+      if (clipRes && clipRes.hash) {
+        seenHashes.add(clipRes.hash);
+      }
       await sleep(1000);
     }
   } finally {

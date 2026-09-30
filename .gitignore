@@ -11,6 +11,7 @@ assets/
 
 # Local operational & scratch scripts (Agent / Dev private scripts)
 scripts/
+local_*.js
 
 # Media & temporary generated files
 /renders/*

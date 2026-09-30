@@ -21,6 +21,7 @@ const subtitles = require('./subtitles');
 const compositor = require('./compositor');
 const youtube = require('./youtube');
 const facebook = require('./facebook');
+const tiktok = require('./tiktok_uploader');
 
 /**
  * Resolve storyboard path and parse content.
@@ -279,6 +280,8 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     audioFiles,
     assSubtitlePath: noHardsub ? null : assPath,
     outputVideoPath: masterOutput,
+    ambientVolume: 0.25,
+    voiceVolume: 1.0,
     delays,
     aspectRatio: isShorts ? '9:16' : '16:9',
     burnSubtitles: !noHardsub
@@ -309,16 +312,18 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     const ytDescription = ytMeta.description || (sb.project && sb.project.series) || '';
 
     // Upload to YouTube
-    if (targetPlatform === 'youtube' || targetPlatform === 'both') {
+    if (targetPlatform === 'youtube' || targetPlatform === 'both' || targetPlatform === 'all') {
       try {
-        console.log(`    [-] Đang tải lên YouTube Studio (Chế độ: ${ytVisibility.toUpperCase()})...`);
+        const ytSchedule = (!draft && (ytMeta.schedule || sb.schedule)) || null;
+        console.log(`    [-] Đang tải lên YouTube Studio (Chế độ: ${ytSchedule ? `SCHEDULED (${ytSchedule})` : ytVisibility.toUpperCase()})...`);
         const ytRes = await youtube.uploadVideo({
           videoPath: masterOutput,
           title: ytTitle,
           description: ytDescription,
-          visibility: ytVisibility
+          visibility: ytVisibility,
+          schedule: ytSchedule
         });
-        uploadResults.youtube = { success: true, result: ytRes, visibility: ytVisibility };
+        uploadResults.youtube = { success: true, result: ytRes, visibility: ytVisibility, schedule: ytSchedule };
         console.log(`    [✓] YouTube Studio upload thành công.`);
       } catch (err) {
         console.error(`    [!] Lỗi khi upload lên YouTube Studio: ${err.message}`);
@@ -326,8 +331,28 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
       }
     }
 
+    // Upload to TikTok
+    if (targetPlatform === 'tiktok' || targetPlatform === 'all') {
+      try {
+        const ttMeta = sb.tiktok || {};
+        const ttCaption = ttMeta.caption || (sb.series_title ? `${sb.series_title} - ${sb.episode_title}` : sb.title);
+        const ttSchedule = (!draft && (ttMeta.schedule || sb.schedule)) || null;
+        console.log(`    [-] Đang tải lên TikTok Studio (Schedule: ${ttSchedule || 'Now'})...`);
+        const ttRes = await tiktok.uploadSingleShortToTikTok({
+          videoPath: masterOutput,
+          caption: ttCaption,
+          scheduleTime: ttSchedule
+        });
+        uploadResults.tiktok = { success: true, result: ttRes, schedule: ttSchedule };
+        console.log(`    [✓] TikTok Studio upload thành công.`);
+      } catch (err) {
+        console.error(`    [!] Lỗi khi upload lên TikTok Studio: ${err.message}`);
+        uploadResults.tiktok = { success: false, error: err.message };
+      }
+    }
+
     // Upload to Facebook Reels
-    if (targetPlatform === 'facebook' || targetPlatform === 'both') {
+    if (targetPlatform === 'facebook' || targetPlatform === 'both' || targetPlatform === 'all') {
       try {
         console.log(`    [-] Đang tải lên Facebook Reels (Draft: ${draft ? 'BẬT' : 'TẮT'})...`);
         const fbRes = await facebook.uploadReel({

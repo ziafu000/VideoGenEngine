@@ -384,6 +384,8 @@ async function main() {
           assSubtitlePath: noHardsub ? null : assPath,
           subtitles_path: noHardsub ? null : assPath,
           outputVideoPath: masterOutput,
+          ambientVolume: 0.25,
+          voiceVolume: 1.0,
           delays,
           aspectRatio: isShorts ? '9:16' : '16:9',
           burnSubtitles: !noHardsub
@@ -579,13 +581,16 @@ async function main() {
         const yt = sb.youtube || {};
         const title = yt.title || (sb.project && sb.project.title) || (sb.series_title ? `${sb.series_title} - ${sb.episode_title}` : sb.title) || 'Video Project';
         const desc = yt.description || (sb.project && sb.project.series) || 'Original Video from ZFStudio';
-        const visibility = yt.visibility || 'unlisted';
+        const schedIdx = args.indexOf('--schedule');
+        const schedArg = schedIdx !== -1 && args[schedIdx + 1] ? args[schedIdx + 1] : (yt.schedule || sb.schedule || null);
+        const visibility = schedArg ? 'scheduled' : (yt.visibility || 'unlisted');
 
         await youtube.uploadVideo({
           videoPath: latestMaster,
           title,
           description: desc,
-          visibility
+          visibility,
+          schedule: schedArg
         });
         break;
       }
