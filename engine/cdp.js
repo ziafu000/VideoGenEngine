@@ -14,7 +14,19 @@ class CDPClient {
 
     this.ready = new Promise((resolve, reject) => {
       this.ws.onopen = resolve;
-      this.ws.onerror = reject;
+      this.ws.onerror = (err) => {
+        for (const [id, p] of this.pending.entries()) {
+          p.reject(new Error(`WebSocket error: ${err.message || err}`));
+        }
+        this.pending.clear();
+        reject(err);
+      };
+      this.ws.onclose = () => {
+        for (const [id, p] of this.pending.entries()) {
+          p.reject(new Error('WebSocket closed'));
+        }
+        this.pending.clear();
+      };
     });
 
     this.ws.onmessage = (evt) => {
@@ -35,18 +47,43 @@ class CDPClient {
     };
   }
 
-  send(method, params = {}) {
+  send(method, params = {}, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
       const id = this.msgId++;
-      this.pending.set(id, { resolve, reject });
-      this.ws.send(JSON.stringify({ id, method, params }));
+      let timer = null;
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          if (this.pending.has(id)) {
+            this.pending.delete(id);
+            reject(new Error(`CDP method '${method}' timed out after ${timeoutMs}ms`));
+          }
+        }, timeoutMs);
+      }
+      this.pending.set(id, {
+        resolve: (val) => {
+          if (timer) clearTimeout(timer);
+          resolve(val);
+        },
+        reject: (err) => {
+          if (timer) clearTimeout(timer);
+          reject(err);
+        }
+      });
+      try {
+        this.ws.send(JSON.stringify({ id, method, params }));
+      } catch (err) {
+        if (timer) clearTimeout(timer);
+        this.pending.delete(id);
+        reject(err);
+      }
     });
   }
 
   async evaluate(expr, returnByValue = true) {
     const res = await this.send('Runtime.evaluate', {
       expression: expr,
-      returnByValue
+      returnByValue,
+      awaitPromise: true
     });
     return res && res.result ? res.result.value : null;
   }
@@ -74,6 +111,10 @@ class CDPClient {
     try {
       this.ws.close();
     } catch {}
+    for (const [id, p] of this.pending.entries()) {
+      p.reject(new Error('CDPClient closed manually'));
+    }
+    this.pending.clear();
   }
 }
 

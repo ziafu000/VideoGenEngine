@@ -103,8 +103,8 @@ Lệnh điều phối:
       Tự động cắt các clip highlight 9:16 dọc theo kịch bản (Option B - Cinematic Blur Overlay)
       với font chữ lớn, viền neon và thanh kêu gọi CTA trọn bộ tập về kênh chính (0 Credit cost).
 
-  ./videogen tiktok <video_path> [thumbnail_path] ["caption"]
-      Tự động đăng clip Shorts lên TikTok Studio qua Chrome CDP kèm thumbnail và caption.
+  ./videogen tiktok <video_path> [thumbnail_path] ["caption"] [--schedule "DD/MM/YYYY HH:mm"]
+      Tự động đăng hoặc lên lịch phát sóng clip Shorts lên TikTok Studio qua Chrome CDP kèm thumbnail và caption.
 
   ./videogen facebook <storyboard.json> [video_file] [--draft]
       Tự động đăng video ngắn 9:16 lên Facebook Reels qua Chrome CDP (0 API cost, không hết hạn token).
@@ -477,17 +477,26 @@ async function main() {
       case 'tiktok': {
         const videoArg = args[1];
         if (!videoArg) {
-          console.error('[!] Vui lòng cung cấp đường dẫn video: ./videogen tiktok <video.mp4> [thumbnail.jpg] ["caption"]');
+          console.error('[!] Vui lòng cung cấp đường dẫn video: ./videogen tiktok <video.mp4> [thumbnail.jpg] ["caption"] [--schedule "DD/MM/YYYY HH:mm"]');
           process.exit(1);
         }
         await bridge.ensureBridge();
+
+        let scheduleArg = null;
+        const schedIdx = args.findIndex(a => a === '--schedule' || a === '-s');
+        if (schedIdx !== -1 && args[schedIdx + 1]) {
+          scheduleArg = args[schedIdx + 1];
+          args.splice(schedIdx, 2);
+        }
+
         const thumbArg = args[2] && (args[2].endsWith('.jpg') || args[2].endsWith('.png') || args[2].endsWith('.jpeg')) ? args[2] : null;
         const captionArg = thumbArg ? args.slice(3).join(' ') : args.slice(2).join(' ');
 
         await tiktok.uploadSingleShortToTikTok({
           videoPath: videoArg,
           thumbnailPath: thumbArg,
-          caption: captionArg || path.basename(videoArg, path.extname(videoArg))
+          caption: captionArg || path.basename(videoArg, path.extname(videoArg)),
+          scheduleTime: scheduleArg
         });
         break;
       }

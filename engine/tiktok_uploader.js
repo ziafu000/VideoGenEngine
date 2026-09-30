@@ -5,40 +5,69 @@ const { getClientForPage, sleep } = require('./cdp');
 const jev = require('./jev');
 
 /**
- * Upload a single vertical 9:16 Short to TikTok Studio with Jev-guided gates.
+ * Dismisses common popup obstacles and confirmation modals on TikTok Studio.
+ */
+async function dismissAllModals(cdp) {
+  return await cdp.evaluate(`(() => {
+    let clicked = [];
+    const btns = Array.from(document.querySelectorAll("button, .TUXButton, .Button__root"));
+    for (const b of btns) {
+      const t = b.innerText?.trim();
+      if (t === "Got it" || t === "Đã hiểu") { b.click(); clicked.push("Got it"); }
+      if (t === "Allow" || t === "Cho phép") { b.click(); clicked.push("Allow"); }
+      if (t === "Discard" || t === "Hủy") {
+        if (b.closest(".TUXModal, [class*=modal], [class*=dialog], [class*=Modal]")) {
+          b.click();
+          clicked.push("Discard Modal");
+        }
+      }
+    }
+    return clicked;
+  })()`);
+}
+
+/**
+ * Upload a single vertical 9:16 Short to TikTok Studio with Jev-guided gates and scheduling support.
+ *
+ * @param {Object} options
+ * @param {string} options.videoPath - Relative or absolute path to MP4
+ * @param {string} [options.thumbnailPath] - Optional custom cover image
+ * @param {string} options.caption - Caption and hashtags
+ * @param {string|Object} [options.scheduleTime] - Schedule date/time e.g. "01/10/2026 08:00" or { year, month, day, hour, minute }
  */
 async function uploadSingleShortToTikTok({
   videoPath,
   thumbnailPath,
-  caption
+  caption,
+  scheduleTime
 }) {
   const winVideo = config.toWinPath(videoPath);
   const winThumb = thumbnailPath ? config.toWinPath(thumbnailPath) : null;
 
   console.log(`\n============================================================`);
-  console.log(`>>> TIKTOK UPLOAD (JEV DRIVEN): ${path.basename(videoPath)}`);
+  console.log(`>>> TIKTOK UPLOAD & SCHEDULE (JEV DRIVEN): ${path.basename(videoPath)}`);
   console.log(`    - Video: ${winVideo}`);
+  console.log(`    - Mode: ${scheduleTime ? `LÊN LỊCH (${typeof scheduleTime === 'string' ? scheduleTime : JSON.stringify(scheduleTime)})` : 'ĐĂNG NGAY (Now)'}`);
   console.log(`    - Thumbnail: ${winThumb || '(Auto từ video)'}`);
   console.log(`    - Caption: ${caption}`);
   console.log(`============================================================`);
 
-  const cdp = await getClientForPage('tiktok.com');
+  const cdp = await getClientForPage('tiktokstudio');
   await cdp.send('DOM.enable');
 
-  // 1. Điều hướng tới TikTok Studio Upload
-  console.log('[-] [1/6] Điều hướng tới TikTok Studio Upload...');
+  // 1. Dọn dẹp cache draft IndexedDB và chuyển hướng về Upload sạch
+  console.log('[-] [1/6] Chuẩn bị không gian tải lên sạch...');
+  await cdp.evaluate(`(new Promise((resolve) => {
+    const req = indexedDB.deleteDatabase("web_creation_draft");
+    req.onsuccess = req.onerror = req.onblocked = () => resolve();
+  }))`);
+
   await cdp.send('Page.navigate', { url: 'https://www.tiktok.com/tiktokstudio/upload?lang=vi-VN' });
   await sleep(3500);
+  await dismissAllModals(cdp);
+  await sleep(500);
 
-  // Dọn dẹp dialog draft cũ nếu có
-  await cdp.evaluate(`(() => {
-    const btns = Array.from(document.querySelectorAll('button'));
-    const discardBtn = btns.find(b => b.innerText && (b.innerText.trim() === 'Discard' || b.innerText.trim() === 'Bỏ qua' || b.innerText.trim() === 'Hủy'));
-    if (discardBtn) discardBtn.click();
-  })()`);
-  await sleep(1500);
-
-  // Kiểm tra đăng nhập bằng Jev
+  // Kiểm tra đăng nhập
   const pageSnippet = await cdp.evaluate('document.body.innerText.slice(0, 400)');
   const loginState = jev.classify(pageSnippet, {
     logged_in: "User is in creator studio upload page",
@@ -52,6 +81,18 @@ async function uploadSingleShortToTikTok({
   console.log('[-] [2/6] Nạp file video vào TikTok Studio...');
   let fileNodeId = 0;
   for (let attempt = 0; attempt < 25; attempt++) {
+    try {
+      const doc = await cdp.send('DOM.getDocument', { depth: -1 });
+      const node = await cdp.send('DOM.querySelector', {
+        nodeId: doc.root.nodeId,
+        selector: 'input[type="file"]'
+      });
+      if (node && node.nodeId) {
+        fileNodeId = node.nodeId;
+        break;
+      }
+    } catch {}
+
     const evalRes = await cdp.send('Runtime.evaluate', {
       expression: 'document.querySelector("input[type=\'file\'][accept*=\'video\'], input[type=\'file\']")'
     });
@@ -65,18 +106,6 @@ async function uploadSingleShortToTikTok({
       } catch {}
     }
 
-    try {
-      const doc = await cdp.send('DOM.getDocument', { depth: -1 });
-      const node = await cdp.send('DOM.querySelector', {
-        nodeId: doc.root.nodeId,
-        selector: 'input[type="file"]'
-      });
-      if (node && node.nodeId) {
-        fileNodeId = node.nodeId;
-        break;
-      }
-    } catch {}
-
     await sleep(1000);
   }
 
@@ -86,200 +115,246 @@ async function uploadSingleShortToTikTok({
     nodeId: fileNodeId,
     files: [winVideo]
   });
-  console.log('    [✓] Đã nạp file video thành công!');
+  console.log('    [✓] Đã nạp file video thành công, đang tải lên...');
 
-  // 3. Chờ video xử lý hoàn tất bằng Jev Classifier
-  console.log('[-] [3/6] TypeSafe Jev đang giám sát tiến trình tải lên video...');
+  // 3. Chờ video xử lý hoàn tất
   let isVideoReady = false;
   for (let i = 0; i < 45; i++) {
     await sleep(1500);
-    const bodyText = await cdp.evaluate('document.body.innerText.slice(0, 800)');
-    const state = jev.classify(bodyText, {
-      ready: "Video uploaded successfully, editor form and details are visible",
-      uploading: "Video is still uploading with progress percentage or loading",
-      initial: "Initial select file dropzone"
-    });
-
-    if (state.choice === 'ready' && state.confidence >= 0.8) {
-      console.log(`    [✓ Jev Decision] Video tải lên thành công (Confidence: ${(state.confidence * 100).toFixed(0)}%)!`);
+    await dismissAllModals(cdp);
+    const bodyText = await cdp.evaluate('document.body.innerText.slice(0, 600)');
+    if (bodyText.includes('Uploaded') || bodyText.includes('Replace') || bodyText.includes('Đã tải lên')) {
+      console.log(`    [✓] Video tải lên thành công sau ${((i + 1) * 1.5).toFixed(1)}s!`);
       isVideoReady = true;
       break;
     }
-    process.stdout.write(`\r    ... Jev State: ${state.choice} (${(state.confidence * 100).toFixed(0)}%) [${(i * 1.5).toFixed(1)}s]`);
   }
 
-  if (!isVideoReady) throw new Error('Hết thời gian chờ video tải lên');
+  if (!isVideoReady) throw new Error('Hết thời gian chờ video tải lên hoàn tất');
 
   // 4. Nhập Caption & Hashtags
-  console.log('\n[-] [4/6] Nhập nội dung caption và hashtags...');
+  console.log('[-] [3/6] Nhập nội dung caption...');
   await cdp.evaluate(`(() => {
     const editor = document.querySelector('.public-DraftEditor-content, [contenteditable="true"]');
     if (editor) {
       editor.focus();
-      document.execCommand('selectAll', false, null);
-      document.execCommand('delete', false, null);
+      const sel = window.getSelection();
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      sel.removeAllRanges();
+      sel.addRange(range);
       document.execCommand('insertText', false, ${JSON.stringify(caption)});
+
+      const details = Array.from(document.querySelectorAll("div, span, h1, h2, h3, h4"))
+        .find(e => e.innerText?.trim() === "Details" || e.innerText?.trim() === "Chi tiết");
+      if (details) details.click();
     }
   })()`);
   await sleep(1500);
 
-  // 5. Gắn custom thumbnail nếu có (Jev-Guided Content Verification)
+  // 5. Gắn custom thumbnail nếu có
   if (winThumb && fs.existsSync(thumbnailPath)) {
-    console.log('[-] [5/6] Mở modal Edit cover và gắn thumbnail tùy chỉnh...');
+    console.log('[-] [4/6] Gắn thumbnail tùy chỉnh...');
+    const clicked = await cdp.evaluate(`(() => {
+      const el = document.querySelector('.edit-container, [class*="cover-container"], [class*="edit-container"]');
+      if (el) { el.click(); return true; }
+      return false;
+    })()`);
 
-    // Click nút Edit cover
-    for (let attempt = 0; attempt < 10; attempt++) {
-      const clicked = await cdp.evaluate(`(() => {
-        const el = document.querySelector('.edit-container, [class*="cover-container"], [class*="edit-container"]');
-        if (el) {
-          el.scrollIntoView({ behavior: 'instant', block: 'center' });
-          el.click();
-          return true;
-        }
-        return false;
-      })()`);
-      if (clicked) break;
-      await sleep(1000);
-    }
-
-    // Chờ modal Edit cover render ĐẦY ĐỦ CONTENT (chờ input file ảnh xuất hiện)
-    console.log('    [-] Đang chờ thẻ tải ảnh bìa bên trong modal sẵn sàng...');
-    let imgNodeId = 0;
-
-    for (let i = 0; i < 25; i++) {
-      await sleep(1000);
-
-      const evalRes = await cdp.send('Runtime.evaluate', {
-        expression: 'document.querySelector("input[type=\'file\'][accept*=\'image\']")'
-      });
-
-      if (evalRes.result && evalRes.result.objectId) {
-        try {
+    if (clicked) {
+      await sleep(2000);
+      let imgNodeId = 0;
+      for (let i = 0; i < 15; i++) {
+        const evalRes = await cdp.send('Runtime.evaluate', {
+          expression: 'document.querySelector("input[type=\'file\'][accept*=\'image\']")'
+        });
+        if (evalRes.result && evalRes.result.objectId) {
           const nodeDesc = await cdp.send('DOM.requestNode', { objectId: evalRes.result.objectId });
-          if (nodeDesc && nodeDesc.nodeId) {
-            imgNodeId = nodeDesc.nodeId;
-            console.log(`    [✓] Đã định vị ô nạp ảnh bìa (NodeId: ${imgNodeId}) sau ${i + 1}s!`);
-            break;
-          }
-        } catch {}
-      }
-      process.stdout.write(`\r    ... Đang chờ modal sẵn sàng: ${i + 1}s`);
-    }
-
-    if (imgNodeId) {
-      console.log(`\n    [-] Nạp file ảnh bìa qua CDP: ${winThumb}`);
-      await cdp.send('DOM.setFileInputFiles', {
-        nodeId: imgNodeId,
-        files: [winThumb]
-      });
-      console.log('    [✓] Đã nạp file thumbnail vào modal cover!');
-
-      // Chờ 3 giây để modal render ảnh thumbnail
-      await sleep(3500);
-
-      // Bấm nút Save trong modal
-      const saveRes = await cdp.evaluate(`(() => {
-        const btns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.trim() === 'Save' || b.innerText.trim() === 'Lưu'));
-        if (btns.length > 0) {
-          btns[btns.length - 1].click();
-          return { clicked: true, text: btns[btns.length - 1].innerText };
+          if (nodeDesc && nodeDesc.nodeId) { imgNodeId = nodeDesc.nodeId; break; }
         }
-        return { clicked: false };
-      })()`);
-      console.log(`    [✓] Đã bấm nút Save ảnh bìa:`, saveRes);
-
-      // Chờ modal đóng hoàn toàn
-      for (let w = 0; w < 10; w++) {
         await sleep(1000);
-        const stillOpen = await cdp.evaluate(`!!document.querySelector('[role="dialog"], .modal, .semi-modal, [class*="modal"]')`);
-        if (!stillOpen) {
-          console.log('    [✓] Modal Edit cover đã đóng, ảnh bìa đã được lưu thành công!');
-          break;
-        }
       }
-    } else {
-      console.warn('\n    [!] Hết thời gian chờ ô chọn ảnh bìa trong modal');
+      if (imgNodeId) {
+        await cdp.send('DOM.setFileInputFiles', { nodeId: imgNodeId, files: [winThumb] });
+        await sleep(3500);
+        await cdp.evaluate(`(() => {
+          const btns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.trim() === 'Save' || b.innerText.trim() === 'Lưu'));
+          if (btns.length > 0) btns[btns.length - 1].click();
+        })()`);
+        await sleep(2000);
+      }
     }
   }
 
-  // 6. Click Post và dùng Jev xử lý các chướng ngại / popup
-  console.log('[-] [6/6] Đang gửi lệnh Đăng video (Post)...');
-  for (let i = 0; i < 20; i++) {
-    const postBtnCoord = await cdp.evaluate(`(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const postBtn = btns.find(b => b.innerText && b.innerText.trim() === 'Post');
-      if (!postBtn || postBtn.disabled || postBtn.getAttribute('aria-disabled') === 'true') return null;
-      postBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
-      const r = postBtn.getBoundingClientRect();
-      return {
-        x: Math.round(r.x + r.width / 2),
-        y: Math.round(r.y + r.height / 2)
-      };
+  // 6. Xử lý Lên lịch (Schedule) hoặc Đăng ngay (Post Now)
+  if (scheduleTime) {
+    console.log('[-] [5/6] Cấu hình lịch phát sóng (Schedule)...');
+
+    // Parse scheduleTime
+    let schedObj = null;
+    if (typeof scheduleTime === 'string') {
+      const m = scheduleTime.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s+(\d{1,2}):(\d{2})/);
+      if (m) {
+        schedObj = {
+          day: parseInt(m[1], 10),
+          month: parseInt(m[2], 10),
+          year: parseInt(m[3], 10),
+          hour: m[4].padStart(2, '0'),
+          minute: m[5].padStart(2, '0')
+        };
+      }
+    } else if (typeof scheduleTime === 'object') {
+      schedObj = scheduleTime;
+    }
+
+    // Chọn radio Schedule
+    await cdp.evaluate(`(() => {
+      const radio = document.querySelector("input[name=postSchedule][value=schedule]");
+      const label = radio?.closest("label") || radio?.parentElement;
+      if (label) label.click();
+    })()`);
+    await sleep(1000);
+    await dismissAllModals(cdp);
+    await sleep(1000);
+
+    await cdp.evaluate(`(() => {
+      const radio = document.querySelector("input[name=postSchedule][value=schedule]");
+      if (radio && !radio.checked) {
+        const label = radio.closest("label") || radio.parentElement;
+        if (label) label.click();
+      }
     })()`);
 
-    if (postBtnCoord) {
-      await cdp.clickMouse(postBtnCoord.x, postBtnCoord.y);
-      console.log('    [✓] Đã click nút Post!');
-      break;
+    if (schedObj) {
+      // Mở Calendar
+      await cdp.evaluate(`(() => {
+        const scheduledPicker = document.querySelector(".scheduled-picker");
+        const fields = Array.from(scheduledPicker ? scheduledPicker.querySelectorAll(".TUXFormField") : []);
+        const f1 = fields[1];
+        let curr = f1?.parentElement;
+        if (curr) {
+          const k = Object.keys(curr).find(k => k.startsWith("__reactProps"));
+          if (curr[k]?.onClick) curr[k].onClick({ stopPropagation: () => {} });
+        }
+      })()`);
+      await sleep(600);
+
+      // Tháng đích
+      const targetMonthName = schedObj.month === 10 ? "October" : "September";
+      await cdp.evaluate(`(() => {
+        const header = document.querySelector(".month-header-wrapper");
+        if (!header) return;
+        const isTarget = header.innerText.includes("${targetMonthName}") || header.innerText.includes("Tháng ${schedObj.month}");
+        if (!isTarget) {
+          const arrows = Array.from(header.querySelectorAll("span.arrow"));
+          const next = arrows[1];
+          if (next) {
+            const k = Object.keys(next).find(k => k.startsWith("__reactProps"));
+            if (k && next[k].onClick) next[k].onClick({ stopPropagation: () => {} });
+            else next.click();
+          }
+        }
+      })()`);
+      await sleep(600);
+
+      // Chọn ngày
+      await cdp.evaluate(`(() => {
+        const days = Array.from(document.querySelectorAll("span.day.valid"));
+        const targetDay = days.find(d => d.innerText.trim() === "${schedObj.day}");
+        if (targetDay) {
+          const k = Object.keys(targetDay).find(k => k.startsWith("__reactProps"));
+          if (k && targetDay[k].onClick) targetDay[k].onClick({ stopPropagation: () => {} });
+          else targetDay.click();
+        }
+      })()`);
+      await sleep(1000);
+
+      // Mở Time Picker
+      await cdp.evaluate(`(() => {
+        const timeInput = Array.from(document.querySelectorAll("input.TUXTextInputCore-input"))
+          .find(i => /^[0-9]{2}:[0-9]{2}$/.test(i.value));
+        let curr = timeInput;
+        while (curr && !curr.className.includes("jsx-2483585186")) curr = curr.parentElement;
+        if (curr) {
+          const k = Object.keys(curr).find(k => k.startsWith("__reactProps"));
+          if (curr[k]?.onClick) curr[k].onClick({ stopPropagation: () => {} });
+        }
+      })()`);
+      await sleep(600);
+
+      // Chọn giờ và phút
+      await cdp.evaluate(`(() => {
+        const hours = Array.from(document.querySelectorAll(".tiktok-timepicker-left"));
+        const mins = Array.from(document.querySelectorAll(".tiktok-timepicker-right"));
+        const targetHour = hours.find(h => h.innerText.trim() === "${schedObj.hour}");
+        const targetMin = mins.find(m => m.innerText.trim() === "${schedObj.minute}");
+        for (const el of [targetHour, targetMin]) {
+          if (el) {
+            el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+            el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+            el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+          }
+        }
+        const settings = Array.from(document.querySelectorAll("div, span, h1, h2, h3"))
+          .find(e => e.innerText?.trim() === "Settings" || e.innerText?.trim() === "Cài đặt");
+        if (settings) settings.click();
+      })()`);
+      await sleep(1000);
     }
-    await sleep(1000);
+  }
+
+  // 7. Gửi lệnh Post hoặc Schedule
+  const isSchedule = !!scheduleTime;
+  console.log(`[-] [6/6] Gửi lệnh ${isSchedule ? 'Lên lịch (Schedule)' : 'Đăng ngay (Post)'}...`);
+
+  const btnCoord = await cdp.evaluate(`(() => {
+    const btns = Array.from(document.querySelectorAll("button"));
+    const targetText = ${JSON.stringify(isSchedule ? 'Schedule' : 'Post')};
+    const btn = btns.find(b => b.innerText && (b.innerText.trim() === targetText || (targetText === 'Schedule' && b.innerText.trim() === 'Lên lịch') || (targetText === 'Post' && b.innerText.trim() === 'Đăng')));
+    if (!btn || btn.disabled) return null;
+    btn.scrollIntoView({ block: "center", behavior: "instant" });
+    const r = btn.getBoundingClientRect();
+    return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+  })()`);
+
+  if (btnCoord) {
+    await cdp.clickMouse(btnCoord.x, btnCoord.y);
+  } else {
+    await cdp.evaluate(`(() => {
+      const btns = Array.from(document.querySelectorAll("button"));
+      const targetText = ${JSON.stringify(isSchedule ? 'Schedule' : 'Post')};
+      const btn = btns.find(b => b.innerText && (b.innerText.trim() === targetText || (targetText === 'Schedule' && b.innerText.trim() === 'Lên lịch') || (targetText === 'Post' && b.innerText.trim() === 'Đăng')));
+      if (btn) btn.click();
+    })()`);
   }
 
   await sleep(1500);
 
-  // TypeSafe Jev Obstacle & Confirmation Handler
-  for (let i = 0; i < 15; i++) {
-    const dialogText = await cdp.evaluate(`(() => {
-      const dialog = document.querySelector('[role="dialog"], .modal, .semi-modal, [class*="modal"]');
-      return dialog ? dialog.innerText.slice(0, 400) : '';
-    })()`);
-
-    if (dialogText) {
-      const obstacleDecision = jev.classify(dialogText, {
-        copyright_warning: "Copyright check warning dialog asking to continue or post now",
-        other_obstacle: "Other popup or dialog",
-        none: "No obstacle"
-      });
-
-      if (obstacleDecision.choice === 'copyright_warning') {
-        console.log('    [✓ Jev Obstacle] Phát hiện cảnh báo bản quyền, kích hoạt "Post now"...');
-        await cdp.evaluate(`(() => {
-          const btns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('Post now') || b.innerText.includes('Vẫn đăng') || b.innerText.includes('Continue')));
-          if (btns.length > 0) btns[btns.length - 1].click();
-        })()`);
-        break;
-      }
-    }
-    await sleep(1000);
-  }
-
-  // Chờ điều hướng hoàn tất xác nhận bởi Jev
-  console.log('[-] TypeSafe Jev đang xác thực kết quả xuất bản...');
-  let uploadConfirmed = false;
-  for (let i = 0; i < 20; i++) {
-    await sleep(2000);
-    const state = await cdp.evaluate(`(() => {
-      return {
-        url: window.location.href,
-        bodyText: document.body.innerText.slice(0, 600)
-      };
-    })()`);
-
-    const resultDecision = jev.classify(state.bodyText, {
-      published: "Video has been uploaded or user is redirected to manage content posts",
-      in_progress: "Upload still in progress",
-      error: "Upload error or failure"
+  // Xử lý modal "Continue to post? Post now" hoặc cảnh báo bản quyền
+  await cdp.evaluate(`(() => {
+    const btns = Array.from(document.querySelectorAll(".TUXModal button, [role=dialog] button, button"));
+    const postNow = btns.find(b => {
+      const t = b.innerText?.trim();
+      return t === "Post now" || t === "Vẫn đăng" || t === "Continue" || t === "Tiếp tục";
     });
+    if (postNow) postNow.click();
+  })()`);
 
-    if (resultDecision.choice === 'published' || state.url.includes('/content')) {
-      console.log(`    [✓ Jev Verified] XÁC NHẬN: Video đã được đăng thành công lên TikTok Studio!`);
-      uploadConfirmed = true;
+  // 8. Chờ xác nhận
+  let confirmed = false;
+  for (let i = 0; i < 15; i++) {
+    await sleep(2000);
+    const pageText = await cdp.evaluate("document.body.innerText.slice(0, 600)");
+    const url = await cdp.evaluate("window.location.href");
+    if (url.includes("/content") || pageText.includes("Posts") || pageText.includes("Manage your posts")) {
+      console.log(`    [✓] XÁC NHẬN: Video đã được ${isSchedule ? 'lên lịch' : 'đăng'} thành công lên TikTok Studio!`);
+      confirmed = true;
       break;
     }
   }
 
-  if (!uploadConfirmed) {
-    console.log('    [i] Đã gửi lệnh Post hoàn tất!');
+  if (!confirmed) {
+    console.log(`    [i] Lệnh ${isSchedule ? 'Schedule' : 'Post'} đã được gửi.`);
   }
 
   cdp.close();
@@ -287,5 +362,6 @@ async function uploadSingleShortToTikTok({
 }
 
 module.exports = {
-  uploadSingleShortToTikTok
+  uploadSingleShortToTikTok,
+  dismissAllModals
 };
