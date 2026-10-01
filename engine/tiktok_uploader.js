@@ -39,8 +39,25 @@ async function uploadSingleShortToTikTok({
   videoPath,
   thumbnailPath,
   caption,
+  storyboardPath,
   scheduleTime
 }) {
+  let resolvedCaption = caption;
+  if (!resolvedCaption && storyboardPath && fs.existsSync(storyboardPath)) {
+    try {
+      const sb = JSON.parse(fs.readFileSync(storyboardPath, 'utf8'));
+      resolvedCaption = sb.tiktok?.caption || (sb.youtube ? `${sb.youtube.title}\n\n#ZFStudio #AmazingWorld #Shorts` : sb.episode_title);
+      if (!scheduleTime && sb.tiktok?.schedule) {
+        scheduleTime = sb.tiktok.schedule;
+      }
+    } catch {}
+  }
+  if (!resolvedCaption) {
+    resolvedCaption = path.basename(videoPath, path.extname(videoPath)) + ' #ZFStudio #AmazingWorld #Shorts';
+  }
+  // Loại bỏ ký tự xuống dòng để tránh làm crash Draft.js editor của TikTok
+  resolvedCaption = resolvedCaption.replace(/\r?\n+/g, ' ').trim();
+
   const winVideo = config.toWinPath(videoPath);
   const winThumb = thumbnailPath ? config.toWinPath(thumbnailPath) : null;
 
@@ -49,7 +66,7 @@ async function uploadSingleShortToTikTok({
   console.log(`    - Video: ${winVideo}`);
   console.log(`    - Mode: ${scheduleTime ? `LÊN LỊCH (${typeof scheduleTime === 'string' ? scheduleTime : JSON.stringify(scheduleTime)})` : 'ĐĂNG NGAY (Now)'}`);
   console.log(`    - Thumbnail: ${winThumb || '(Auto từ video)'}`);
-  console.log(`    - Caption: ${caption}`);
+  console.log(`    - Caption: ${resolvedCaption}`);
   console.log(`============================================================`);
 
   const cdp = await getClientForPage('tiktok');
@@ -58,15 +75,18 @@ async function uploadSingleShortToTikTok({
     await cdp.dismissModals();
     await cdp.send('DOM.enable');
 
-    // 1. Dọn dẹp cache draft IndexedDB và chuyển hướng về Upload sạch
+    // 1. Chuyển hướng về Upload sạch
     console.log('[-] [1/6] Chuẩn bị không gian tải lên sạch...');
-    await cdp.evaluate(`(new Promise((resolve) => {
-      const req = indexedDB.deleteDatabase("web_creation_draft");
-      req.onsuccess = req.onerror = req.onblocked = () => resolve();
-    }))`);
-
     await cdp.send('Page.navigate', { url: 'https://www.tiktok.com/tiktokstudio/upload?lang=vi-VN' });
-    await sleep(3500);
+    await sleep(4000);
+
+    // Nếu có modal Discard cũ tồn đọng, click Discard để dọn sạch form
+    await cdp.evaluate(`(() => {
+      const btns = Array.from(document.querySelectorAll(".TUXModal button, [role=dialog] button, button"));
+      const discard = btns.find(b => (b.innerText || "").trim() === "Discard");
+      if (discard) discard.click();
+    })()`);
+    await sleep(1500);
     await dismissAllModals(cdp);
 
     // Xử lý card draft chưa lưu nếu có ("A video you were editing wasn’t saved. Continue editing?")
@@ -167,7 +187,7 @@ async function uploadSingleShortToTikTok({
         range.selectNodeContents(editor);
         sel.removeAllRanges();
         sel.addRange(range);
-        document.execCommand('insertText', false, ${JSON.stringify(caption)});
+        document.execCommand('insertText', false, ${JSON.stringify(resolvedCaption)});
 
         const details = Array.from(document.querySelectorAll("div, span, h1, h2, h3, h4"))
           .find(e => e.innerText?.trim() === "Details" || e.innerText?.trim() === "Chi tiết");
@@ -179,7 +199,7 @@ async function uploadSingleShortToTikTok({
     // Xác thực số ký tự trên counter
     for (let i = 0; i < 15; i++) {
       const counterText = await cdp.evaluate('document.body.innerText.match(/(\\d+)\\/4000/)?.[0]');
-      if (counterText && parseInt(counterText.split('/')[0], 10) >= caption.length) {
+      if (counterText && parseInt(counterText.split('/')[0], 10) >= resolvedCaption.length) {
         break;
       }
       await sleep(1000);
@@ -265,78 +285,68 @@ async function uploadSingleShortToTikTok({
       })()`);
 
       if (schedObj) {
-        // Mở Calendar
+        // 1. Mở Calendar bằng cách click vào input ngày
         await cdp.evaluate(`(() => {
-          const scheduledPicker = document.querySelector(".scheduled-picker");
-          const fields = Array.from(scheduledPicker ? scheduledPicker.querySelectorAll(".TUXFormField") : []);
-          const f1 = fields[1];
-          let curr = f1?.parentElement;
-          if (curr) {
-            const k = Object.keys(curr).find(k => k.startsWith("__reactProps"));
-            if (curr[k]?.onClick) curr[k].onClick({ stopPropagation: () => {} });
-          }
+          const input = Array.from(document.querySelectorAll("input.TUXTextInputCore-input")).find(i => /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(i.value));
+          if (input) input.click();
         })()`);
-        await sleep(600);
+        await sleep(1000);
 
-        // Tháng đích
+        // 2. Chuyển tháng nếu cần
         const targetMonthName = schedObj.month === 10 ? "October" : "September";
         await cdp.evaluate(`(() => {
           const header = document.querySelector(".month-header-wrapper");
           if (!header) return;
           const isTarget = header.innerText.includes("${targetMonthName}") || header.innerText.includes("Tháng ${schedObj.month}");
           if (!isTarget) {
-            const arrows = Array.from(header.querySelectorAll("span.arrow"));
+            const arrows = Array.from(header.querySelectorAll("span.arrow, .arrow"));
             const next = arrows[1];
-            if (next) {
-              const k = Object.keys(next).find(k => k.startsWith("__reactProps"));
-              if (k && next[k].onClick) next[k].onClick({ stopPropagation: () => {} });
-              else next.click();
-            }
+            if (next) next.click();
           }
         })()`);
-        await sleep(600);
+        await sleep(800);
 
-        // Chọn ngày
+        // 3. Chọn ngày đích
         await cdp.evaluate(`(() => {
-          const days = Array.from(document.querySelectorAll("span.day.valid"));
-          const targetDay = days.find(d => d.innerText.trim() === "${schedObj.day}");
-          if (targetDay) {
-            const k = Object.keys(targetDay).find(k => k.startsWith("__reactProps"));
-            if (k && targetDay[k].onClick) targetDay[k].onClick({ stopPropagation: () => {} });
-            else targetDay.click();
-          }
+          const days = Array.from(document.querySelectorAll(".calendar-wrapper span, span.day.valid, span.day"));
+          const targetDay = days.find(d => (d.innerText || "").trim() === "${parseInt(schedObj.day, 10)}");
+          if (targetDay) targetDay.click();
         })()`);
         await sleep(1000);
 
-        // Mở Time Picker
+        // 4. Mở Time Picker bằng cách click vào input giờ
         await cdp.evaluate(`(() => {
-          const timeInput = Array.from(document.querySelectorAll("input.TUXTextInputCore-input"))
-            .find(i => /^[0-9]{2}:[0-9]{2}$/.test(i.value));
-          let curr = timeInput;
-          while (curr && !curr.className.includes("jsx-2483585186")) curr = curr.parentElement;
-          if (curr) {
-            const k = Object.keys(curr).find(k => k.startsWith("__reactProps"));
-            if (curr[k]?.onClick) curr[k].onClick({ stopPropagation: () => {} });
-          }
+          const input = Array.from(document.querySelectorAll("input.TUXTextInputCore-input")).find(i => /^[0-9]{2}:[0-9]{2}$/.test(i.value));
+          if (input) input.click();
         })()`);
-        await sleep(600);
+        await sleep(1000);
 
-        // Chọn giờ và phút
-        await cdp.evaluate(`(() => {
+        // 5. Click chọn giờ và phút bằng coordinates qua CDP
+        const coords = await cdp.evaluate(`(() => {
           const hours = Array.from(document.querySelectorAll(".tiktok-timepicker-left"));
           const mins = Array.from(document.querySelectorAll(".tiktok-timepicker-right"));
-          const targetHour = hours.find(h => h.innerText.trim() === "${schedObj.hour}");
-          const targetMin = mins.find(m => m.innerText.trim() === "${schedObj.minute}");
-          for (const el of [targetHour, targetMin]) {
-            if (el) {
-              el.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-              el.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
-              el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            }
-          }
-          const settings = Array.from(document.querySelectorAll("div, span, h1, h2, h3"))
-            .find(e => e.innerText?.trim() === "Settings" || e.innerText?.trim() === "Cài đặt");
-          if (settings) settings.click();
+          const targetH = hours.find(h => (h.innerText || "").trim() === "${schedObj.hour}");
+          const targetM = mins.find(m => (m.innerText || "").trim() === "${schedObj.minute}");
+          if (!targetH || !targetM) return null;
+          targetH.scrollIntoView({ block: "center", behavior: "instant" });
+          const rH = targetH.getBoundingClientRect();
+          const rM = targetM.getBoundingClientRect();
+          return {
+            h: { x: Math.round(rH.left + rH.width / 2), y: Math.round(rH.top + rH.height / 2) },
+            m: { x: Math.round(rM.left + rM.width / 2), y: Math.round(rM.top + rM.height / 2) }
+          };
+        })()`);
+
+        if (coords) {
+          await cdp.clickMouse(coords.h.x, coords.h.y);
+          await sleep(500);
+          await cdp.clickMouse(coords.m.x, coords.m.y);
+          await sleep(500);
+        }
+
+        // Đóng timepicker bằng cách click ngoài
+        await cdp.evaluate(`(() => {
+          document.querySelector("h1, h2, h3, .contents-wrapper")?.click();
         })()`);
         await sleep(1000);
       }
@@ -346,37 +356,28 @@ async function uploadSingleShortToTikTok({
     const isSchedule = !!scheduleTime;
     console.log(`[-] [6/6] Gửi lệnh ${isSchedule ? 'Lên lịch (Schedule)' : 'Đăng ngay (Post)'}...`);
 
-    const coord = await cdp.evaluate(`(() => {
+    await cdp.evaluate(`(() => {
       const btns = Array.from(document.querySelectorAll("button"));
       const targetText = ${JSON.stringify(isSchedule ? 'Schedule' : 'Post')};
       const btn = btns.find(b => b.innerText && (b.innerText.trim() === targetText || (targetText === 'Schedule' && b.innerText.trim() === 'Lên lịch') || (targetText === 'Post' && b.innerText.trim() === 'Đăng')));
-      if (!btn || btn.disabled) return null;
-      btn.scrollIntoView({ block: "center", behavior: "instant" });
-      const r = btn.getBoundingClientRect();
-      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+      if (btn && !btn.disabled) {
+        btn.scrollIntoView({ block: "center", behavior: "instant" });
+        btn.click();
+      }
     })()`);
-
-    if (coord) {
-      await cdp.clickMouse(coord.x, coord.y);
-    } else {
-      await cdp.evaluate(`(() => {
-        const btns = Array.from(document.querySelectorAll("button"));
-        const targetText = ${JSON.stringify(isSchedule ? 'Schedule' : 'Post')};
-        const btn = btns.find(b => b.innerText && (b.innerText.trim() === targetText || (targetText === 'Schedule' && b.innerText.trim() === 'Lên lịch') || (targetText === 'Post' && b.innerText.trim() === 'Đăng')));
-        if (btn) btn.click();
-      })()`);
-    }
 
     await sleep(2000);
 
-    // Xử lý modal "Continue to post? Post now" hoặc cảnh báo bản quyền
+    // Xử lý modal "Continue to post? Post now" hoặc cảnh báo bản quyền / discard
     await cdp.evaluate(`(() => {
-      const btns = Array.from(document.querySelectorAll(".TUXModal button, [role=dialog] button, button"));
-      const postNow = btns.find(b => {
-        const t = b.innerText?.trim();
-        return t === "Post now" || t === "Vẫn đăng" || t === "Continue" || t === "Tiếp tục";
-      });
-      if (postNow) postNow.click();
+      const modal = document.querySelector(".TUXModal, [role=dialog]");
+      if (modal) {
+        const btns = Array.from(modal.querySelectorAll("button"));
+        const notNow = btns.find(b => (b.innerText || "").trim() === "Not now");
+        if (notNow) notNow.click();
+        const postNow = btns.find(b => ["Post now", "Vẫn đăng", "Continue", "Tiếp tục"].includes((b.innerText || "").trim()));
+        if (postNow) postNow.click();
+      }
     })()`);
 
     // 8. Chờ xác nhận điều hướng về trang quản lý nội dung (/content)
@@ -391,12 +392,14 @@ async function uploadSingleShortToTikTok({
       }
       // Click modal nếu xuất hiện trễ
       await cdp.evaluate(`(() => {
-        const btns = Array.from(document.querySelectorAll(".TUXModal button, [role=dialog] button, button"));
-        const postNow = btns.find(b => {
-          const t = b.innerText?.trim();
-          return t === "Post now" || t === "Vẫn đăng" || t === "Continue" || t === "Tiếp tục";
-        });
-        if (postNow) postNow.click();
+        const modal = document.querySelector(".TUXModal, [role=dialog]");
+        if (modal) {
+          const btns = Array.from(modal.querySelectorAll("button"));
+          const notNow = btns.find(b => (b.innerText || "").trim() === "Not now");
+          if (notNow) notNow.click();
+          const postNow = btns.find(b => ["Post now", "Vẫn đăng", "Continue", "Tiếp tục"].includes((b.innerText || "").trim()));
+          if (postNow) postNow.click();
+        }
       })()`);
     }
 
