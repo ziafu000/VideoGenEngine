@@ -1,0 +1,84 @@
+{
+  "project_name": "kinetic_explainer_shorts_demo",
+  "title": "3 Psychological Tricks To Read Anyone",
+  "version": "2.0",
+  "geometry": {
+    "aspect_ratio": "9:16",
+    "resolution": "1080p"
+  },
+  "timeline": {
+    "shots_count": 3,
+    "duration_per_shot_sec": 10,
+    "total_duration_sec": 30
+  },
+  "voice": {
+    "provider": "vieneu",
+    "profile": "Minh Đức",
+    "language": "vi",
+    "target_density_wps": 4.0,
+    "settings": {
+      "temperature": 0.4,
+      "watermark": false,
+      "speed": 1.05
+    }
+  },
+  "subtitles": {
+    "enabled": true,
+    "style": "bouncy_neon",
+    "custom": {
+      "font_name": "Arial",
+      "font_size": 44,
+      "primary_color": "&H0000FFFF",
+      "outline_color": "&H00000000",
+      "outline_width": 3.2,
+      "shadow_depth": 1.5,
+      "alignment": 2,
+      "margin_v": 280
+    }
+  },
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "sfx_volume": 0.20,
+    "bgm_path": "assets/bgm.mp3",
+    "bgm_volume": 0.12
+  },
+  "distribution": {
+    "targets": ["youtube", "facebook"],
+    "schedule": "08/10/2026 13:00"
+  },
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration_sec": 10,
+      "hook_type": "visual_hook",
+      "flow_prompt": "Vertical 9:16 macro shot of human eyes scanning rapidly under dramatic moody neon lighting. High contrast cinematic lighting, 4k. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Sub-bass impact boom, high-tech electronic whoosh.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Ba dấu hiệu tâm lý cực chuẩn giúp bạn đọc vị bất kỳ ai chỉ trong năm giây đầu tiên gặp mặt.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_02",
+      "duration_sec": 10,
+      "hook_type": "point_01",
+      "flow_prompt": "Vertical 9:16 medium close-up of a person in a sharp modern suit crossing their arms while their gaze slightly shifts. Smooth slow camera push in. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Subtle camera zoom mechanism, ambient tension hum.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Thứ nhất, hướng bàn chân của họ. Con người luôn hướng mũi chân về phía người mà họ cảm thấy tin tưởng và chú ý nhất trong phòng.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_03",
+      "duration_sec": 10,
+      "hook_type": "call_to_action",
+      "flow_prompt": "Vertical 9:16 dynamic low angle shot of an confident observer smiling slightly in a modern glass office. Cinematic bokeh. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Crisp accent pop, smooth whoosh transition.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Bạn đã bao giờ vô tình bắt gặp dấu hiệu này chưa? Hãy thử quan sát trong cuộc trò chuyện tiếp theo của bạn nhé.",
+        "voice_delay_sec": 0.2
+      }
+    }
+  ]
+}

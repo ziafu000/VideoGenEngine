@@ -1,0 +1,105 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ziafu000/VideoGenEngine/main/examples/storyboards/schema_v2.json",
+  "project_name": "${PROJECT_SLUG}",
+  "title": "${EPISODE_OR_VIDEO_TITLE}",
+  "version": "2.0",
+
+  "geometry": {
+    "aspect_ratio": "9:16",
+    "resolution": "1080p"
+  },
+
+  "timeline": {
+    "shots_count": 4,
+    "duration_per_shot_sec": 10,
+    "total_duration_sec": 40
+  },
+
+  "voice": {
+    "provider": "vieneu",
+    "profile": "${VOICE_PROFILE_OR_PRESET}",
+    "language": "vi",
+    "target_density_wps": 3.8,
+    "settings": {
+      "temperature": 0.4,
+      "watermark": false,
+      "speed": 1.0
+    }
+  },
+
+  "subtitles": {
+    "enabled": false,
+    "style": "clean"
+  },
+
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "sfx_volume": 0.25,
+    "bgm_path": "assets/bgm.mp3",
+    "bgm_volume": 0.15
+  },
+
+  "distribution": {
+    "targets": ["youtube", "facebook"],
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "youtube": {
+    "title": "${YOUTUBE_TITLE_WITH_HASHTAGS}",
+    "description": "${YOUTUBE_DESCRIPTION_AND_CREDITS}",
+    "visibility": "scheduled",
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "facebook": {
+    "caption": "${FACEBOOK_CAPTION_AND_HASHTAGS}",
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration_sec": 10,
+      "hook_type": "visual_hook",
+      "flow_prompt": "Vertical 9:16 cinematic visual hook scene description... AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Sound effects description.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Lời thoại câu mở đầu kích thích tò mò (khoảng 36-39 từ nếu thời lượng cảnh là 10 giây).",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_02",
+      "duration_sec": 10,
+      "hook_type": "mechanism",
+      "flow_prompt": "Vertical 9:16 scene exploring the core mechanism or mystery... AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Sound effects description.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Lời thoại giải thích chi tiết cơ chế hoặc dẫn chứng bất ngờ thứ nhất.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_03",
+      "duration_sec": 10,
+      "hook_type": "climax",
+      "flow_prompt": "Vertical 9:16 high-impact climax or turning point scene... AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Sound effects description.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Lời thoại cao trào hoặc thông tin đắt giá nhất của video.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_04",
+      "duration_sec": 10,
+      "hook_type": "loop_outro",
+      "flow_prompt": "Vertical 9:16 loop outro or reflective wide shot... AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Sound effects description.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Lời thoại đúc kết kết thúc mượt mà, tạo vòng lặp tự nhiên quay lại câu mở đầu.",
+        "voice_delay_sec": 0.2
+      }
+    }
+  ]
+}

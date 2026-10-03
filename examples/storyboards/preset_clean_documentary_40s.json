@@ -1,0 +1,85 @@
+{
+  "project_name": "documentary_shorts_40s_demo",
+  "title": "Mystery of the Abyssal Trench",
+  "version": "2.0",
+  "geometry": {
+    "aspect_ratio": "9:16",
+    "resolution": "1080p"
+  },
+  "timeline": {
+    "shots_count": 4,
+    "duration_per_shot_sec": 10,
+    "total_duration_sec": 40
+  },
+  "voice": {
+    "provider": "vieneu",
+    "profile": "ZFstudio",
+    "language": "vi",
+    "target_density_wps": 3.8,
+    "settings": {
+      "temperature": 0.4,
+      "watermark": false,
+      "speed": 1.0
+    }
+  },
+  "subtitles": {
+    "enabled": false,
+    "style": "clean"
+  },
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "sfx_volume": 0.25,
+    "bgm_path": "assets/bgm.mp3",
+    "bgm_volume": 0.15
+  },
+  "distribution": {
+    "targets": ["youtube", "facebook"],
+    "schedule": "08/10/2026 13:00"
+  },
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration_sec": 10,
+      "hook_type": "visual_hook",
+      "flow_prompt": "Vertical 9:16 drone descent into deep pitch-black ocean abyss. Bioluminescent neon cyan and violet glowing jellyfish floating past the camera. Volumetric god rays fading into absolute darkness. Documentary aesthetic, photorealistic. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Deep underwater pressure hum, subtle water current sounds.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Nằm sâu hơn mười nghìn mét dưới đáy đại dương, rãnh vực Mariana là nơi ánh sáng mặt trời chưa từng chạm tới trong suốt hàng triệu năm qua.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_02",
+      "duration_sec": 10,
+      "hook_type": "fact_01",
+      "flow_prompt": "Vertical 9:16 close-up of a bizarre translucent deep-sea creature with internal glowing organs slowly gliding over volcanic hydrothermal vents. Super-macro lens, cinematic lighting. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Distant hydrothermal vent bubbling, deep underwater rumble.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Tại đây, áp suất khủng khiếp gấp hơn một nghìn lần so với bề mặt khí quyển, đủ sức nghiền nát một chiếc tàu ngầm thép dày trong chớp mắt.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_03",
+      "duration_sec": 10,
+      "hook_type": "fact_02",
+      "flow_prompt": "Vertical 9:16 wide shot inside a submerged crystal-like abyssal canyon. Eerie microbial mats emitting soft golden-green bioluminescence across the sea floor. Atmospheric volumetric light. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Eerie deep-sea ambient soundscape, low frequency resonant tones.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Thế nhưng các nhà khoa học đã kinh ngạc phát hiện cả một hệ sinh thái kỳ lạ tồn tại bằng hóa chất độc hại thay vì oxy, thách thức mọi quy luật sinh học.",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_04",
+      "duration_sec": 10,
+      "hook_type": "loop_outro",
+      "flow_prompt": "Vertical 9:16 slow tilt up toward the distant faint surface light from the pitch-black ocean floor. A massive deep-sea shadow glides silently through the shadows. Cinematic documentary ending. AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS. SFX: Deep resonant ocean boom, fading water currents.",
+      "voice": {
+        "speaker": "narrator",
+        "text": "Đáy vực sâu này vẫn còn ẩn chứa vô số bí ẩn chưa được giải mã. Liệu sự sống ban sơ của Trái Đất có bắt nguồn từ chính nơi tăm tối này?",
+        "voice_delay_sec": 0.2
+      }
+    }
+  ]
+}

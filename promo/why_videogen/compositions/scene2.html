@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          padding: 60px 100px 70px 100px;
+          color: #f1f5f9;
+          font-family: 'Inter', system-ui, sans-serif;
+          box-sizing: border-box;
+        }
+
+        .scene-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          margin-bottom: 36px;
+        }
+
+        .badge-success {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 18px;
+          border-radius: 9999px;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 14px;
+          background: rgba(16, 185, 129, 0.18);
+          border: 1px solid rgba(16, 185, 129, 0.4);
+          color: #34d399;
+        }
+
+        .scene-title {
+          font-size: 52px;
+          font-weight: 800;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+          color: #ffffff;
+        }
+        .highlight-green { color: #34d399; }
+
+        .scene-subtitle {
+          font-size: 24px;
+          font-weight: 500;
+          color: #94a3b8;
+          margin-top: 10px;
+          letter-spacing: -0.01em;
+        }
+
+        .s2-container {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          justify-content: center;
+          gap: 36px;
+        }
+
+        .price-hero-banner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(59, 130, 246, 0.14));
+          border: 2px solid rgba(16, 185, 129, 0.4);
+          border-radius: 24px;
+          padding: 24px 44px;
+          box-shadow: 0 20px 50px rgba(16, 185, 129, 0.15);
+        }
+        .price-hero-left {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+        }
+        .key-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          background: rgba(16, 185, 129, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .price-title {
+          font-size: 32px;
+          font-weight: 800;
+          color: #ffffff;
+        }
+        .price-subtitle {
+          font-size: 18px;
+          color: #94a3b8;
+        }
+        .price-tag {
+          font-size: 56px;
+          font-weight: 900;
+          color: #34d399;
+          text-shadow: 0 0 25px rgba(16, 185, 129, 0.5);
+        }
+        .price-tag span {
+          font-size: 22px;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+
+        .s2-cards-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 32px;
+        }
+
+        .feature-card {
+          background: rgba(255, 255, 255, 0.035);
+          border: 1.5px solid rgba(255, 255, 255, 0.1);
+          border-radius: 24px;
+          padding: 36px;
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          backdrop-filter: blur(16px);
+        }
+        .card-header {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .card-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 14px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .card-icon-blue {
+          background: rgba(59, 130, 246, 0.2);
+          border: 1px solid rgba(59, 130, 246, 0.4);
+        }
+        .card-icon-green {
+          background: rgba(16, 185, 129, 0.2);
+          border: 1px solid rgba(16, 185, 129, 0.4);
+        }
+        .card-header h3 {
+          font-size: 26px;
+          font-weight: 800;
+          color: #ffffff;
+        }
+        .card-header p {
+          font-size: 15px;
+          color: #94a3b8;
+        }
+
+        .feature-list {
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        .feature-item {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 17px;
+          color: #e2e8f0;
+        }
+        .bullet-check {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          background: rgba(16, 185, 129, 0.2);
+          color: #34d399;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+      </style>
+
+      <div id="root" data-composition-id="scene2" data-width="1920" data-height="1080">
+        <div id="s2-header" class="scene-header">
+          <div class="badge-success">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            The Hidden Treasure
+          </div>
+          <h1 class="scene-title">The <span class="highlight-green">$20 Google AI Plan</span> Changes Everything</h1>
+          <p class="scene-subtitle">One standard personal subscription unlocks industrial-grade video and reasoning power.</p>
+        </div>
+
+        <div class="s2-container">
+          <div id="s2-hero" class="price-hero-banner">
+            <div class="price-hero-left">
+              <div class="key-icon">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="7.5" cy="15.5" r="5.5"></circle>
+                  <path d="m21 2-9.6 9.6"></path>
+                  <path d="m15.5 7.5 3 3L22 7l-3-3"></path>
+                </svg>
+              </div>
+              <div>
+                <div class="price-title">Google One AI Pro Subscription</div>
+                <div class="price-subtitle">Unmetered Antigravity Access & Google Flow Creative Studio</div>
+              </div>
+            </div>
+            <div class="price-tag">$20<span>/month</span></div>
+          </div>
+
+          <div class="s2-cards-grid">
+            <div id="s2-card-left" class="feature-card">
+              <div class="card-header">
+                <div class="card-icon card-icon-blue">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+                    <path d="M2 12h20"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h3>Antigravity Platform</h3>
+                  <p>Gemini 3 Pro & 3.8 Flash Thinking Engine</p>
+                </div>
+              </div>
+              <ul class="feature-list">
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  2M+ Token Context for Scriptwriting
+                </li>
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  Multi-Shot Storyboard Generation
+                </li>
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  Zero Rate-Limit Frustration
+                </li>
+              </ul>
+            </div>
+
+            <div id="s2-card-right" class="feature-card">
+              <div class="card-header">
+                <div class="card-icon card-icon-green">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                  </svg>
+                </div>
+                <div>
+                  <h3>Google Flow Studio</h3>
+                  <p>Veo 2 & Omni 1.1 Flash 10s Generation</p>
+                </div>
+              </div>
+              <ul class="feature-list">
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <strong>&gt;3,500 Video Credits</strong> Every Single Month
+                </li>
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  Full 10-Second Continuous Video Clips
+                </li>
+                <li class="feature-item">
+                  <div class="bullet-check">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  Native Studio SFX & Ambient Audio
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const tl = gsap.timeline({ paused: true });
+
+        tl.fromTo("#s2-header", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 0.1);
+        tl.fromTo("#s2-hero", { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 0.8);
+        tl.fromTo("#s2-card-left", { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: 0.7, ease: "power2.out" }, 1.8);
+        tl.fromTo("#s2-card-right", { opacity: 0, x: 50 }, { opacity: 1, x: 0, duration: 0.7, ease: "power2.out" }, 2.6);
+
+        tl.to("#root", { opacity: 0, y: -20, duration: 0.5, ease: "power2.in" }, 8.9);
+
+        window.__timelines["scene2"] = tl;
+        tl.seek(0);
+      </script>
+    </template>
+  </body>
+</html>
