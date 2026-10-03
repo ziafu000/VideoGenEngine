@@ -1,0 +1,32 @@
+#!/bin/sh
+# VideoGen Pre-Commit Security Guard
+# Automatically blocks commits containing private channel IDs, names, or credentials.
+
+echo "🔍 [Pre-Commit Guard] Đang quét toàn bộ file staged kiểm tra rò rỉ dữ liệu..."
+
+PATTERN=$(echo -n "VUNbYS16QS1aMC05Xy1dezIyfXx6ZnN0dWRpb3xza2V0Y2hfdGhlX3Bhc3R8YXRoZW5hc3RvY2t8R2lhIFBow7o=" | base64 -d)
+STAGED_FILES=$(git diff --cached --name-only)
+LEAKS=""
+
+for file in $STAGED_FILES; do
+  # Skip guard scripts themselves and examples
+  if [ "$file" = ".githooks/pre-commit" ] || [ "$file" = "engine/doctor.js" ] || [ "$file" = ".env.example" ]; then
+    continue
+  fi
+
+  FILE_DIFF=$(git diff --cached "$file" | grep -E "^\+[^+]" | grep -E "$PATTERN")
+  if [ -n "$FILE_DIFF" ]; then
+    echo "  [✗] Vi phạm trong $file:"
+    echo "$FILE_DIFF"
+    LEAKS="yes"
+  fi
+done
+
+if [ -n "$LEAKS" ]; then
+  echo "\n❌ [BLOCK] PHÁT HIỆN DỮ LIỆU NỘI BỘ TRONG COMMIT!"
+  echo "👉 Vui lòng loại bỏ Channel ID, tên kênh riêng tư hoặc tên cá nhân trước khi commit."
+  exit 1
+fi
+
+echo "✅ [Pre-Commit Guard] Kiểm tra hoàn tất: Toàn bộ code staged đạt chuẩn Zero-Leak!"
+exit 0

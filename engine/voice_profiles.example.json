@@ -1,0 +1,27 @@
+{
+  "default": {
+    "provider": "vieneu",
+    "mode": "preset",
+    "voice": "Hải Đăng",
+    "temperature": 0.4,
+    "apply_watermark": false,
+    "sample_rate": 48000,
+    "description": "Default documentary narration preset (Hải Đăng, 48 kHz)"
+  },
+  "documentary": {
+    "provider": "vieneu",
+    "mode": "preset",
+    "voice": "Hải Đăng",
+    "temperature": 0.4,
+    "apply_watermark": false,
+    "sample_rate": 48000,
+    "description": "Deep cinematic documentary narrator preset"
+  },
+  "custom_clone": {
+    "provider": "vieneu",
+    "mode": "clone",
+    "ref_audio": null,
+    "sample_rate": 48000,
+    "description": "Generic zero-shot voice cloning template"
+  }
+}

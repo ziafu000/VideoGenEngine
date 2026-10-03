@@ -1,0 +1,112 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ziafu000/VideoGenEngine/main/examples/storyboards/schema_v2.json",
+  "project_name": "${PROJECT_SLUG}",
+  "title": "${EPISODE_OR_VIDEO_TITLE}",
+  "version": "2.0",
+
+  "geometry": {
+    "aspect_ratio": "${9:16_OR_16:9}",
+    "resolution": "1080p"
+  },
+
+  "timeline": {
+    "shots_count": "${SHOTS_COUNT}",
+    "duration_per_shot_sec": "${DURATION_PER_SHOT_SEC}",
+    "total_duration_sec": "${TOTAL_DURATION_SEC}"
+  },
+
+  "voice": {
+    "provider": "${vieneu_OR_kokoro_OR_elevenlabs}",
+    "profile": "${VOICE_PROFILE_OR_ID}",
+    "language": "${vi_OR_en}",
+    "target_density_wps": "${TARGET_WORDS_PER_SECOND}",
+    "settings": {
+      "temperature": 0.4,
+      "watermark": false,
+      "speed": 1.05,
+      "de_nasal_eq": true
+    }
+  },
+
+  "visuals": {
+    "engine": "${flow_video_OR_motion_stills}",
+    "style": "${CINEMATIC_OR_MINIMALIST_OR_CUSTOM}"
+  },
+
+  "subtitles": {
+    "enabled": false,
+    "style": "clean"
+  },
+
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "sfx_volume": 0.25,
+    "bgm_path": "assets/bgm.mp3",
+    "bgm_volume": 0.15
+  },
+
+  "distribution": {
+    "targets": ["youtube", "facebook"],
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "youtube": {
+    "channel": "${YOUTUBE_CHANNEL_ID_OR_ALIAS}",
+    "title": "${YOUTUBE_TITLE_WITH_HASHTAGS}",
+    "description": "${YOUTUBE_DESCRIPTION_AND_CREDITS}",
+    "visibility": "scheduled",
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "facebook": {
+    "caption": "${FACEBOOK_CAPTION_AND_HASHTAGS}",
+    "schedule": "${DD/MM/YYYY HH:mm}"
+  },
+
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration_sec": "${DURATION_SEC}",
+      "hook_type": "visual_hook",
+      "prompt": "${SCENE_VISUAL_PROMPT_OR_FLOW_PROMPT}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SCENE_NARRATION_OR_DIALOGUE_TEXT}",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_02",
+      "duration_sec": "${DURATION_SEC}",
+      "hook_type": "core_argument",
+      "prompt": "${SCENE_VISUAL_PROMPT_OR_FLOW_PROMPT}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SCENE_NARRATION_OR_DIALOGUE_TEXT}",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_03",
+      "duration_sec": "${DURATION_SEC}",
+      "hook_type": "climax",
+      "prompt": "${SCENE_VISUAL_PROMPT_OR_FLOW_PROMPT}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SCENE_NARRATION_OR_DIALOGUE_TEXT}",
+        "voice_delay_sec": 0.2
+      }
+    },
+    {
+      "id": "shot_04",
+      "duration_sec": "${DURATION_SEC}",
+      "hook_type": "loop_outro",
+      "prompt": "${SCENE_VISUAL_PROMPT_OR_FLOW_PROMPT}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SCENE_NARRATION_OR_DIALOGUE_TEXT}",
+        "voice_delay_sec": 0.2
+      }
+    }
+  ]
+}

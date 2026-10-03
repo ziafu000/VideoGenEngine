@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+  </head>
+  <body>
+    <template>
+      <style>
+        #root {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          padding: 60px 100px 70px 100px;
+          color: #f1f5f9;
+          font-family: 'Inter', system-ui, sans-serif;
+          box-sizing: border-box;
+        }
+
+        .scene-header {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          margin-bottom: 24px;
+        }
+
+        .badge-gold {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 18px;
+          border-radius: 9999px;
+          font-size: 14px;
+          font-weight: 800;
+          letter-spacing: 0.1em;
+          text-transform: uppercase;
+          margin-bottom: 12px;
+          background: rgba(245, 158, 11, 0.18);
+          border: 1px solid rgba(245, 158, 11, 0.4);
+          color: #fbbf24;
+        }
+
+        .scene-title {
+          font-size: 52px;
+          font-weight: 800;
+          line-height: 1.15;
+          letter-spacing: -0.03em;
+          color: #ffffff;
+        }
+        .highlight-gold { color: #fbbf24; }
+
+        .scene-subtitle {
+          font-size: 23px;
+          font-weight: 500;
+          color: #94a3b8;
+          margin-top: 8px;
+          letter-spacing: -0.01em;
+        }
+
+        .s4-container {
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+          gap: 24px;
+        }
+
+        .comparison-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 32px;
+          flex: 1;
+        }
+
+        .comp-card {
+          border-radius: 24px;
+          padding: 30px 36px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+        .comp-old {
+          background: rgba(239, 68, 68, 0.05);
+          border: 1.5px solid rgba(239, 68, 68, 0.25);
+        }
+        .comp-new {
+          background: linear-gradient(145deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+          border: 2px solid rgba(16, 185, 129, 0.45);
+          box-shadow: 0 20px 45px rgba(16, 185, 129, 0.15);
+        }
+
+        .comp-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          margin-bottom: 16px;
+        }
+        .comp-name {
+          font-size: 24px;
+          font-weight: 800;
+        }
+        .comp-cost {
+          font-size: 42px;
+          font-weight: 900;
+          line-height: 1;
+        }
+        .comp-cost span {
+          font-size: 18px;
+          font-weight: 600;
+          color: #94a3b8;
+        }
+
+        .comp-rows {
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin: 12px 0;
+        }
+        .comp-row {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 16px;
+          color: #cbd5e1;
+        }
+        .icon-cross {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(239, 68, 68, 0.2);
+          color: #f87171;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 800;
+          flex-shrink: 0;
+        }
+        .icon-check {
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: rgba(16, 185, 129, 0.2);
+          color: #34d399;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 800;
+          flex-shrink: 0;
+        }
+
+        /* Hero CTA Box */
+        .cta-box {
+          background: linear-gradient(90deg, #1e1b4b, #0f172a, #064e3b);
+          border: 2px solid rgba(245, 158, 11, 0.5);
+          border-radius: 22px;
+          padding: 20px 36px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          box-shadow: 0 15px 40px rgba(245, 158, 11, 0.2);
+        }
+        .cta-left {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+        }
+        .star-icon-wrap {
+          width: 56px;
+          height: 56px;
+          border-radius: 16px;
+          background: rgba(245, 158, 11, 0.2);
+          border: 1px solid rgba(245, 158, 11, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+        }
+        .cta-text h3 {
+          font-size: 25px;
+          font-weight: 800;
+          color: #ffffff;
+        }
+        .cta-text p {
+          font-size: 15px;
+          color: #cbd5e1;
+        }
+        .cta-btn {
+          background: #fbbf24;
+          color: #0f172a;
+          font-size: 18px;
+          font-weight: 800;
+          padding: 14px 32px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          box-shadow: 0 0 25px rgba(251, 191, 36, 0.6);
+        }
+      </style>
+
+      <div id="root" data-composition-id="scene4" data-width="1920" data-height="1080">
+        <div id="s4-header" class="scene-header">
+          <div class="badge-gold">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+            Kết Luận Tuyệt Đối
+          </div>
+          <h1 class="scene-title">Tiết Kiệm 10 Lần. <span class="highlight-gold">Tự Động Hóa 100%.</span></h1>
+          <p class="scene-subtitle">Dừng trả phí credit đắt đỏ. Khởi động quy trình sản xuất video tự động ngay hôm nay.</p>
+        </div>
+
+        <div class="s4-container">
+          <div class="comparison-grid">
+            <div id="s4-card-left" class="comp-card comp-old">
+              <div>
+                <div class="comp-header">
+                  <div class="comp-name" style="color: #f87171;">Quy Trình Cũ Rời Rạc & Tốn Kém</div>
+                  <div class="comp-cost" style="color: #ef4444;">$150+<span>/tháng</span></div>
+                </div>
+                <ul class="comp-rows">
+                  <li class="comp-row"><div class="icon-cross"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div> Gói Claude Pro + mua gói credit Higgsfield</li>
+                  <li class="comp-row"><div class="icon-cross"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div> Tốn hàng giờ tải video thủ công từ trình duyệt</li>
+                  <li class="comp-row"><div class="icon-cross"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div> Chất lượng giới hạn ở độ phân giải 720p</li>
+                  <li class="comp-row"><div class="icon-cross"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div> Lỗi lệch giọng và voice clashing khó chịu</li>
+                  <li class="comp-row"><div class="icon-cross"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div> Ghép dựng thủ công qua Premiere hoặc CapCut</li>
+                </ul>
+              </div>
+            </div>
+
+            <div id="s4-card-right" class="comp-card comp-new">
+              <div>
+                <div class="comp-header">
+                  <div class="comp-name" style="color: #34d399;">Cỗ Máy Tự Động VideoGen</div>
+                  <div class="comp-cost" style="color: #10b981;">$20<span>/tháng</span></div>
+                </div>
+                <ul class="comp-rows">
+                  <li class="comp-row"><div class="icon-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg></div> <strong>Chỉ 1 Gói Google AI $20</strong> (Tận dụng gói có sẵn)</li>
+                  <li class="comp-row"><div class="icon-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg></div> <strong>1 Dòng Lệnh CLI Duy Nhất</strong> (Không cần bấm chuột)</li>
+                  <li class="comp-row"><div class="icon-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg></div> <strong>Độ Phân Giải Siêu Nét 1080p</strong> với fallback 70ms Jev</li>
+                  <li class="comp-row"><div class="icon-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg></div> <strong>Lồng Tiếng ElevenLabs + Phụ Đề Dual-Zone ASS</strong></li>
+                  <li class="comp-row"><div class="icon-check"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg></div> <strong>Tải Trực Tiếp Lên YouTube Studio Không Công Khai</strong></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div id="s4-cta" class="cta-box">
+            <div class="cta-left">
+              <div id="star-icon" class="star-icon-wrap">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="#fbbf24" stroke="#d97706" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              </div>
+              <div class="cta-text">
+                <h3>Star VideoGen Trên GitHub</h3>
+                <p>Mã nguồn mở, tự host và miễn phí 100% theo giấy phép MIT • github.com/ziafu000/VideoGenEngine</p>
+              </div>
+            </div>
+            <div class="cta-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              <span>Star Repository Ngay</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        const tl = gsap.timeline({ paused: true });
+
+        tl.fromTo("#s4-header", { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.7, ease: "power2.out" }, 0.1);
+        tl.fromTo("#s4-card-left", { opacity: 0, x: -40 }, { opacity: 1, x: 0, duration: 0.6, ease: "power2.out" }, 0.6);
+        tl.fromTo("#s4-card-right", { opacity: 0, x: 40 }, { opacity: 1, x: 0, duration: 0.7, ease: "back.out(1.3)" }, 2.8);
+        tl.fromTo("#s4-cta", { opacity: 0, y: 40, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 0.7, ease: "back.out(1.4)" }, 6.2);
+        tl.fromTo("#star-icon", { scale: 0.8, rotation: -15 }, { scale: 1.25, rotation: 10, repeat: 3, yoyo: true, duration: 0.6, ease: "sine.inOut" }, 6.8);
+
+        window.__timelines["scene4"] = tl;
+        tl.seek(0);
+      </script>
+    </template>
+  </body>
+</html>

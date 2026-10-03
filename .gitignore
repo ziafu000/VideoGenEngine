@@ -1,0 +1,38 @@
+# Creator IP & Local Production Assets (100% Private)
+/assets/
+/storyboards/
+
+
+# Local private environment config
+.env
+.env.local
+*.env
+engine/voice_profiles.json
+engine/voice_profiles.local.json
+voice_profiles.json
+
+# Local operational & scratch scripts (Agent / Dev private scripts)
+scripts/
+local_*.js
+
+# Media & temporary generated files
+/renders/*
+!/renders/.gitkeep
+/audio/*
+!/audio/.gitkeep
+/output/*
+!/output/.gitkeep
+renders/
+audio/
+output/
+/backup/
+
+# OS, Temp & Logs
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.crdownload
+__pycache__/
+*.pyc
+.treehouse/
