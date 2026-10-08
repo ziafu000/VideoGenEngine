@@ -45,9 +45,9 @@ projects/VideoGen/
 │   ├── cdp_proxy.js          # TCP proxy on Windows (forwarding 9223 -> 9222)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompt, dl)
 │   ├── explainer.js          # Semantic clause segmenter & visual strategy explainer engine
-│   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, Kokoro, ElevenLabs)
+│   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, F5-TTS, ElevenLabs)
 │   ├── vieneu_engine.py      # Local VieNeu-TTS v3 Turbo neural engine (48 kHz, Vietnamese)
-│   ├── kokoro_engine.py      # Local Kokoro-82M neural engine (English, Puck-Adam blend, studio EQ)
+│   ├── f5_engine.py          # Local F5-TTS zero-shot voice cloning engine (English, Studio Clone)
 │   ├── subtitles.js          # Subtitle generator (Dual-Zone ASS & Shorts ASS)
 │   ├── compositor.js         # FFmpeg concatenation, Ken Burns motion stills, audio mixing
 │   ├── shorts.js             # Vertical 9:16 Shorts highlight extractor (Option B Cinematic Blur)
@@ -104,7 +104,7 @@ This prevents model hallucination of unwanted burned-in text or clashing audio.
 
 VideoGen supports three distinct TTS engines configured via `voice.provider` (or `tts_provider`) in the storyboard JSON:
 1. `vieneu`: Local VieNeu-TTS v3 Turbo 48kHz (Vietnamese, GPU/CPU CUDA, 0 cost).
-2. `kokoro`: Local Kokoro-82M neural engine (English, GPU/CPU CUDA, 0 cost).
+2. `f5-tts`: Local F5-TTS Zero-Shot Studio Clone (English, GPU CUDA, 0 cost, replaces Kokoro).
 3. `elevenlabs`: Cloud CDP synthesis for multi-language global voice acting.
 
 #### A. VieNeu-TTS v3 Turbo Rules for Studio-Grade Quality
@@ -119,23 +119,22 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
 5. **Channel Profiles:**
    - Pre-calibrated presets and voice cloning profiles are loaded dynamically from gitignored `assets/voice_profiles.json` (zero hardcoded channel branding in engine code).
 
-#### B. Kokoro-82M Local English Voiceover Rules (Minimalist Explainer Series)
-When generating voice via `./videogen voice <storyboard.json>` with `voice.provider: "kokoro"`:
-1. **Expressive Voice Profiles & Persona:**
-   - `puck_expressive` (Pure `am_puck` 100%): Dynamic 172 Hz F0 pitch range, sarcastic, witty, bouncy modulation for comedic punchlines.
-   - `puck_fenrir` (65% `am_puck` + 35% `am_fenrir`): 166 Hz, rich explorer timbre, warm yet high-energy (ideal for science & history explainers).
-   - `fenrir_punchy` (`am_fenrir` 100%): 181 Hz, high animated drama, maximum pitch swings.
-   - `puck_open_throat` (80% `am_puck` + 20% `am_adam`): 140 Hz, calm, thoughtful narrative tone.
+#### B. F5-TTS Local English Voiceover Rules (Minimalist Explainer Series)
+When generating voice via `./videogen voice <storyboard.json>` with `voice.provider: "f5-tts"` (or `"f5"`):
+1. **Zero-Shot Voice Cloning & Persona:**
+   - Powered by F5-TTS DiT architecture with Vocos 24kHz vocoder.
+   - Reference voice: `assets/voices/f5_tts_latest_ref.wav` (Voice: `f5-tts-latest`, punchy, clear articulation, keyword emphasis).
+   - Reference text: `"Most of us never think twice about any of this. We eat when we're hungry, sleep when we're tired."`
 2. **Speed Scaling & Dead-Silence Trimming:**
-   - Kokoro outputs ~0.8s trailing silence per audio clip. Trimming is essential to prevent cumulative dead air.
-   - Run at **1.12x speed** with 2-tier padding:
+   - Run at **1.0x - 1.1x speed** with 2-tier padding:
      * Intra-sentence clause padding: **0.08s (80ms)**.
      * Sentence-end breath pause: **0.22s (220ms)**.
      * Micro fade-in (**5ms**) / fade-out (**10ms**) to eliminate boundary clicks.
-3. **Studio De-Nasal EQ Chain:**
-   - High-pass filter at **75 Hz** (removes mic rumble).
-   - Narrow notch filter at **1350 Hz (-4.5 dB, Q=3.0)** (surgically removes Kokoro's boxy nasal congestion).
-   - Gentle high-shelf presence boost at **7 kHz (+2.5 dB)** (restores studio air and intimacy).
+3. **Broadcast Studio EQ Chain:**
+   - High-pass filter at **70 Hz** (removes low-end sub rumble).
+   - Warmth EQ at **250 Hz (+1.2 dB)** (adds chest resonance).
+   - Presence clarity at **3500 Hz (+1.5 dB)** (crisp articulate voice).
+   - High-shelf air at **10000 Hz (+2.0 dB)** (restores broadcast brilliance).
 4. **Windows FFmpeg UNC Pathing in WSL2:**
    - In WSL2 environments where FFmpeg is linked to Windows `ffmpeg.exe`, all paths passed to `ffmpeg` and `ffprobe` must be converted to Windows UNC paths (`//wsl.localhost/Ubuntu-24.04/...`) via `config.toWinPath()`.
 
@@ -239,7 +238,7 @@ For converting high-performing 16:9 segments into viral vertical Shorts (`engine
   - Automation must listen to `Page.javascriptDialogOpening` and respond with `Page.handleJavaScriptDialog({ accept: true })` or click the platform Confirm/Leave buttons.
   - If a flow appears blocked, capture a screenshot via CDP (`Page.captureScreenshot`) for visual diagnosis instead of waiting for timeout.
 - **Mobile Notification Integration:**
-  - Instant dispatch notifications to the project operator are sent via the local notification bridge CLI: `/home/asus/.local/bin/zalo-notify "<message>"`.
+  - Instant dispatch notifications to the project operator are sent via the local notification bridge CLI: `~/.local/bin/zalo-notify "<message>"`.
 
 ---
 

@@ -252,13 +252,15 @@ function createExplainerStoryboard({
     pacing: 'static_cuts',
     motion: 'none',
     engine: 'nano_banana_pro',
-    tts_provider: 'kokoro',
+    tts_provider: 'f5-tts',
     voice: {
-      provider: 'kokoro',
-      profile: 'puck_adam_explainer',
-      speed: 1.12
+      provider: 'f5-tts',
+      profile: 'f5-tts-latest',
+      ref_audio: 'assets/voices/f5_tts_latest_ref.wav',
+      ref_text: "Most of us never think twice about any of this, but the person wide awake at 3am may have been the most important person in the camp.",
+      speed: 1.0
     },
-    voice_profile: 'puck_adam_explainer',
+    voice_profile: 'f5-tts-latest',
     bgm_volume: 0,
     hardsub: false,
     shots: shots

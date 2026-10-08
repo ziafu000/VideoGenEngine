@@ -16,7 +16,7 @@
   },
 
   "voice": {
-    "provider": "${vieneu_OR_kokoro_OR_elevenlabs}",
+    "provider": "${vieneu_OR_f5_OR_elevenlabs}",
     "profile": "${VOICE_PROFILE_OR_ID}",
     "language": "${vi_OR_en}",
     "target_density_wps": "${TARGET_WORDS_PER_SECOND}",

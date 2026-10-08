@@ -1,4 +1,5 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { execSync } = require('child_process');
 
@@ -111,7 +112,8 @@ const FACEBOOK_BUSINESS_ID = process.env.FACEBOOK_BUSINESS_ID || null;
 const FACEBOOK_REELS_URL = process.env.FACEBOOK_REELS_URL ||
   (FACEBOOK_ASSET_ID ? `https://business.facebook.com/latest/reels_composer/?asset_id=${FACEBOOK_ASSET_ID}${FACEBOOK_BUSINESS_ID ? `&business_id=${FACEBOOK_BUSINESS_ID}` : ''}&ref=biz_web_home_create_reel&context_ref=HOME` : 'https://business.facebook.com/latest/reels_composer');
 const TTS_PROVIDER = process.env.TTS_PROVIDER || 'vieneu';
-const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync('/home/asus/ai/vieneu/.venv/bin/python') ? '/home/asus/ai/vieneu/.venv/bin/python' : 'python3');
+const VIENEU_DEFAULT_VENV = path.join(os.homedir(), 'ai/vieneu/.venv/bin/python');
+const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync(VIENEU_DEFAULT_VENV) ? VIENEU_DEFAULT_VENV : 'python3');
 
 // Robust cross-platform path conversion (WSL to Windows)
 function toWinPath(p) {

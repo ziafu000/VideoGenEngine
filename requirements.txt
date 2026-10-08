@@ -1,0 +1,10 @@
+# VideoGen Engine - Python Dependencies
+# For F5-TTS (Local Zero-Shot Voice Cloning for English Explainers)
+f5-tts>=0.1.0
+torch>=2.0.0
+torchaudio>=2.0.0
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# Optional: For Vietnamese Voiceover via VieNeu-TTS v3 Turbo
+# vieneu

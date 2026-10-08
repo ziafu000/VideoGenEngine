@@ -20,17 +20,15 @@ VideoGen supports three high-performance voice generation engines:
   - **Watermark Off:** Set `apply_watermark = False` to eliminate high-frequency sizzling artifacts from sibilant sounds.
   - **Phonetic Transliteration:** Transliterate foreign proper nouns/locations into natural Vietnamese phonetics (e.g. "Ô-rê-gơn", "Tho", "ba-dan", "ki-lô-gam").
   - **Presets & Profiles:** Presets "Hải Đăng" (conversational natural), "Thiện Minh" (warm documentary narrator), and "Minh Đức" (broadcast news). Custom profiles loaded dynamically from gitignored `assets/voice_profiles.json`.
-- **Mode B (Local Neural TTS — English):** Powered by **Kokoro-82M** (`engine/kokoro_engine.py`), synthesizing **24 kHz / 48 kHz studio-grade** English narration directly on local CUDA GPU in ~0.5s per sentence. Zero API tokens, 100% free offline.
-  - **Expressive Voice Profiles:**
-    * `puck_expressive` (Pure `am_puck` 100%): 172 Hz F0 pitch range, witty, sarcastic, dynamic pitch swings for comedic beats.
-    * `puck_fenrir` (65% `am_puck` + 35% `am_fenrir`): 166 Hz, rich explorer timbre, warm yet energetic.
-    * `fenrir_punchy` (`am_fenrir` 100%): 181 Hz, high animated drama.
-    * `puck_open_throat` (80% `am_puck` + 20% `am_adam`): 140 Hz, calm, thoughtful.
-  - **Dead-Silence Trimming:** Automatically trims Kokoro's ~0.8s trailing silence down to 2-tier natural pauses:
+- **Mode B (Local Neural TTS — English Zero-Shot Clone):** Powered by **F5-TTS** (`engine/f5_engine.py`), synthesizing **broadcast studio-grade** English narration via zero-shot voice cloning directly on local CUDA GPU. Zero API tokens, 100% free offline.
+  - **Zero-Shot Voice Cloning & Persona:**
+    * Clone reference: `assets/voices/f5_tts_latest_ref.wav` (Voice: `f5-tts-latest`, articulate, punchy, dynamic inflection, keyword emphasis).
+    * Model architecture: F5-TTS DiT with Vocos 24 kHz vocoder.
+  - **Dead-Silence Trimming:** Automatically trims trailing silence down to 2-tier natural pauses:
     * Intra-sentence clause padding: **0.08s (80ms)**.
     * Sentence-end breath pause: **0.22s (220ms)**.
     * Micro fade-in (**5ms**) / fade-out (**10ms**) to eliminate boundary clicks.
-  - **Studio De-Nasal EQ Chain:** High-pass filter at **75 Hz**, narrow notch cut at **1350 Hz (-4.5 dB)** to remove nasal resonance, and high-shelf boost at **7 kHz (+2.5 dB)** for breath clarity.
+  - **Broadcast Studio EQ Chain:** High-pass filter at **70 Hz**, warmth EQ at **250 Hz (+1.2 dB)**, presence clarity at **3.5 kHz (+1.5 dB)**, and high-shelf air at **10 kHz (+2.0 dB)**.
   - **Windows FFmpeg UNC Pathing:** Automatically resolves paths to `//wsl.localhost/Ubuntu-24.04/...` via `config.toWinPath()` for Windows `ffmpeg.exe` compatibility.
 - **Mode C (Browser CDP):** Operated via CDP directly on the active ElevenLabs Text-to-Speech tab (`engine/tts.js`). Auto-downloads MP3 files to `audio/<project_id>/`.
   - **Anti-Voice Doubling Assertion:** Guarded against ElevenLabs History API 2–5s indexing delays via `previousHistoryId` checks and strict MD5 checksum assertions in `engine/compositor.js`.
@@ -227,7 +225,7 @@ VideoGen is a **zero-hardcoding, parameter-driven video production engine**. Rat
 - `total_duration_sec`: `shots_count × duration_per_shot_sec`. Control internal scene pacing using Timeline Prompting (2–3 micro-scenes per clip).
 
 ### 7.3. Dimension 3: Voice & Pacing Calibration
-- `provider`: `"vieneu"` (local 48 kHz neural TTS, Vietnamese), `"kokoro"` (local neural TTS, English), or `"elevenlabs"` (browser CDP).
+- `provider`: `"vieneu"` (local 48 kHz neural TTS, Vietnamese), `"f5-tts"` (local zero-shot studio clone, English), or `"elevenlabs"` (browser CDP).
 - `target_density_wps`: Words-per-second speech density:
   - **Documentary Narrative Pacing:** ~3.8–4.0 wps. For a 10s shot, write exactly **36–39 words** (~8.5s–9.5s audio duration) to naturally fill the cut without dead air.
   - **Hand-Drawn Explainer Pacing (Ink Explainer):** ~2.6–3.0 wps. Rapid-fire narration with micro-pauses (0.12–0.18s) matching micro-shots of **1.5s – 2.5s**.
@@ -293,14 +291,14 @@ VideoGen powers multiple independent production channels running in parallel:
 - **Timeline:** Dynamic micro-shots of **1.0s – 2.8s** (average ~2.5s per cut, clause-locked semantic timing, ~110–220 cuts for a 5-minute video) tightly synchronized with voiceover punchlines, lists, and dialogue beats.
 - **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). In-browser Base64 fetch via Chrome CDP, MD5 deduplication guard against Flow duplicate image generation, and Tesseract OCR screening to ensure 0% watermark/channel text leaks. Authentic Ink Explainer aesthetic: pure white round cartoon head (`#ffffff`), bold clean black ink contours, expressive meme eyes, and contextual color palettes (dark olive/charcoal for night & danger, pale ice-blue for cold, clean cream parchment for everyday diagrams, warm indoors for modern scenes).
 - **Motion:** Pure Static Hard Cuts (0 Ken Burns camera motion) for maximum visual punch and authentic comic-book pacing.
-- **Voice & Rhythm Standardization (Snappy Explainer Pacing):** Provider `kokoro`, voice `puck_expressive`, `puck_fenrir`, or `puck_open_throat` (80% Puck + 20% Adam), speed `1.12`.
-  * **Mandatory Dead-Silence Trimming:** Kokoro's native ~0.8s trailing/leading dead silence is strictly stripped by the engine.
+- **Voice & Rhythm Standardization (Snappy Explainer Pacing):** Provider `f5-tts` (or `f5`), voice `f5-tts-latest`, speed `1.0`.
+  * **Mandatory Dead-Silence Trimming:** Engine strictly strips dead silence with 2-tier micro-pauses.
   * **2-Tier Micro-Pauses:** 
     - **Intra-sentence clause padding:** Exactly **0.08s (80ms)** between comma/semicolon/dash clauses.
     - **Sentence-end pause:** Exactly **0.22s (220ms)** for terminal punctuation (`.`, `?`, `!`, `...`).
     - **Boundary click suppression:** 5ms linear fade-in and 10ms linear fade-out applied to all voice slices.
-  * **Pacing Result:** A ~930-word 5-act explainer compresses from a sluggish ~5m50s down to an energetic ~4m40s–4m50s runtime with continuous narrative momentum.
-  * **Batch synthesis:** Accelerated batch pipeline (`--batch-json`) synthesizes entire episodes in a single GPU pass in ~15–20s.
+  * **Pacing Result:** A ~930-word 5-act explainer compresses into an energetic ~4m30s–4m45s runtime with continuous narrative momentum.
+  * **Batch synthesis:** Accelerated batch pipeline (`--batch-json`) synthesizes entire episodes in a single GPU pass.
 - **Subtitles:** Optional / clean footage.
 - **Audio Mix:** Voice 100%, Foley SFX (pops, whooshes, rock taps), **STRICTLY NO BGM** (`bgm_volume: 0`).
 - **Assembly:** Rapid 1-pass FFmpeg Concat Demuxer (`ffconcat version 1.0`) in ~0.5s via `./videogen assemble`.
@@ -338,6 +336,17 @@ VideoGen powers multiple independent production channels running in parallel:
      ./videogen voice storyboards/series_name_ep01.json
      ./videogen assemble storyboards/series_name_ep01.json
      ```
+  5. **High-CTR Thumbnail SOP (Golden Typography & Visual Conflict — Standardized from EP01):**
+     - **Aspect Ratio:** `16:9` widescreen (1920×1080).
+     - **Anchor Position:** Always anchor big typography in the **Top-Left corner** over a dark slate-gray or textured cave wall background for maximum contrast.
+     - **The 2-Word Hook Formula:** Standardized short punchline `[WHY / STILL] + [KEYWORD]` matching Episode 1's `"WHY WORK?"` (e.g. EP01: `"WHY WORK?"`, EP02: `"WHY HUNGRY?"`, EP03: `"WHY SLEEP?"`).
+     - **Golden Typography:** Heavy/Black non-serif font (Impact, Montserrat Black, Bangers), lemon yellow fill (`#FFE500` / `#FFF000`), thick black stroke (18–24px), deep drop shadow.
+     - **Color Accents:** White cartoon stick figure head (`#ffffff`) with warm vibrant scene accents (yellow sofa, orange fire, food colors) on a dark contrasting wall wash. Strictly NO flat, lifeless monochrome black-and-white thumbnails.
+     - **Visual Conflict:** Evolution paradox or hilarious irony (pampered modern human lounging with pizza vs baffled caveman ancestor).
+     - **Prompt Blueprint:**
+       ```text
+       A high-CTR minimalist 2D vector ink explainer YouTube thumbnail illustration. SCENE: [CHARACTER_ACTION_AND_WARM_COLORED_PROPS]. Generous clean, uncluttered dark background in the top-left area specifically reserved for large yellow text. ENVIRONMENT: Dark slate-gray and navy watercolor paper texture wall for maximum text contrast. STYLE: Bold clean black comic ink contours, flat vibrant color accents, minimalist white stick figure, expressive meme face, stark graphic novel aesthetic, 16:9 widescreen composition. STRICTLY NO 3D, NO PHOTOREALISM, NO GRADIENT SHADING, NO CLUTTER, NO WATERMARK, NO LOGO.
+       ```
 
 ---
 
@@ -409,7 +418,7 @@ Migrates raw clips, voice files, and storyboard backups to external storage and 
 ### 9.5. Mobile Dispatch Notification Bridge (Zalo Bot)
 For instant notification upon video completion or schedule verification:
 ```bash
-/home/asus/.local/bin/zalo-notify "🎬 [VideoGen] Video đã được xuất bản và lên lịch thành công: https://youtu.be/..."
+~/.local/bin/zalo-notify "🎬 [VideoGen] Video đã được xuất bản và lên lịch thành công: https://youtu.be/..."
 ```
 Delivers notifications directly to the operator's mobile Zalo via the local OpenClaw gateway.
 

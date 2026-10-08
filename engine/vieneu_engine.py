@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 # Configure isolated caches
-CACHE_DIR = os.environ.get("VIENEU_CACHE_DIR", "/home/asus/ai/vieneu/cache")
+CACHE_DIR = os.environ.get("VIENEU_CACHE_DIR", str(Path.home() / "ai" / "vieneu" / "cache"))
 os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TORCH_HOME"] = os.path.join(CACHE_DIR, "torch")
 

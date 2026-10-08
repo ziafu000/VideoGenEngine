@@ -14,7 +14,7 @@ for file in $STAGED_FILES; do
     continue
   fi
 
-  FILE_DIFF=$(git diff --cached "$file" | grep -E "^\+[^+]" | grep -E "$PATTERN")
+  FILE_DIFF=$(git diff --cached -- "$file" | grep -E "^\+[^+]" | grep -E "$PATTERN")
   if [ -n "$FILE_DIFF" ]; then
     echo "  [✗] Vi phạm trong $file:"
     echo "$FILE_DIFF"

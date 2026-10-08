@@ -91,10 +91,10 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
      - **Crisp Articulation Guarantee:** Low sampling temperature (**`0.4`–`0.5`**) prevents slurring and lisping; disabling copyright watermark (`apply_watermark = False`) eliminates high-frequency sibilant sizzle.
      - **Phonetic Transliteration:** Proper nouns/locations transliterated into natural Vietnamese phonetics ("Ô-rê-gơn", "Tho", "ba-dan", "ki-lô-gam").
      - **Profiles:** Loaded dynamically from gitignored `assets/voice_profiles.json` (zero hardcoded channel branding in public repo).
-   - **Mode B (Local Neural TTS — English):** Powered by **Kokoro-82M** (`engine/kokoro_engine.py`), synthesizing **studio-grade** English narration directly on local CUDA GPU in ~0.5s per sentence. Zero API tokens, 100% free offline.
-     - **Voice Blending & Persona:** Custom tensor blend `puck_open_throat` = **80% `am_puck` + 20% `am_adam`**.
-     - **Cadence & Speed:** 1.12x speed, tight micro-pauses (0.12–0.18s) with sentence transitions under 0.35s to eliminate dead air.
-     - **Studio De-Nasal EQ Chain:** High-pass filter at 75 Hz, narrow notch cut at 1350 Hz (-4.5 dB), high-shelf presence boost at 7 kHz (+2.5 dB).
+   - **Mode B (Local Neural TTS — English Zero-Shot Clone):** Powered by **F5-TTS** (`engine/f5_engine.py`), synthesizing **broadcast studio-grade** English narration via zero-shot voice cloning directly on local CUDA GPU. Zero API tokens, 100% free offline.
+     - **Voice Persona & Reference:** Cloned from punchy explainer reference audio with crystal-clear articulation, dynamic inflection, and keyword emphasis.
+     - **Cadence & Speed:** 1.0x - 1.1x speed, tight micro-pauses (80ms intra-clause, 220ms sentence-end) with automated dead-silence trimming.
+     - **Broadcast Studio EQ Chain:** High-pass filter at 70 Hz, body warmth boost at 250 Hz (+1.2 dB), presence clarity at 3.5 kHz (+1.5 dB), high-shelf air at 10 kHz (+2.0 dB).
    - **Mode C (ElevenLabs Cloud CDP Workflow):** Automated model and Radix UI slider calibration (Stability, Similarity, Style, Speed) via simulated CDP mouse events for global multi-language voice acting.
    - **Strictly No BGM Rule (Minimalist Explainer Series):** When producing for hand-drawn explainer series (Ink Explainer style), setting `"bgm_volume": 0` or `"bgm": "none"` completely omits background music, preserving a clean, intimate storytelling voiceover with punchy SFX.
    - **Anti-Voice Doubling Assertion:** Guarded against ElevenLabs History API 2–5s indexing delays via `previousHistoryId` checks and strict MD5 checksum assertions in `engine/compositor.js`. Duplicate hashes halt the pipeline immediately.

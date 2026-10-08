@@ -626,8 +626,8 @@ async function generateAllVoicesVieNeu(storyboardData, targetShotIds = null, sbP
   return outDir;
 }
 
-// Generate voices using Kokoro-82M local engine (English)
-async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbPath = null) {
+// Generate voices using F5-TTS local zero-shot cloning engine (English)
+async function generateAllVoicesF5(storyboardData, targetShotIds = null, sbPath = null) {
   const baseName = sbPath ? path.basename(sbPath, '.json') : '';
   const episodeName = storyboardData.series_id ||
     (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : '') ||
@@ -641,18 +641,18 @@ async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbP
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const voiceConfig = storyboardData.voice || {};
-  const voiceId = voiceConfig.voice_id || voiceConfig.profile || 'puck_open_throat';
-  const speed = voiceConfig.speed || (voiceConfig.settings && voiceConfig.settings.speed) || 1.12;
-  const lang = voiceConfig.lang || voiceConfig.language || 'a';
-  const deNasalEq = voiceConfig.de_nasal_eq !== false;
+  const speed = voiceConfig.speed || (voiceConfig.settings && voiceConfig.settings.speed) || 1.0;
+  const refAudio = voiceConfig.ref_audio || path.join(config.ASSETS_DIR, 'voices', 'f5_tts_latest_ref.wav');
+  const refText = voiceConfig.ref_text || "Most of us never think twice about any of this, but the person wide awake at 3am may have been the most important person in the camp.";
+  const studioEq = voiceConfig.studio_eq !== false;
 
-  console.log(`\n=== BẮT ĐẦU TỔNG HỢP VOICE KOKORO (LOCAL ENGLISH): ${episodeName.toUpperCase()} ===`);
-  console.log(`Voice: ${voiceId} | Speed: ${speed}x | Lang: ${lang} | Thư mục đích: ${outDir}`);
+  console.log(`\n=== BẮT ĐẦU TỔNG HỢP VOICE F5-TTS (LOCAL ZERO-SHOT ENGLISH): ${episodeName.toUpperCase()} ===`);
+  console.log(`Speed: ${speed}x | Ref Audio: ${path.basename(refAudio)} | Thư mục đích: ${outDir}`);
 
   const pythonBin = config.VIENEU_PYTHON || 'python3';
-  const runnerScript = path.join(__dirname, 'kokoro_engine.py');
+  const runnerScript = path.join(__dirname, 'f5_engine.py');
 
-  // Fast Batch Kokoro Synthesis: generate all missing shots in a single process if no specific targets
+  // Fast Batch F5-TTS Synthesis: generate all missing shots in a single process if no specific targets
   const pendingItems = [];
   for (let i = 0; i < shots.length; i++) {
     const s = shots[i];
@@ -669,24 +669,24 @@ async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbP
   }
 
   if (pendingItems.length > 1) {
-    console.log(`\n>>> [Batch Kokoro] Đang tổng hợp song song/liên tục ${pendingItems.length} clips trong 1 phiên...`);
-    const batchJsonPath = path.join(outDir, 'batch_kokoro_pending.json');
+    console.log(`\n>>> [Batch F5-TTS] Đang tổng hợp liên tục ${pendingItems.length} clips trong 1 phiên CUDA duy nhất...`);
+    const batchJsonPath = path.join(outDir, 'batch_f5_pending.json');
     fs.writeFileSync(batchJsonPath, JSON.stringify(pendingItems.map(p => ({ text: p.text, output: p.output })), null, 2), 'utf8');
     const cmdArgs = [
       runnerScript,
       '--batch-json', batchJsonPath,
-      '--voice', voiceId,
-      '--speed', String(speed),
-      '--lang', lang
+      '--ref-audio', refAudio,
+      '--ref-text', refText,
+      '--speed', String(speed)
     ];
-    if (!deNasalEq) cmdArgs.push('--no-de-nasal-eq');
+    if (!studioEq) cmdArgs.push('--no-studio-eq');
     try {
       execFileSync(pythonBin, cmdArgs, { stdio: 'inherit' });
       if (fs.existsSync(batchJsonPath)) fs.unlinkSync(batchJsonPath);
-      console.log(`\n✓ Hoàn tất tạo toàn bộ voiceover Kokoro theo lô cho ${episodeName}!`);
+      console.log(`\n✓ Hoàn tất tạo toàn bộ voiceover F5-TTS theo lô cho ${episodeName}!`);
       return outDir;
     } catch (err) {
-      console.error(`    [!] Batch Kokoro gặp lỗi, chuyển sang fallback từng shot:`, err.message);
+      console.error(`    [!] Batch F5-TTS gặp lỗi, chuyển sang fallback từng shot:`, err.message);
     }
   }
 
@@ -714,19 +714,19 @@ async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbP
       continue;
     }
 
-    console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice Kokoro cho ${shotId} (Voice: ${voiceId})...`);
+    console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice F5-TTS cho ${shotId}...`);
     console.log(`    Text: "${voiceoverText.slice(0, 80)}${voiceoverText.length > 80 ? '...' : ''}"`);
 
     const cmdArgs = [
       runnerScript,
       '--text', voiceoverText,
       '--output', destFile,
-      '--voice', voiceId,
-      '--speed', String(speed),
-      '--lang', lang
+      '--ref-audio', refAudio,
+      '--ref-text', refText,
+      '--speed', String(speed)
     ];
-    if (!deNasalEq) {
-      cmdArgs.push('--no-de-nasal-eq');
+    if (!studioEq) {
+      cmdArgs.push('--no-studio-eq');
     }
 
     try {
@@ -737,7 +737,7 @@ async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbP
     }
   }
 
-  console.log(`\n✓ Hoàn tất tạo voiceover Kokoro cho ${episodeName}!`);
+  console.log(`\n✓ Hoàn tất tạo voiceover F5-TTS cho ${episodeName}!`);
   return outDir;
 }
 
@@ -748,11 +748,15 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
     || process.env.TTS_PROVIDER
     || 'vieneu'; // Default to VieNeu-TTS
 
-  if (provider.toLowerCase() === 'kokoro') {
-    return await generateAllVoicesKokoro(storyboardData, targetShotIds, sbPath);
+  const p = provider.toLowerCase();
+  if (p === 'f5' || p === 'f5-tts' || p === 'f5tts' || p === 'kokoro') {
+    if (p === 'kokoro') {
+      console.log(`[Notice] Kokoro engine has been completely retired. Upgrading automatically to F5-TTS zero-shot studio clone.`);
+    }
+    return await generateAllVoicesF5(storyboardData, targetShotIds, sbPath);
   }
 
-  if (provider.toLowerCase() === 'vieneu') {
+  if (p === 'vieneu') {
     return await generateAllVoicesVieNeu(storyboardData, targetShotIds, sbPath);
   }
 
@@ -849,6 +853,6 @@ module.exports = {
   generateClip,
   generateAllVoices,
   generateAllVoicesVieNeu,
-  generateAllVoicesKokoro,
+  generateAllVoicesF5,
   DEFAULT_PROFILES
 };

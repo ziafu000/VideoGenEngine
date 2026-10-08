@@ -1,0 +1,27 @@
+{
+  "explainer_english": {
+    "provider": "f5-tts",
+    "mode": "clone",
+    "voice": "f5-tts-latest",
+    "ref_audio": "assets/voices/my_voice_sample.wav",
+    "ref_text": "Transcript of the reference audio sample goes here for zero-shot voice cloning.",
+    "speed": 1.0,
+    "target_rms": 0.1,
+    "description": "Crisp English narration via local F5-TTS zero-shot voice cloning"
+  },
+  "documentary_vietnamese": {
+    "provider": "vieneu",
+    "mode": "preset",
+    "voice": "Hải Đăng",
+    "temperature": 0.4,
+    "apply_watermark": false,
+    "sample_rate": 48000,
+    "description": "Warm documentary narrator via local VieNeu-TTS v3 Turbo"
+  },
+  "default": {
+    "provider": "f5-tts",
+    "mode": "clone",
+    "ref_audio": "assets/voices/my_voice_sample.wav",
+    "speed": 1.0
+  }
+}
