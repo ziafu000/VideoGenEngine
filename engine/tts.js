@@ -652,6 +652,44 @@ async function generateAllVoicesKokoro(storyboardData, targetShotIds = null, sbP
   const pythonBin = config.VIENEU_PYTHON || 'python3';
   const runnerScript = path.join(__dirname, 'kokoro_engine.py');
 
+  // Fast Batch Kokoro Synthesis: generate all missing shots in a single process if no specific targets
+  const pendingItems = [];
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+    if (targetShotIds && targetShotIds.length > 0 && !targetShotIds.includes(shotId)) continue;
+    const voiceoverText = (s.voice && s.voice.text)
+      || (s.audio && s.audio.voiceover)
+      || (s.audio && s.audio.sub_text)
+      || s.subtitles;
+    if (!voiceoverText || voiceoverText.trim() === '' || voiceoverText.includes('Hết Tập')) continue;
+    const destFile = path.join(outDir, `voice_${shotId}.mp3`);
+    if (fs.existsSync(destFile) && fs.statSync(destFile).size > 2000) continue;
+    pendingItems.push({ text: voiceoverText, output: destFile, shotId });
+  }
+
+  if (pendingItems.length > 1) {
+    console.log(`\n>>> [Batch Kokoro] Đang tổng hợp song song/liên tục ${pendingItems.length} clips trong 1 phiên...`);
+    const batchJsonPath = path.join(outDir, 'batch_kokoro_pending.json');
+    fs.writeFileSync(batchJsonPath, JSON.stringify(pendingItems.map(p => ({ text: p.text, output: p.output })), null, 2), 'utf8');
+    const cmdArgs = [
+      runnerScript,
+      '--batch-json', batchJsonPath,
+      '--voice', voiceId,
+      '--speed', String(speed),
+      '--lang', lang
+    ];
+    if (!deNasalEq) cmdArgs.push('--no-de-nasal-eq');
+    try {
+      execFileSync(pythonBin, cmdArgs, { stdio: 'inherit' });
+      if (fs.existsSync(batchJsonPath)) fs.unlinkSync(batchJsonPath);
+      console.log(`\n✓ Hoàn tất tạo toàn bộ voiceover Kokoro theo lô cho ${episodeName}!`);
+      return outDir;
+    } catch (err) {
+      console.error(`    [!] Batch Kokoro gặp lỗi, chuyển sang fallback từng shot:`, err.message);
+    }
+  }
+
   for (let i = 0; i < shots.length; i++) {
     const s = shots[i];
     const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;

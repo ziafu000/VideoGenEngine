@@ -578,6 +578,111 @@ async function downloadLatest(targetFile, options = {}) {
   return await downloadLatestDirect(targetFile);
 }
 
+// 7. Generate image via Google Flow (Nano Banana Pro) with in-browser Base64 fetch & Zero-Dupe Guard
+async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 50, retries = 3 }) {
+  const cdp = await getClientForPage('flow.google.com');
+  const crypto = require('crypto');
+  try {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const initialUrls = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).map(i => i.src).filter(Boolean))()`);
+      const initialSet = new Set(initialUrls || []);
+
+      // Focus and clear ProseMirror
+      const pmRect = await cdp.evaluate(`(() => {
+        const pm = document.querySelector('.ProseMirror');
+        if (!pm) return null;
+        const r = pm.getBoundingClientRect();
+        return { x: Math.round(r.x + 20), y: Math.round(r.y + 20) };
+      })()`);
+      if (pmRect) await cdp.clickMouse(pmRect.x, pmRect.y);
+      await sleep(80);
+
+      await cdp.evaluate(`(() => {
+        const pm = document.querySelector('.ProseMirror');
+        pm.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+      })()`);
+      await sleep(100);
+
+      // Insert prompt
+      await cdp.send('Input.insertText', { text: prompt });
+      await sleep(200);
+
+      // Click generate button or dispatch Enter
+      const btnRect = await cdp.evaluate(`(() => {
+        const b = document.querySelector('button[aria-label="Bắt đầu tạo"], button.generate-icon-button, button.send-button');
+        if (!b || b.disabled) return null;
+        const r = b.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), disabled: b.disabled };
+      })()`);
+
+      if (btnRect && !btnRect.disabled) {
+        await cdp.clickMouse(btnRect.x, btnRect.y);
+      } else {
+        await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 13, text: '\r' });
+        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 13, text: '\r' });
+      }
+
+      // Wait for image tile
+      const startWait = Date.now();
+      let freshUrl = null;
+      while (Date.now() - startWait < timeoutSec * 1000) {
+        await sleep(2000);
+        const poll = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).map(i => i.src).filter(Boolean))()`);
+        const fresh = (poll || []).filter(src => !initialSet.has(src) && src.includes('flow-content.google'));
+        if (fresh.length > 0) {
+          freshUrl = fresh[0];
+          break;
+        }
+      }
+
+      if (!freshUrl) {
+        console.warn(`    └─ [!] Timeout khi chờ ảnh (lần thử ${attempt}/${retries}), đang thử lại...`);
+        await sleep(2000);
+        continue;
+      }
+
+      // Fetch base64 directly inside Chrome session
+      const b64 = await cdp.evaluate(`(async (url) => {
+        try {
+          const resp = await fetch(url);
+          const blob = await resp.blob();
+          return new Promise((resolve) => {
+            const r = new FileReader();
+            r.onloadend = () => resolve(r.result.split(',')[1]);
+            r.readAsDataURL(blob);
+          });
+        } catch { return null; }
+      })("${freshUrl}")`);
+
+      if (!b64 || b64.length < 5000) {
+        console.warn(`    └─ [!] Dữ liệu base64 ảnh không hợp lệ (lần thử ${attempt}/${retries})...`);
+        continue;
+      }
+
+      const buf = Buffer.from(b64, 'base64');
+      const hash = crypto.createHash('md5').update(buf).digest('hex');
+
+      if (seenHashes && seenHashes.has(hash)) {
+        console.warn(`    └─ [!] Phát hiện ảnh trùng lặp (${hash.slice(0, 8)}...), tự động sinh lại...`);
+        await sleep(2000);
+        continue;
+      }
+
+      const outDir = path.dirname(outputPath);
+      if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+      fs.writeFileSync(outputPath, buf);
+      if (seenHashes) seenHashes.add(hash);
+      console.log(`    [✓] Đã lưu ảnh Nano Banana Pro: ${outputPath} (${(buf.length / 1024).toFixed(1)} KB, MD5: ${hash.slice(0, 8)})`);
+      return { path: outputPath, hash, size: buf.length };
+    }
+    throw new Error(`Thất bại khi sinh ảnh sau ${retries} lần thử!`);
+  } finally {
+    cdp.close();
+  }
+}
+
 module.exports = {
   getStatus,
   clearCharacters,
@@ -586,5 +691,6 @@ module.exports = {
   waitForRender,
   downloadLatest,
   downloadCloud1080p,
-  downloadLatestDirect
+  downloadLatestDirect,
+  generateImage
 };

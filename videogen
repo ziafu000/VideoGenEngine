@@ -68,6 +68,11 @@ Lệnh điều phối:
   ./videogen bridge [status]
       Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
 
+  ./videogen explainer <transcript.txt | "text"> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--out=storyboard.json]
+      Tự động phân tích transcript thành các mệnh đề thị giác (semantic clauses 1.5s–2.5s),
+      phân loại chiến lược hình ảnh (LITERAL, METAPHOR, TITLE_CARD, SPLIT_SCREEN, POSE_CHURN),
+      và sinh storyboard hoàn chỉnh với prompt Nano Banana Pro chuẩn mực (0 API credit).
+
   ./videogen doctor (hoặc check)
       Kiểm định sức khỏe hệ thống, bảo mật IP/Gitignore, FFmpeg, và kết nối Chrome CDP.
 
@@ -166,6 +171,52 @@ async function main() {
         break;
       }
 
+      case 'explainer': {
+        const inputArg = args[1];
+        if (!inputArg) {
+          console.error('[!] Vui lòng cung cấp file transcript hoặc nội dung: ./videogen explainer <transcript.txt> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--out=storyboards/ep.json]');
+          process.exit(1);
+        }
+
+        const explainer = require('./engine/explainer');
+        let textContent = '';
+        if (fs.existsSync(inputArg)) {
+          textContent = fs.readFileSync(inputArg, 'utf8');
+        } else {
+          textContent = inputArg;
+        }
+
+        const titleArg = args.find(a => a.startsWith('--title='));
+        const seriesArg = args.find(a => a.startsWith('--series='));
+        const epArg = args.find(a => a.startsWith('--ep='));
+        const ratioArg = args.find(a => a.startsWith('--ratio='));
+        const outArg = args.find(a => a.startsWith('--out='));
+
+        const title = titleArg ? titleArg.split('=')[1].replace(/^["']|["']$/g, '') : 'Explainer Episode';
+        const seriesId = seriesArg ? seriesArg.split('=')[1].replace(/^["']|["']$/g, '') : 'explainer_series';
+        const epId = epArg ? epArg.split('=')[1].replace(/^["']|["']$/g, '') : 'ep01';
+        const aspectRatio = ratioArg ? ratioArg.split('=')[1].replace(/^["']|["']$/g, '') : '16:9';
+        const outPath = outArg ? path.resolve(outArg.split('=')[1].replace(/^["']|["']$/g, '')) : path.join(config.STORYBOARDS_DIR, `${seriesId}_${epId}.json`);
+
+        console.log(`=== BẮT ĐẦU CHUYỂN ĐỔI TRANSCRIPT SANG STORYBOARD EXPLAINER TỐI GIẢN ===`);
+        const sb = explainer.createExplainerStoryboard({
+          title,
+          seriesId,
+          episodeId: epId,
+          transcriptText: textContent,
+          aspectRatio,
+          outputStoryboardPath: outPath
+        });
+
+        console.log(`[✓] Đã tạo thành công ${sb.shots.length} phân cảnh mệnh đề thị giác (visual clauses)!`);
+        console.log(`    File kịch bản: ${outPath}`);
+        console.log(`    Bước tiếp theo:`);
+        console.log(`      1. ./videogen render ${outPath}`);
+        console.log(`      2. ./videogen voice ${outPath}`);
+        console.log(`      3. ./videogen assemble ${outPath}`);
+        break;
+      }
+
       case 'render': {
         const sbArg = args[1];
         if (!sbArg) {
@@ -184,13 +235,30 @@ async function main() {
         const epRenderDir = path.join(config.RENDERS_DIR, episodeName);
         if (!fs.existsSync(epRenderDir)) fs.mkdirSync(epRenderDir, { recursive: true });
 
-        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title || episodeName} [${resolution.toUpperCase()}] ===`);
+        const isImageMode = (sb.engine === 'nano_banana_pro') || 
+                            (sb.format === 'minimalist_explainer') || 
+                            (sb.render_mode === 'image') ||
+                            (sb.visual_engine === 'nano_banana_pro');
+        const seenHashes = new Set();
+        if (fs.existsSync(epRenderDir)) {
+          const existingPngs = fs.readdirSync(epRenderDir).filter(f => f.endsWith('.png'));
+          for (const f of existingPngs) {
+            try {
+              const h = crypto.createHash('md5').update(fs.readFileSync(path.join(epRenderDir, f))).digest('hex');
+              seenHashes.add(h);
+            } catch {}
+          }
+        }
+
+        console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title || episodeName} [${isImageMode ? 'NANO BANANA PRO (IMAGE)' : resolution.toUpperCase()}] ===`);
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];
           const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
           if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
 
-          const outFile = path.join(epRenderDir, `${shotId}.mp4`);
+          const isShotImage = isImageMode || s.type === 'image' || (!s.flow_prompt && s.image_prompt);
+          const ext = isShotImage ? '.png' : '.mp4';
+          const outFile = path.join(epRenderDir, `${shotId}${ext}`);
           if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
             console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
             continue;
@@ -198,31 +266,40 @@ async function main() {
 
           console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
           try {
-            // 1. Clear characters
-            await flow.clearCharacters();
+            const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
+            if (isShotImage) {
+              console.log(`    [-] [Nano Banana Pro] Gửi câu lệnh vẽ ảnh: "${promptText.slice(0, 60)}..."`);
+              await flow.generateImage({
+                prompt: promptText,
+                outputPath: outFile,
+                seenHashes
+              });
+            } else {
+              // 1. Clear characters
+              await flow.clearCharacters();
 
-            // 2. Add characters if any
-            const chars = s.characters || [];
-            for (const c of chars) {
-              console.log(`    [-] Gắn nhân vật: @${c}`);
-              await flow.addCharacter(c);
+              // 2. Add characters if any
+              const chars = s.characters || [];
+              for (const c of chars) {
+                console.log(`    [-] Gắn nhân vật: @${c}`);
+                await flow.addCharacter(c);
+              }
+
+              // 3. Submit prompt
+              console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
+              await flow.submitPrompt(promptText);
+
+              // 4. Wait
+              await flow.waitForRender(240);
+
+              // 5. Download (Default: Cloud AI 1080p Full HD)
+              await flow.downloadLatest(outFile, { resolution });
+
+              // Đồng bộ ra thư mục gốc renders/ để tương thích với các công cụ kiểm định
+              try {
+                fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
+              } catch {}
             }
-
-            // 3. Submit prompt
-            const promptText = s.flow_prompt || s.prompt || '';
-            console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
-            await flow.submitPrompt(promptText);
-
-            // 4. Wait
-            await flow.waitForRender(240);
-
-            // 5. Download (Default: Cloud AI 1080p Full HD)
-            await flow.downloadLatest(outFile, { resolution });
-
-            // Đồng bộ ra thư mục gốc renders/ để tương thích với các công cụ kiểm định
-            try {
-              fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
-            } catch {}
           } catch (err) {
             console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
           }
@@ -322,6 +399,50 @@ async function main() {
                          (sb.format === 'shorts_40s') ||
                          (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
         const noHardsub = noSubsFlag || sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+
+        // 1. Kiểm tra chế độ dựng tĩnh siêu tốc (Minimalist Explainer / Static Hard Cuts)
+        const isStaticCuts = (sb.pacing === 'static_cuts' || sb.pacing === 'hard_cuts' || sb.format === 'minimalist_explainer' || sb.motion === 'none');
+        if (isStaticCuts) {
+          console.log(`\n=== CHẾ ĐỘ DỰNG TĨNH SIÊU TỐC (STATIC HARD CUTS / 1-PASS DEMUXER) ===`);
+          const staticShots = [];
+          for (let i = 0; i < shots.length; i++) {
+            const s = shots[i];
+            const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+            const possibleImgs = [
+              path.join(epRenderDir, `${shotId}.png`),
+              path.join(epRenderDir, `${shotId}.jpg`),
+              path.join(config.RENDERS_DIR, `${shotId}.png`),
+              path.join(config.RENDERS_DIR, `${shotId}.jpg`),
+              (s.image ? path.resolve(config.PROJECT_DIR, s.image) : null)
+            ].filter(Boolean);
+            const foundImg = possibleImgs.find(p => fs.existsSync(p));
+            if (!foundImg) {
+              throw new Error(`[!] Không tìm thấy ảnh cho shot ${shotId} trong ${epRenderDir}`);
+            }
+            const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+            const audioDur = fs.existsSync(aFile) ? compositor.getDuration(aFile) : 0;
+            const shotDur = s.duration || s.duration_seconds || (audioDur > 0 ? audioDur : 2.5);
+            staticShots.push({ imagePath: foundImg, duration: shotDur });
+          }
+
+          let masterAudio = path.join(audioDir, 'master_voice_tight.wav');
+          if (!fs.existsSync(masterAudio)) {
+            masterAudio = path.join(audioDir, 'master_voice.wav');
+          }
+          if (!fs.existsSync(masterAudio)) {
+            masterAudio = path.join(audioDir, 'master_voice_clauses.wav');
+          }
+
+          const outVideoName = (sb.project && sb.project.id ? `${sb.project.id}_Master_1080p.mp4` : `${episodeName}_Master_1080p.mp4`);
+          const masterOutPath = path.join(config.OUTPUT_DIR, outVideoName);
+          compositor.assembleStaticCuts({
+            shots: staticShots,
+            audioMasterPath: masterAudio,
+            outputPath: masterOutPath,
+            aspectRatio: sb.aspect_ratio || '16:9'
+          });
+          return;
+        }
 
         for (let i = 0; i < shots.length; i++) {
           const s = shots[i];

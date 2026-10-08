@@ -30,7 +30,15 @@ def resolve_voice_tensor(pipeline, voice_spec):
       - Any single Kokoro voice (e.g. 'am_puck', 'am_adam', 'am_michael', 'bm_george')
     """
     spec = voice_spec.strip().lower()
-    if spec == "puck_open_throat" or spec == "puck_denasal":
+    if spec in ["puck_expressive", "pure_puck", "puck"]:
+        return pipeline.load_single_voice("am_puck")
+    elif spec in ["puck_fenrir", "puck_fenrir_blend"]:
+        v_puck = pipeline.load_single_voice("am_puck")
+        v_fenrir = pipeline.load_single_voice("am_fenrir")
+        return 0.65 * v_puck + 0.35 * v_fenrir
+    elif spec in ["fenrir_punchy", "fenrir"]:
+        return pipeline.load_single_voice("am_fenrir")
+    elif spec in ["puck_open_throat", "puck_denasal", "puck_adam_explainer"]:
         v_puck = pipeline.load_single_voice("am_puck")
         v_adam = pipeline.load_single_voice("am_adam")
         return 0.80 * v_puck + 0.20 * v_adam
@@ -59,8 +67,9 @@ def to_win_path(p: Path) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="Kokoro-82M Local English TTS Engine for VideoGen")
-    parser.add_argument("--text", required=True, help="Text to synthesize")
-    parser.add_argument("--output", required=True, help="Output audio file (.wav or .mp3)")
+    parser.add_argument("--text", default=None, help="Text to synthesize")
+    parser.add_argument("--output", default=None, help="Output audio file (.wav or .mp3)")
+    parser.add_argument("--batch-json", default=None, help="JSON file containing list of {text, output} items for high-speed batch processing")
     parser.add_argument("--voice", default="puck_open_throat", help="Voice ID or blend (default: puck_open_throat)")
     parser.add_argument("--speed", type=float, default=1.12, help="Speaking speed multiplier (default: 1.12 for continuous explainer)")
     parser.add_argument("--lang", default="a", help="Language code ('a' for American, 'b' for British)")
@@ -69,7 +78,52 @@ def main():
 
     args = parser.parse_args()
 
+    import json
     import soundfile as sf
+    import numpy as np
+
+    def trim_and_pad_audio(audio, sr, text, threshold_db=-40):
+        """
+        Trims dead silence from Kokoro output and applies two-tier natural padding:
+          - 80ms (0.08s) for intra-sentence clauses
+          - 220ms (0.22s) for sentence-end clauses (. ? ! ...)
+          - 20ms lead-in, 5ms fade-in, 10ms fade-out to prevent clicks
+        """
+        threshold_amp = 10 ** (threshold_db / 20)
+        abs_audio = np.abs(audio)
+
+        window_size = int(sr * 0.01) # 10ms
+        start_idx = 0
+        for i in range(0, len(audio) - window_size, max(1, window_size // 2)):
+            if np.max(abs_audio[i : i + window_size]) > threshold_amp:
+                start_idx = max(0, i - int(sr * 0.02)) # 20ms lead-in
+                break
+
+        end_idx = len(audio)
+        for i in range(len(audio) - window_size, 0, -max(1, window_size // 2)):
+            if np.max(abs_audio[i : i + window_size]) > threshold_amp:
+                end_idx = min(len(audio), i + window_size)
+                break
+
+        if start_idx >= end_idx:
+            trimmed = audio.copy()
+        else:
+            trimmed = audio[start_idx:end_idx].copy()
+
+        fade_in_len = int(sr * 0.005) # 5ms
+        fade_out_len = int(sr * 0.010) # 10ms
+        if len(trimmed) > fade_in_len + fade_out_len:
+            fade_in = np.linspace(0, 1, fade_in_len)
+            fade_out = np.linspace(1, 0, fade_out_len)
+            trimmed[:fade_in_len] *= fade_in
+            trimmed[-fade_out_len:] *= fade_out
+
+        clean_t = text.strip()
+        is_sentence_end = clean_t.endswith(('.', '?', '!', '."', '?"', '!"', '...'))
+        pad_sec = 0.22 if is_sentence_end else 0.08
+        pad_len = int(sr * pad_sec)
+
+        return np.pad(trimmed, (0, pad_len), mode='constant')
 
     lang = args.lang.lower()
     if lang in ["en", "en-us", "us", "american", "a"]:
@@ -82,66 +136,78 @@ def main():
     pipeline = get_pipeline(lang_code=lang_code)
     voice_tensor = resolve_voice_tensor(pipeline, args.voice)
 
-    generator = pipeline(args.text, voice=voice_tensor, speed=args.speed)
-    audio_chunks = []
-    for gs, ps, audio in generator:
-        audio_chunks.append(audio)
-
-    if not audio_chunks:
-        print("ERROR: No audio generated", file=sys.stderr)
+    items = []
+    if args.batch_json:
+        with open(args.batch_json, "r", encoding="utf-8") as f:
+            items = json.load(f)
+    elif args.text and args.output:
+        items = [{"text": args.text, "output": args.output}]
+    else:
+        print("ERROR: Either --batch-json OR both --text and --output must be provided.", file=sys.stderr)
         sys.exit(1)
 
-    full_audio = torch.cat(audio_chunks, dim=0).cpu().numpy()
-    out_path = Path(args.output)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
     sample_rate = 24000
-    temp_wav = out_path.with_suffix(".tmp.wav")
-    sf.write(str(temp_wav), full_audio, sample_rate)
+    for idx, item in enumerate(items):
+        t = item["text"]
+        out_p = Path(item["output"])
+        out_p.parent.mkdir(parents=True, exist_ok=True)
 
-    win_temp_wav = to_win_path(temp_wav)
-    win_out_path = to_win_path(out_path)
+        if out_p.exists() and out_p.stat().st_size > 1000:
+            print(f"[{idx+1}/{len(items)}] Skip existing: {out_p.name}")
+            continue
 
-    if out_path.suffix.lower() == ".mp3":
-        cmd = ["ffmpeg", "-y", "-i", win_temp_wav]
-        if args.de_nasal_eq:
-            # Studio EQ chain:
-            # 1. highpass 75Hz (removes low-end rumble)
-            # 2. notch cut 1350Hz -4.5dB (eliminates nasal congestion)
-            # 3. bell boost 220Hz +1.8dB (chest resonance warmth)
-            # 4. bell boost 7000Hz +2.5dB (air brilliance and clarity)
-            eq_filter = (
-                "highpass=f=75,"
-                "equalizer=f=1350:width_type=h:width=500:g=-4.5,"
-                "equalizer=f=220:width_type=h:width=100:g=1.8,"
-                "equalizer=f=7000:width_type=h:width=2500:g=2.5"
-            )
-            cmd.extend(["-af", eq_filter])
-        cmd.extend(["-b:a", "192k", win_out_path])
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if temp_wav.exists():
-            temp_wav.unlink()
-    else:
-        if args.de_nasal_eq:
-            eq_filter = (
-                "highpass=f=75,"
-                "equalizer=f=1350:width_type=h:width=500:g=-4.5,"
-                "equalizer=f=220:width_type=h:width=100:g=1.8,"
-                "equalizer=f=7000:width_type=h:width=2500:g=2.5"
-            )
-            subprocess.run(
-                ["ffmpeg", "-y", "-i", win_temp_wav, "-af", eq_filter, win_out_path],
-                check=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+        generator = pipeline(t, voice=voice_tensor, speed=args.speed)
+        audio_chunks = []
+        for gs, ps, audio in generator:
+            audio_chunks.append(audio)
+
+        if not audio_chunks:
+            print(f"WARN: No audio for item {idx}: {t[:30]}", file=sys.stderr)
+            continue
+
+        full_audio = torch.cat(audio_chunks, dim=0).cpu().numpy()
+        full_audio = trim_and_pad_audio(full_audio, sample_rate, t)
+        temp_wav = out_p.with_suffix(".tmp.wav")
+        sf.write(str(temp_wav), full_audio, sample_rate)
+
+        win_temp_wav = to_win_path(temp_wav)
+        win_out_path = to_win_path(out_p)
+
+        if out_p.suffix.lower() == ".mp3":
+            cmd = ["ffmpeg", "-y", "-i", win_temp_wav]
+            if args.de_nasal_eq:
+                eq_filter = (
+                    "highpass=f=75,"
+                    "equalizer=f=1350:width_type=h:width=500:g=-4.5,"
+                    "equalizer=f=220:width_type=h:width=100:g=1.8,"
+                    "equalizer=f=7000:width_type=h:width=2500:g=2.5"
+                )
+                cmd.extend(["-af", eq_filter])
+            cmd.extend(["-b:a", "192k", win_out_path])
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             if temp_wav.exists():
                 temp_wav.unlink()
         else:
-            temp_wav.replace(out_path)
+            if args.de_nasal_eq:
+                eq_filter = (
+                    "highpass=f=75,"
+                    "equalizer=f=1350:width_type=h:width=500:g=-4.5,"
+                    "equalizer=f=220:width_type=h:width=100:g=1.8,"
+                    "equalizer=f=7000:width_type=h:width=2500:g=2.5"
+                )
+                subprocess.run(
+                    ["ffmpeg", "-y", "-i", win_temp_wav, "-af", eq_filter, win_out_path],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                if temp_wav.exists():
+                    temp_wav.unlink()
+            else:
+                temp_wav.replace(out_p)
 
-    duration = len(full_audio) / float(sample_rate)
-    print(f"OK: generated {duration:.2f}s audio at {out_path} (voice: {args.voice}, speed: {args.speed})")
+        duration = len(full_audio) / float(sample_rate)
+        print(f"[{idx+1}/{len(items)}] OK ({duration:.2f}s): {out_p.name}")
 
 if __name__ == "__main__":
     main()

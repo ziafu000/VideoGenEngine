@@ -294,9 +294,83 @@ function renderMotionStill({
   return outputPath;
 }
 
+/**
+ * Assemble Minimalist Explainer Master Video via FFmpeg Concat Demuxer (Static Hard Cuts, 0 Ken Burns)
+ * Rapid 1-pass assembly in ~0.5s - 1.0s directly synchronized to master audio.
+ */
+function assembleStaticCuts({
+  shots, // Array of { imagePath, duration }
+  audioMasterPath,
+  outputPath,
+  aspectRatio = '16:9'
+}) {
+  if (!shots || shots.length === 0) {
+    throw new Error('assembleStaticCuts: Mảng shots rỗng!');
+  }
+  if (!fs.existsSync(audioMasterPath)) {
+    throw new Error(`assembleStaticCuts: Không tìm thấy file audio master tại: ${audioMasterPath}`);
+  }
+
+  // 0. MD5 Image Doubling Prevention
+  const seenImageHashes = new Map();
+  for (let i = 0; i < shots.length; i++) {
+    const imgPath = shots[i].imagePath;
+    if (!fs.existsSync(imgPath)) {
+      throw new Error(`[!] Không tìm thấy ảnh cho shot ${i + 1}: ${imgPath}`);
+    }
+    const buf = fs.readFileSync(imgPath);
+    const hash = crypto.createHash('md5').update(buf).digest('hex');
+    if (seenImageHashes.has(hash)) {
+      const prevIdx = seenImageHashes.get(hash);
+      throw new Error(`PHÁT HIỆN LỖI TRÙNG ẢNH (Image Doubling): Shot ${i + 1} (${path.basename(imgPath)}) trùng md5 100% với Shot ${prevIdx + 1}! MD5: ${hash}. Dừng quy trình xuất master.`);
+    }
+    seenImageHashes.set(hash, i);
+  }
+
+  // 1. Build ffconcat version 1.0
+  const concatLines = ['ffconcat version 1.0'];
+  for (const s of shots) {
+    concatLines.push(`file '${config.toWinPath(s.imagePath).replace(/\\/g, '/')}'`);
+    concatLines.push(`duration ${Number(s.duration).toFixed(3)}`);
+  }
+  const lastImg = shots[shots.length - 1].imagePath;
+  concatLines.push(`file '${config.toWinPath(lastImg).replace(/\\/g, '/')}'`);
+
+  const outDir = path.dirname(outputPath);
+  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+  const concatFile = path.join(outDir, 'concat_plan.txt');
+  fs.writeFileSync(concatFile, concatLines.join('\n'), 'utf8');
+
+  const isShorts = aspectRatio === '9:16';
+  const scaleFilter = isShorts
+    ? 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p'
+    : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p';
+
+  console.log(`[-] Running 1-pass FFmpeg Concat Demuxer for ${shots.length} static cuts...`);
+  execFileSync('ffmpeg', [
+    '-y',
+    '-f', 'concat',
+    '-safe', '0',
+    '-i', config.toWinPath(concatFile),
+    '-i', config.toWinPath(audioMasterPath),
+    '-vf', scaleFilter,
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '18',
+    '-c:a', 'aac',
+    '-b:a', '192k',
+    '-shortest',
+    config.toWinPath(outputPath)
+  ], { stdio: 'inherit' });
+
+  console.log(`[✓] Master video created: ${outputPath} (${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB)`);
+  return outputPath;
+}
+
 module.exports = {
   getDuration,
   compositeVideo,
+  assembleStaticCuts,
   renderMotionStill,
   extractVerificationFrames,
   verifyRenderedShots

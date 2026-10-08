@@ -85,7 +85,10 @@ const DEST_FINAL = process.env.DEST_FINAL || null;
 let customChannels = {};
 if (process.env.YOUTUBE_CHANNELS_JSON) {
   try {
-    customChannels = JSON.parse(process.env.YOUTUBE_CHANNELS_JSON);
+    let raw = process.env.YOUTUBE_CHANNELS_JSON.trim();
+    if (raw.startsWith("'") && raw.endsWith("'")) raw = raw.slice(1, -1).trim();
+    if (raw.startsWith('"') && raw.endsWith('"')) raw = raw.slice(1, -1).trim();
+    customChannels = JSON.parse(raw);
   } catch {}
 }
 
