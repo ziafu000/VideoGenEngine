@@ -233,7 +233,7 @@ VideoGen is a **zero-hardcoding, parameter-driven video production engine**. Rat
 - `settings`:
   - `temperature`: `0.4`–`0.5` (prevents slurring and consonant lisping in VieNeu).
   - `watermark`: `false` (eliminates high-frequency sibilant sizzle).
-  - `voice_id` / `profile`: e.g. `"documentary"` (VieNeu Hải Đăng/Thiện Minh) or `"puck_open_throat"` (Kokoro Puck-Adam blend).
+  - `voice_id` / `profile`: e.g. `"documentary"` (VieNeu Hải Đăng/Thiện Minh) or `"f5-tts-latest"` (F5-TTS Studio Clone at 0.90x speed).
 
 ### 7.4. Dimension 4: Visuals & Guardrails
 - `model`: `"omni_flash"` (Omni 1.1 Flash, 15 credits / 10s clip) or `"veo"` (Veo 3.1).
@@ -265,7 +265,7 @@ The repository maintains **only one universal declarative template** (`examples/
 ### 8.1. Multi-Channel Coexistence Overview
 VideoGen powers multiple independent production channels running in parallel:
 1. **Vertical Shorts Channel:** World exploration, science mysteries, and natural wonders (Recipe 8.2 — 9:16 Shorts, Omni 1.1 video, VieNeu-TTS Vietnamese voice, BGM).
-2. **Widescreen Explainer Channel:** History, human curiosity, and educational storytelling via hand-drawn stickman animations (Recipe 8.4 — 16:9 2D Motion Stills, Nano Banana Pro, Kokoro English voice, Strictly NO BGM).
+2. **Widescreen Explainer Channel:** History, human curiosity, and educational storytelling via hand-drawn stickman animations (Recipe 8.4 / 8.6 — 16:9 2D Motion Stills, Nano Banana Pro, F5-TTS English voice at 0.90x, Strictly NO BGM).
 
 ---
 
@@ -314,21 +314,44 @@ VideoGen powers multiple independent production channels running in parallel:
 
 ---
 
-### 8.6. Recipe 5: Minimalist Explainer Production Workflow (Ink Explainer / Stickman 2.0)
-- **Geometry:** `16:9` widescreen (or `9:16` vertical).
+### 8.6. Recipe 5: Minimalist Explainer Production Workflow (Authentic Ink Explainer / Before Civilization Style)
+- **Geometry:** `16:9` widescreen (1920×1080).
 - **Engine:** Google Flow 🍌 **Nano Banana Pro** (Image mode, 0 Flow credits, 100% free).
 - **Pacing:** `static_cuts` (Strictly 0 Ken Burns motion, 1-pass FFmpeg demuxer assembly in ~0.5s).
 - **Audio Mix:** Voice 100%, Strictly NO BGM (`bgm_volume: 0`).
-- **Voice:** Local Kokoro-82M (English) or VieNeu-TTS (Vietnamese).
+- **Voice:** Local F5-TTS (English, `f5-tts-latest`, speed `0.90x`, micro-pauses ~0.15s).
+- **Core Visual DNA (Learned directly from Before Civilization Reference & @Inkexplainer96 Benchmark):**
+  1. **Minimalist Stick Figure Mascot:**
+     - Round white head (`#ffffff`) with clean, bold black comic ink contours.
+     - Solid white bean body or single ink line torso, stick limbs, 3–4 finger cartoon mitten hands.
+     - Expressive meme facial features: black dot/oval cartoon eyes, worried curved eyebrows, comically wide gaping mouth, unblinking insomnia paralysis eyes with dilated pupils, blue sweat drops.
+     - 100% flat 2D vector graphic novel art with authentic hand-drawn ink contours (strictly 0 3D, 0 photorealism, 0 gradient shading).
+  2. **Contextual Watercolor Washes & Educational Environments:**
+     - *Dark Vignette (Signature Ink Explainer):* Deep charcoal slate watercolor wash vignette framing a bright circular warm spotlight halo in the center on subtle cream paper texture.
+     - *Clean Diagram (Infographic / Chalkboard / Anatomy):* Stark clean cream-white parchment paper (`#fbf9f5`) with subtle texture, generous negative space, dotted guide lines, and indicator arrows.
+     - *Prehistoric Savanna:* Warm apricot and terracotta watercolor wash arch with minimalist dry cracked earth ground line and delicate acacia silhouettes.
+     - *Ice Age / Cold Threat:* Pale slate-blue watercolor wash vignette (`#a0c0d0`), black-and-white snowflake doodles, flat jagged white ice ground line.
+     - *Modern Interior (Office, Bedroom, Living Room):* Muted olive and tan flat walls, horizontal wooden plank floorboards, minimalist black-line furniture.
+     - *Clean Card (Punchline / Title Card):* Stark clean cream-white parchment paper with soft warm spotlight, 80%+ negative breathing space.
+  3. **"Voice Gì Thị Giác Đó" — Direct 1-to-1 Semantic Mapping:**
+     - Never draw generic standing stick figures. Every scene literally and humorously illustrates the spoken science, anatomy, daily life, or metaphor.
+     - Full visual grammar support for cutaway anatomical diagrams (kidneys with adrenal glands, lungs expanding, liver dumping glucose, heart tachometer at 200 BPM), chalkboards (`7 + 5 = ?`), pointer sticks, labeled props (e.g. `CLOSED` lock), comic impact starbursts, and matrix bullet dodging.
+  4. **Negative Prompt:**
+     ```text
+     NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+     ```
+  5. **Standardized Prompt Blueprint:**
+     ```text
+     An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+     ```
 - **Clause-Locked Semantic Workflow (`./videogen explainer`):**
   1. **Segment Transcript:** Splits voiceover into semantic visual clauses (1.5s–2.5s / 4–8 words).
-  2. **Classify Visual Strategy:** Assigns each clause one of 5 cognitive visual strategies:
-     - `LITERAL`: Direct physical depiction (clock, coffee, trembling fingers).
-     - `METAPHOR`: Meme / symbolic abstraction (red low-battery icon for calorie burn, broken scale of justice for morality, mechanical gears crushing dry branch for harsh nature, empty bowl with red question mark for food crisis).
-     - `TITLE_CARD` / `GAG_CARD`: Stark white background with hand-drawn bold black marker text and cute doodles.
-     - `SPLIT_SCREEN`: Contrast comparisons (modern pampered human vs rugged caveman).
-     - `POSE_CHURN`: Same background across sequential clauses with rapid pose/expression shifts.
-  3. **Contextual Color Palettes:** Routes scenes to `ice_age` (pale slate-blue wash `#a0c0d0`), `prehistoric` (warm ochre `#f5d5b0`), `interior_cozy` (muted olive/tan), `clean_card` (stark white), or `metaphor_dark` (deep charcoal navy).
+  2. **Classify Visual Strategy:** Assigns each clause one of 4 pure visual strategies (no text injection):
+     - `LITERAL`: Direct physical depiction (alarm clock at night, sweating in bed, clutching churning stomach, trembling fingers).
+     - `METAPHOR`: Meme / symbolic visual gag (stickman lifting giant cartoon minivan, floating in mid-air with sunglasses and golden halo, brain control room with panic button).
+     - `SPLIT_SCREEN`: Visual contrast (baffled modern stickman vs rugged caveman ancestor).
+     - `POSE_CHURN`: Rapid sequential emotion / posture changes against consistent watercolor backdrop.
+  3. **Contextual Color Palettes:** Routes scenes to `ice_age` (`pale slate-blue wash #a0c0d0`), `prehistoric` (`warm apricot and terracotta gradient wash`), `interior_cozy` (`muted olive/tan flat walls`), or `clean_card` (`stark clean pure cream-white parchment paper wash`).
   4. **Execution Commands:**
      ```bash
      ./videogen explainer transcript.txt --title="Episode Title" --series="series_name" --ep="ep01"
@@ -388,6 +411,7 @@ To build any format, copy `examples/storyboards/universal_template.json` into yo
 - Upload pages maintain dirty form state. Automated navigation triggers native Chrome `beforeunload` dialogs ("Leave site?") or platform modals.
 - The automation listens to `Page.javascriptDialogOpening` and immediately calls `Page.handleJavaScriptDialog({ accept: true })` or clicks the platform Confirm/Leave button.
 - If a flow appears stalled, capture a screenshot via CDP (`Page.captureScreenshot`) for visual diagnosis rather than timing out.
+- **YouTube Prechecks Warning Dialog Auto-Bypass:** When publishing videos rapidly, YouTube Studio's preliminary content checks may still be running when the Save/Publish button (`#done-button`) is clicked. This triggers the modal `ytcp-prechecks-warning-dialog` ("Chúng tôi vẫn đang kiểm tra nội dung của bạn" / "We are still checking your content"). The automation in `engine/youtube_uploader.js` automatically waits 3.5s after clicking `#done-button` and clicks `#secondary-action-button` ("Vẫn xuất bản" / "Publish anyway") to prevent the video from being stalled in Draft state.
 
 ### 9.3. Continuous Batch Production Loop (`./videogen loop`)
 Run fully automated, continuous batch video production across multiple storyboards:

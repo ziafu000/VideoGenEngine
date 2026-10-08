@@ -18,15 +18,15 @@ console.log('  [PASS] All exports present and correctly typed.\n');
 console.log('Test 2: resolveStoryboard() unit tests...');
 
 // Case A: Resolving an example storyboard by relative path
-const examplePath = 'examples/storyboards/example_anime_series.json';
+const examplePath = 'examples/storyboards/universal_template.json';
 const res1 = pipelineLoop.resolveStoryboard(examplePath);
 assert.ok(res1.data, 'Should load storyboard data');
-assert.strictEqual(res1.data.project.id, 'anime_ep01_demo', 'Should correctly match project id');
-assert.ok(res1.path.endsWith('example_anime_series.json'), 'Should resolve full path');
+assert.strictEqual(res1.data.project_name, '${PROJECT_SLUG}', 'Should correctly match template placeholder');
+assert.ok(res1.path.endsWith('universal_template.json'), 'Should resolve full path');
 
 // Case B: Resolving by base name without .json
-const res2 = pipelineLoop.resolveStoryboard('example_anime_series');
-assert.strictEqual(res2.data.project.id, 'anime_ep01_demo', 'Should resolve storyboard without .json extension');
+const res2 = pipelineLoop.resolveStoryboard('universal_template');
+assert.strictEqual(res2.data.project_name, '${PROJECT_SLUG}', 'Should resolve storyboard without .json extension');
 
 // Case C: Passing raw storyboard object
 const rawSb = { project_name: 'test_obj', shots: [] };
@@ -47,9 +47,8 @@ console.log('Test 3: discoverStoryboards() unit tests...');
 const examplesDir = path.join(config.PROJECT_DIR, 'examples', 'storyboards');
 const discovered = pipelineLoop.discoverStoryboards(examplesDir);
 assert.ok(Array.isArray(discovered), 'Must return an array');
-assert.ok(discovered.length >= 2, `Should discover at least 2 storyboards in examples, found ${discovered.length}`);
-assert.ok(discovered.some(f => f.endsWith('example_anime_series.json')), 'Should include example_anime_series.json');
-assert.ok(discovered.some(f => f.endsWith('scenes.json')), 'Should include scenes.json');
+assert.ok(discovered.length >= 1, `Should discover at least 1 storyboard in examples, found ${discovered.length}`);
+assert.ok(discovered.some(f => f.endsWith('universal_template.json')), 'Should include universal_template.json');
 
 // Case B: Default discovery (checks storyboards/ and falls back to examples/ if empty)
 const defaultDiscovered = pipelineLoop.discoverStoryboards();

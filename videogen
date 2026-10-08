@@ -68,7 +68,7 @@ Lệnh điều phối:
   ./videogen bridge [status]
       Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
 
-  ./videogen explainer <transcript.txt | "text"> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--out=storyboard.json]
+  ./videogen explainer <transcript.txt | "text"> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--scenes=scenes.js] [--out=storyboard.json]
       Tự động phân tích transcript thành các mệnh đề thị giác (semantic clauses 1.5s–2.5s),
       phân loại chiến lược hình ảnh (LITERAL, METAPHOR, TITLE_CARD, SPLIT_SCREEN, POSE_CHURN),
       và sinh storyboard hoàn chỉnh với prompt Nano Banana Pro chuẩn mực (0 API credit).
@@ -190,12 +190,14 @@ async function main() {
         const seriesArg = args.find(a => a.startsWith('--series='));
         const epArg = args.find(a => a.startsWith('--ep='));
         const ratioArg = args.find(a => a.startsWith('--ratio='));
+        const scenesArg = args.find(a => a.startsWith('--scenes='));
         const outArg = args.find(a => a.startsWith('--out='));
 
         const title = titleArg ? titleArg.split('=')[1].replace(/^["']|["']$/g, '') : 'Explainer Episode';
         const seriesId = seriesArg ? seriesArg.split('=')[1].replace(/^["']|["']$/g, '') : 'explainer_series';
         const epId = epArg ? epArg.split('=')[1].replace(/^["']|["']$/g, '') : 'ep01';
         const aspectRatio = ratioArg ? ratioArg.split('=')[1].replace(/^["']|["']$/g, '') : '16:9';
+        const scenesPath = scenesArg ? scenesArg.split('=')[1].replace(/^["']|["']$/g, '') : null;
         const outPath = outArg ? path.resolve(outArg.split('=')[1].replace(/^["']|["']$/g, '')) : path.join(config.STORYBOARDS_DIR, `${seriesId}_${epId}.json`);
 
         console.log(`=== BẮT ĐẦU CHUYỂN ĐỔI TRANSCRIPT SANG STORYBOARD EXPLAINER TỐI GIẢN ===`);
@@ -205,7 +207,8 @@ async function main() {
           episodeId: epId,
           transcriptText: textContent,
           aspectRatio,
-          outputStoryboardPath: outPath
+          outputStoryboardPath: outPath,
+          scenesPath
         });
 
         console.log(`[✓] Đã tạo thành công ${sb.shots.length} phân cảnh mệnh đề thị giác (visual clauses)!`);

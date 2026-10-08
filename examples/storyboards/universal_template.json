@@ -23,7 +23,7 @@
     "settings": {
       "temperature": 0.4,
       "watermark": false,
-      "speed": 1.05,
+      "speed": 0.90,
       "de_nasal_eq": true
     }
   },

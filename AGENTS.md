@@ -19,7 +19,7 @@ This file provides comprehensive, self-contained instructions for coding agents 
 - **Reference Presets (Configurable Case Studies):**
   - **Preset A — Clean Documentary Shorts (Vertical 9:16):** `9:16`, 40s (4×10s), clean footage (`hardsub: false`), 36–39 words/shot (~3.8 wps), BGM at 15%, SFX at 25%, Voice at 100% via VieNeu-TTS v3 Turbo 48kHz.
   - **Preset B — Kinetic Explainer Shorts:** `9:16`, 30s–60s, word-by-word animated yellow-neon subtitles (`hardsub: true`, `bouncy_neon`), rapid 2.75 wps pacing, layered UI SFX.
-  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free), clause-locked semantic timing (**1.0s – 2.8s per cut**, average ~2.2s/cut, ~110–220 cuts per episode), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, Kokoro-82M local English voice (expressive profiles: `puck_expressive`, `puck_fenrir`, or `puck_open_throat` + Studio De-Nasal EQ + automatic dead-silence trimming: 0.08s intra-clause / 0.22s inter-sentence), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
+  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free), clause-locked semantic timing (**1.0s – 2.8s per cut**, average ~2.2s/cut, ~110–220 cuts per episode), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, F5-TTS local zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
   - **Preset D — Story-Driven Cinematic Series:** `16:9`, multi-shot episodes (e.g. 30×10s = 5m), character asset consistency via `@Character` chips, cinema-grade Dual-Zone ASS subtitles.
   - **Custom Formats:** Any combination of parameters configured via `examples/storyboards/universal_template.json`.
 
@@ -126,10 +126,12 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
    - Reference voice: `assets/voices/f5_tts_latest_ref.wav` (Voice: `f5-tts-latest`, punchy, clear articulation, keyword emphasis).
    - Reference text: `"Most of us never think twice about any of this. We eat when we're hungry, sleep when we're tired."`
 2. **Speed Scaling & Dead-Silence Trimming:**
-   - Run at **1.0x - 1.1x speed** with 2-tier padding:
+   - Standardized at **0.90x speed** for deliberate, emotive, dry sarcastic wit delivery (preventing hurried delivery and allowing dry humor and scientific concepts to sink in).
+   - Micro-pauses (~0.15s) with 2-tier padding:
      * Intra-sentence clause padding: **0.08s (80ms)**.
      * Sentence-end breath pause: **0.22s (220ms)**.
      * Micro fade-in (**5ms**) / fade-out (**10ms**) to eliminate boundary clicks.
+   - **Automatic Audio Duration Measurement:** `createExplainerStoryboard` in `engine/explainer.js` measures exact durations via `ffprobe` directly from generated F5-TTS audio clips (`voice_shot_001.mp3` ...) and sets `duration` dynamically, guaranteeing millisecond audio-video synchronization in FFmpeg.
 3. **Broadcast Studio EQ Chain:**
    - High-pass filter at **70 Hz** (removes low-end sub rumble).
    - Warmth EQ at **250 Hz (+1.2 dB)** (adds chest resonance).
@@ -161,39 +163,32 @@ For educational explainers (like Ink Explainer / hand-drawn minimalist style):
 - **In-Browser Base64 Download via CDP:** Signed CDN URLs from Google Flow (`flow-content.google`) return 403 Forbidden when requested directly from external Node/curl due to active session cookie requirements. Image downloading is performed inside the Chrome session via CDP `evaluate()` executing `fetch(url)` and returning Base64 directly to Node.js buffers.
 - **MD5 Deduplication Guard:** Google Flow sometimes generates an identical image when prompt variance is low. `engine/flow.js` hashes every downloaded image buffer (`crypto.createHash('md5')`) against `seenHashes` and automatically re-rolls if a collision is detected.
 - **Tesseract OCR Anti-Watermark / Zero-Leak Guard:** Prompts must NEVER contain brand terms like `ink explainer style`, as diffusion models may render channel text/badges. Prompts must use generic descriptors (`minimalist 2D comic animation style, bold black ink contours, STRICTLY NO WATERMARK, NO LOGO, NO CHANNEL NAME, NO TEXT BANNER`). All frames must pass OCR screening before master assembly.
-- **Authentic Ink Explainer Art Style & Contextual Color Palette:**
-  - **Character Anatomy:** Pure white round cartoon head (`#ffffff`), bold clean black comic ink contours, expressive meme eyes, messy hair, stickman body.
-  - **Contextual Palette:** Flexible background coloring tailored to scene narrative:
-    * *Night / Forest / Danger:* Dark olive-green (`#2a3b2c`) and deep charcoal slate, warm campfire glow, glowing yellow predator eyes.
-    * *Winter / Frost:* Pale ice-blue, cold white mist, shivering purple tint.
-    * *Everyday / Diagrams / Farming:* Clean light cream/parchment paper, dusty earth tones, golden yellow accents.
-    * *Modern Indoor:* Warm off-white apartment walls, colorful plush sofa, glowing smartphone screens.
-    * *Eureka / Ideas:* Deep dark navy slate background, bright glowing golden sparks and lightbulbs.
-- **Dynamic Pacing & Micro-Shot Rhythm (Empirical Ink Explainer Law):** 
-  - **Pure Static Hard Cuts (Strictly 0 Ken Burns):** Completely eliminate pan/zoom motion. Static illustrations hard-cut crisply on exact syllable/keyword boundaries, keeping the viewer's eyes alert and matching the authentic Ink Explainer aesthetic.
-  - **Clause-Locked Timing:** Cuts are locked to semantic speech clauses (**1.0s – 2.8s per cut**, average ~2.5s/cut, ~110–220 cuts per episode).
-  - **Dynamic 3-Tier Pacing:**
-    1. *Rapid Montage / Gag Bursts (1.0s – 1.4s):* Rapid lists (e.g. fire -> bed -> needle -> wheel -> steam engine -> remote control), rapid action sequences, or emotional reactions.
-    2. *Standard Narrative Flow (1.6s – 2.0s):* Historical explanations, step-by-step actions.
-    3. *Punchline & Impact Holds (2.2s – 2.8s):* Infographics, text gag badges, or impactful comedic conclusions to let the humor land.
-- **The 5 Cognitive Visual Strategies (Explainer Semantic Engine):**
-  When segmenting scripts into visual clauses via `./videogen explainer` (`engine/explainer.js`), every clause (1.5s–2.5s / 4–8 words) is assigned one of 5 distinct visual categories:
-  1. `LITERAL`: Direct physical actions, named objects, settings (e.g. digital clock at 3:00, shivering in ice storm, bare foot on cracked permafrost).
-  2. `METAPHOR`: Meme and symbolic abstraction for complex or abstract thoughts (e.g. low-battery phone icon with floating spark particles for calorie burn, tilted/broken scale of justice for morality, heavy mechanical gears crushing a dry tree branch for nature's harshness, empty wooden bowl with glowing red question mark for desperate food choices).
-  3. `TITLE_CARD` / `GAG_CARD`: Stark clean pure white background with hand-drawn bold black marker lettering and cute doodles (e.g. "NIGHT OWL?", "AHA!").
-  4. `SPLIT_SCREEN`: Direct side-by-side contrast (e.g. modern pampered stickman scratching head in kitchen vs rugged wild caveman in African savanna).
-  5. `POSE_CHURN`: Sequential clauses sharing the exact same background/environment while the character rapidly changes pose and emotional state (e.g. lying awake staring at ceiling -> holding up glowing smartphone -> sitting up clutching head in stress).
-- **Standardized Prompt Formula for Nano Banana Pro:**
-  ```text
-  A minimalist 2D vector ink explainer illustration. SCENE: [SCENE_DESCRIPTION]. ENVIRONMENT: [CONTEXT_PALETTE]. STYLE: Bold clean black comic ink contours, simple expressive white stick figure, cartoon meme eyes, flat color fills, subtle warm watercolor paper wash background, high contrast graphic novel aesthetic. STRICTLY NO 3D, NO PHOTOREALISM, NO GRADIENT SHADING, NO CLUTTER, NO WATERMARK, NO LOGO, NO CHANNEL NAME, NO TEXT BANNER.
-  ```
+- **Authentic Ink Explainer Art Style & Visual Grammar ("Voice Gì Thị Giác Đó"):**
+  - **Core Philosophy:** Direct 1-to-1 visual correspondence between the spoken narration and on-screen educational illustrations. Never draw generic standing stickmen. If the narration discusses adrenal glands, lungs expanding, liver dumping glucose, a tachometer redlining at 200 BPM, flipping an SUV, or punching a bear, the image must literally and humorously illustrate that exact science, organ, feat, or metaphor with the stickman mascot.
+  - **Character Anatomy:** Minimalist white stick figure mascot (`#ffffff`), round white head, bold clean black comic ink contours, solid white body and limbs, cartoon meme eyes, dynamic expressive body language.
+  - **Infographics & Educational Overlays:** Fully embraces cutaway diagrams, anatomical cross-sections, pointer sticks, chalkboard formulas (`7 + 5 = ?`), tachometer speedometers, indicator arrows, dotted guide lines, and labeled props (e.g. `ADRENAL GLANDS`, `CLOSED` lock).
+  - **Contextual Color Palettes (Calibrated to Benchmark @Inkexplainer96):**
+    * *Dark Vignette (Signature Ink Explainer):* Deep charcoal slate watercolor wash vignette framing a bright circular warm spotlight halo in the center on subtle cream paper texture.
+    * *Clean Diagram (Infographic / Chalkboard / Anatomy):* Stark clean cream-white parchment paper (`#fbf9f5`) with subtle texture, generous negative space, dotted guide lines, and indicator arrows.
+    * *Prehistoric Savanna:* Warm apricot and terracotta watercolor wash arch with minimalist dry cracked earth ground line and delicate acacia silhouettes.
+    * *Ice Age / Cold Threat:* Pale slate-blue watercolor wash vignette (`#a0c0d0`), black-and-white snowflake doodles, flat jagged white ice ground line.
+    * *Modern Interior (Office, Bedroom, Living Room):* Muted olive and tan flat walls, horizontal wooden plank floorboards, minimalist black-line furniture.
+    * *Clean Card (Punchline / Title Card):* Stark clean cream-white parchment paper with soft warm spotlight, 80%+ negative breathing space.
+  - **Negative Prompt:**
+    ```text
+    NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+    ```
+  - **Standardized Prompt Formula for Nano Banana Pro:**
+    ```text
+    An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+    ```
 - **CLI Workflow for Minimalist Explainers:**
   ```bash
-  # 1. Generate storyboard from transcript
-  ./videogen explainer transcript.txt --title="Episode Title" --series="series_name" --ep="ep01"
+  # 1. Generate storyboard from transcript with 1-to-1 visual clauses
+  ./videogen explainer storyboards/transcript.txt --title="Episode Title" --series="series_name" --ep="ep01" --ratio=16:9 --out="storyboards/series_name_ep01.json"
   # 2. Render all static clause illustrations via Nano Banana Pro (0 credits)
   ./videogen render storyboards/series_name_ep01.json
-  # 3. Synthesize Kokoro English narration & master audio
+  # 3. Synthesize F5-TTS English narration (speed: 0.90x) & measure exact durations
   ./videogen voice storyboards/series_name_ep01.json
   # 4. Ultrafast 1-pass FFmpeg concat demuxer assembly
   ./videogen assemble storyboards/series_name_ep01.json
@@ -237,6 +232,15 @@ For converting high-performing 16:9 segments into viral vertical Shorts (`engine
   - Video upload pages retain dirty state; navigation triggers native Chrome `beforeunload` dialogs or platform "Discard changes?" modals.
   - Automation must listen to `Page.javascriptDialogOpening` and respond with `Page.handleJavaScriptDialog({ accept: true })` or click the platform Confirm/Leave buttons.
   - If a flow appears blocked, capture a screenshot via CDP (`Page.captureScreenshot`) for visual diagnosis instead of waiting for timeout.
+- **YouTube Prechecks Warning Dialog Auto-Bypass:**
+  - When uploading videos or batching uploads, YouTube Studio may not finish preliminary checks before the Save/Publish button (`#done-button`) is clicked. This triggers the modal `ytcp-prechecks-warning-dialog` ("Chúng tôi vẫn đang kiểm tra nội dung của bạn" / "We are still checking your content").
+  - **Handling:** Automation in `engine/youtube_uploader.js` waits 3.5s after clicking `#done-button` to allow the modal to render in the DOM, then clicks `#secondary-action-button` ("Vẫn xuất bản" / "Publish anyway"). Without this step, the video remains trapped in the Draft state.
+- **High-CTR Thumbnail SOP (Golden Typography & Visual Conflict):**
+  - **Geometry:** `16:9` widescreen (1920×1080).
+  - **Anchor Position:** Always anchor big typography in the **Top-Left corner** over dark slate or textured background for maximum contrast.
+  - **The 2-Word Hook Formula:** Short punchline `[WHY / STILL / HOW] + [KEYWORD]` (e.g. `WHY WORK?`, `WHY TIRED?`, `ADRENALINE?`, `STILL BROKE?`).
+  - **Typography:** Heavy non-serif font (Impact, Montserrat Black, Bangers), lemon yellow fill (`#FFE500`), thick black stroke (18–24px), deep drop shadow.
+  - **Accents & Conflict:** White mascot head (`#ffffff`) with warm vibrant scene accents (red heart, yellow organs, orange fire, blue car) on dark textured paper. Must showcase an ironic visual conflict or scientific paradox.
 - **Mobile Notification Integration:**
   - Instant dispatch notifications to the project operator are sent via the local notification bridge CLI: `~/.local/bin/zalo-notify "<message>"`.
 

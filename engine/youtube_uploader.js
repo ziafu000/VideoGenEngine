@@ -185,37 +185,43 @@ async function cmdUpload(args) {
     // 1b. Đảm bảo trang Studio ở trạng thái sạch sẽ hoàn toàn
     console.error(`[-] Chuẩn bị giao diện Studio sạch...`);
     const studioUrl = config.resolveChannelUrl ? config.resolveChannelUrl(channel) : (config.YOUTUBE_STUDIO_URL || 'https://studio.youtube.com');
-    await client.send('Page.navigate', { url: studioUrl });
-    await sleep(4000);
+    const curUrl = await client.eval('window.location.href');
+    const targetChannelMatch = studioUrl.match(/channel\/([^\/\?]+)/);
+    const targetCid = targetChannelMatch ? targetChannelMatch[1] : null;
+    if (!targetCid || !curUrl.includes(targetCid)) {
+      await client.send('Page.navigate', { url: studioUrl });
+      await sleep(4000);
+    }
     await client.dismissModals();
 
     // 2. Kích hoạt menu Tạo / Tải video lên
     console.error(`[-] Mở hộp thoại tải video lên trên YouTube Studio...`);
-    const openedDialog = await client.eval(`(() => {
-      const btns = Array.from(document.querySelectorAll('button, ytcp-button'));
-      const createBtn = btns.find(b => (b.innerText && b.innerText.trim() === 'Tạo') || b.getAttribute('aria-label') === 'Tạo' || b.id === 'create-icon');
-      if (createBtn) {
-        createBtn.click();
-        return 'CREATE_CLICKED';
+    await client.eval(`(() => {
+      // 1. Direct upload button on dashboard
+      const direct = document.querySelector('#upload-button, [aria-label*="Tải video lên"], ytcp-button#upload-button, button#upload-button');
+      if (direct && direct.offsetParent !== null) {
+        direct.click();
+        return;
       }
-      const directUpload = document.querySelector('button[aria-label*="Tải video lên"], button[aria-label*="Upload videos"], #upload-icon, #upload-button');
-      if (directUpload && directUpload.offsetParent !== null) {
-        directUpload.click();
-        return 'DIRECT_CLICKED';
+      // 2. Create button in top bar
+      const create = Array.from(document.querySelectorAll('button, ytcp-button')).find(b => {
+        const t = (b.innerText || '').trim();
+        const a = b.getAttribute('aria-label') || '';
+        return t === 'Tạo' || a === 'Tạo' || a.includes('Create') || b.id === 'create-icon';
+      });
+      if (create) {
+        create.click();
+        setTimeout(() => {
+          const item = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-menu #items tp-yt-paper-item, #text-item-0, [role="menuitem"]')).find(i => {
+            const txt = i.innerText || '';
+            return txt.includes('Tải video lên') || txt.includes('Upload video');
+          });
+          if (item) item.click();
+        }, 1000);
       }
-      return 'NO_BTN';
     })()`);
 
-    await sleep(1500);
-
-    if (openedDialog === 'CREATE_CLICKED') {
-      await client.eval(`(() => {
-        const items = Array.from(document.querySelectorAll('tp-yt-paper-item, ytcp-text-menu #items tp-yt-paper-item, #text-item-0'));
-        const upItem = items.find(i => i.innerText && (i.innerText.includes('Tải video lên') || i.innerText.includes('Upload videos')));
-        if (upItem) upItem.click();
-      })()`);
-      await sleep(2000);
-    }
+    await sleep(2500);
 
     // 3. Tìm phần tử input file và nạp file video qua CDP DOM.setFileInputFiles
     console.error(`[-] Đang truyền file video vào Chrome qua CDP DOM.setFileInputFiles...`);
@@ -499,11 +505,49 @@ async function cmdUpload(args) {
       return linkEl ? linkEl.href : null;
     })()`);
 
+    // 9b. Chờ upload bytes truyền xong lên máy chủ YouTube
+    console.error(`[-] Đang chờ máy chủ YouTube tiếp nhận toàn bộ dữ liệu video...`);
+    for (let upWait = 0; upWait < 180; upWait++) {
+      const upProgress = await client.eval(`(() => {
+        const dialog = document.querySelector('ytcp-uploads-dialog');
+        if (!dialog) return 'NO_DIALOG';
+        const p = dialog.querySelector('ytcp-video-upload-progress, .progress-label');
+        return p ? (p.innerText || '').trim() : '';
+      })()`);
+      if (upProgress && (upProgress.includes('Đã tải lên') || upProgress.includes('xử lý') || upProgress.includes('hoàn tất') || upProgress.includes('complete') || upProgress.includes('Processing'))) {
+        console.error(`    [✓] Trạng thái: ${upProgress}`);
+        break;
+      }
+      if (upProgress && upWait % 5 === 0) {
+        console.error(`    [-] Tiến độ: ${upProgress}...`);
+      }
+      await sleep(2000);
+    }
+
     console.error(`[-] Lưu cài đặt xuất bản video...`);
     // 10. Bấm nút LƯU / XUẤT BẢN / LÊN LỊCH (#done-button)
     await client.eval(`(() => {
-      const doneBtn = document.querySelector('#done-button, button#done-button, ytcp-button#done-button');
+      const doneBtn = document.querySelector('#done-button button, #done-button [role="button"], #done-button, button#done-button, ytcp-button#done-button');
       if (doneBtn) doneBtn.click();
+    })()`);
+
+    // 10b. Đợi chậm rãi để bắt pop-up kiểm duyệt sơ bộ nếu upload nhanh chưa kịp check xong
+    await sleep(3500);
+    await client.eval(`(() => {
+      const secBtn = document.querySelector('ytcp-prechecks-warning-dialog #secondary-action-button button, #secondary-action-button button, #secondary-action-button');
+      if (secBtn) {
+        secBtn.click();
+        return;
+      }
+      const all = Array.from(document.querySelectorAll('ytcp-button, button'));
+      const target = all.find(b => {
+        const t = (b.innerText || b.textContent || '').trim();
+        return t.includes('xuất bản') || t.includes('Publish anyway');
+      });
+      if (target) {
+        const native = target.querySelector('button') || target;
+        native.click();
+      }
     })()`);
 
     // 11. Chờ xác nhận và đóng dialog

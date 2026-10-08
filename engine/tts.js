@@ -641,8 +641,10 @@ async function generateAllVoicesF5(storyboardData, targetShotIds = null, sbPath 
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   const voiceConfig = storyboardData.voice || {};
-  const speed = voiceConfig.speed || (voiceConfig.settings && voiceConfig.settings.speed) || 1.0;
-  const refAudio = voiceConfig.ref_audio || path.join(config.ASSETS_DIR, 'voices', 'f5_tts_latest_ref.wav');
+  const defaultSpeed = parseFloat(process.env.F5_SPEED || '0.90');
+  const speed = voiceConfig.speed || (voiceConfig.settings && voiceConfig.settings.speed) || defaultSpeed;
+  const rawRef = voiceConfig.ref_audio || path.join(config.ASSETS_DIR, 'voices', 'f5_tts_latest_ref.wav');
+  const refAudio = path.isAbsolute(rawRef) ? rawRef : path.resolve(config.PROJECT_DIR, rawRef);
   const refText = voiceConfig.ref_text || "Most of us never think twice about any of this, but the person wide awake at 3am may have been the most important person in the camp.";
   const studioEq = voiceConfig.studio_eq !== false;
 

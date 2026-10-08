@@ -17,6 +17,8 @@ import soundfile as sf
 
 _MODEL = None
 
+DEFAULT_SPEED = float(os.environ.get("F5_SPEED", "0.90"))
+
 DEFAULT_REF_AUDIO = os.environ.get(
     "F5_REF_AUDIO",
     str(Path(__file__).resolve().parent.parent / "assets" / "voices" / "f5_tts_latest_ref.wav")
@@ -130,7 +132,7 @@ def main():
     parser.add_argument("--batch-json", default=None, help="JSON file containing list of {text, output} items for batch processing")
     parser.add_argument("--ref-audio", default=DEFAULT_REF_AUDIO, help="Reference audio file for voice cloning")
     parser.add_argument("--ref-text", default=DEFAULT_REF_TEXT, help="Transcript of reference audio")
-    parser.add_argument("--speed", type=float, default=1.0, help="Speaking speed multiplier (default: 1.0)")
+    parser.add_argument("--speed", type=float, default=DEFAULT_SPEED, help=f"Speaking speed multiplier (default: {DEFAULT_SPEED})")
     parser.add_argument("--target-rms", type=float, default=0.1, help="Target RMS loudness (default: 0.1)")
     parser.add_argument("--nfe-step", type=int, default=32, help="Denoising steps (default: 32)")
     parser.add_argument("--studio-eq", action="store_true", default=True, help="Apply broadcast studio EQ")
@@ -148,7 +150,13 @@ def main():
         print("ERROR: Either --batch-json OR both --text and --output must be provided.", file=sys.stderr)
         sys.exit(1)
 
-    ref_audio = str(Path(args.ref_audio).resolve())
+    ref_p = Path(args.ref_audio)
+    if not ref_p.is_absolute() and not ref_p.exists():
+        proj_root = Path(__file__).resolve().parent.parent
+        alt_p = proj_root / args.ref_audio
+        if alt_p.exists():
+            ref_p = alt_p
+    ref_audio = str(ref_p.resolve())
     if not os.path.exists(ref_audio):
         print(f"ERROR: Reference audio not found at: {ref_audio}", file=sys.stderr)
         sys.exit(1)
