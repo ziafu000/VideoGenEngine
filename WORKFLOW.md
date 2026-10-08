@@ -293,7 +293,14 @@ VideoGen powers multiple independent production channels running in parallel:
 - **Timeline:** Dynamic micro-shots of **1.0s – 2.8s** (average ~2.5s per cut, clause-locked semantic timing, ~110–220 cuts for a 5-minute video) tightly synchronized with voiceover punchlines, lists, and dialogue beats.
 - **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). In-browser Base64 fetch via Chrome CDP, MD5 deduplication guard against Flow duplicate image generation, and Tesseract OCR screening to ensure 0% watermark/channel text leaks. Authentic Ink Explainer aesthetic: pure white round cartoon head (`#ffffff`), bold clean black ink contours, expressive meme eyes, and contextual color palettes (dark olive/charcoal for night & danger, pale ice-blue for cold, clean cream parchment for everyday diagrams, warm indoors for modern scenes).
 - **Motion:** Pure Static Hard Cuts (0 Ken Burns camera motion) for maximum visual punch and authentic comic-book pacing.
-- **Voice:** Provider `kokoro`, voice `puck_expressive`, `puck_fenrir`, or `puck_open_throat`, speed `1.12`, automatic dead-silence trimming (0.08s intra-clause / 0.22s inter-sentence), Studio De-Nasal EQ. Batch synthesis (`--batch-json`) synthesizes entire episodes in ~18s.
+- **Voice & Rhythm Standardization (Snappy Explainer Pacing):** Provider `kokoro`, voice `puck_expressive`, `puck_fenrir`, or `puck_open_throat` (80% Puck + 20% Adam), speed `1.12`.
+  * **Mandatory Dead-Silence Trimming:** Kokoro's native ~0.8s trailing/leading dead silence is strictly stripped by the engine.
+  * **2-Tier Micro-Pauses:** 
+    - **Intra-sentence clause padding:** Exactly **0.08s (80ms)** between comma/semicolon/dash clauses.
+    - **Sentence-end pause:** Exactly **0.22s (220ms)** for terminal punctuation (`.`, `?`, `!`, `...`).
+    - **Boundary click suppression:** 5ms linear fade-in and 10ms linear fade-out applied to all voice slices.
+  * **Pacing Result:** A ~930-word 5-act explainer compresses from a sluggish ~5m50s down to an energetic ~4m40s–4m50s runtime with continuous narrative momentum.
+  * **Batch synthesis:** Accelerated batch pipeline (`--batch-json`) synthesizes entire episodes in a single GPU pass in ~15–20s.
 - **Subtitles:** Optional / clean footage.
 - **Audio Mix:** Voice 100%, Foley SFX (pops, whooshes, rock taps), **STRICTLY NO BGM** (`bgm_volume: 0`).
 - **Assembly:** Rapid 1-pass FFmpeg Concat Demuxer (`ffconcat version 1.0`) in ~0.5s via `./videogen assemble`.

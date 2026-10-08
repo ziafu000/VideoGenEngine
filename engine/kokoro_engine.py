@@ -80,6 +80,50 @@ def main():
 
     import json
     import soundfile as sf
+    import numpy as np
+
+    def trim_and_pad_audio(audio, sr, text, threshold_db=-40):
+        """
+        Trims dead silence from Kokoro output and applies two-tier natural padding:
+          - 80ms (0.08s) for intra-sentence clauses
+          - 220ms (0.22s) for sentence-end clauses (. ? ! ...)
+          - 20ms lead-in, 5ms fade-in, 10ms fade-out to prevent clicks
+        """
+        threshold_amp = 10 ** (threshold_db / 20)
+        abs_audio = np.abs(audio)
+
+        window_size = int(sr * 0.01) # 10ms
+        start_idx = 0
+        for i in range(0, len(audio) - window_size, max(1, window_size // 2)):
+            if np.max(abs_audio[i : i + window_size]) > threshold_amp:
+                start_idx = max(0, i - int(sr * 0.02)) # 20ms lead-in
+                break
+
+        end_idx = len(audio)
+        for i in range(len(audio) - window_size, 0, -max(1, window_size // 2)):
+            if np.max(abs_audio[i : i + window_size]) > threshold_amp:
+                end_idx = min(len(audio), i + window_size)
+                break
+
+        if start_idx >= end_idx:
+            trimmed = audio.copy()
+        else:
+            trimmed = audio[start_idx:end_idx].copy()
+
+        fade_in_len = int(sr * 0.005) # 5ms
+        fade_out_len = int(sr * 0.010) # 10ms
+        if len(trimmed) > fade_in_len + fade_out_len:
+            fade_in = np.linspace(0, 1, fade_in_len)
+            fade_out = np.linspace(1, 0, fade_out_len)
+            trimmed[:fade_in_len] *= fade_in
+            trimmed[-fade_out_len:] *= fade_out
+
+        clean_t = text.strip()
+        is_sentence_end = clean_t.endswith(('.', '?', '!', '."', '?"', '!"', '...'))
+        pad_sec = 0.22 if is_sentence_end else 0.08
+        pad_len = int(sr * pad_sec)
+
+        return np.pad(trimmed, (0, pad_len), mode='constant')
 
     lang = args.lang.lower()
     if lang in ["en", "en-us", "us", "american", "a"]:
@@ -122,6 +166,7 @@ def main():
             continue
 
         full_audio = torch.cat(audio_chunks, dim=0).cpu().numpy()
+        full_audio = trim_and_pad_audio(full_audio, sample_rate, t)
         temp_wav = out_p.with_suffix(".tmp.wav")
         sf.write(str(temp_wav), full_audio, sample_rate)
 
