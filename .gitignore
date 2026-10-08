@@ -14,6 +14,9 @@ voice_profiles.json
 # Local operational & scratch scripts (Agent / Dev private scripts)
 scripts/
 local_*.js
+local_*.py
+node_modules/
+package-lock.json
 
 # Media & temporary generated files
 /renders/*

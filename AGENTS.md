@@ -19,7 +19,7 @@ This file provides comprehensive, self-contained instructions for coding agents 
 - **Reference Presets (Configurable Case Studies):**
   - **Preset A — Clean Documentary Shorts (Vertical 9:16):** `9:16`, 40s (4×10s), clean footage (`hardsub: false`), 36–39 words/shot (~3.8 wps), BGM at 15%, SFX at 25%, Voice at 100% via VieNeu-TTS v3 Turbo 48kHz.
   - **Preset B — Kinetic Explainer Shorts:** `9:16`, 30s–60s, word-by-word animated yellow-neon subtitles (`hardsub: true`, `bouncy_neon`), rapid 2.75 wps pacing, layered UI SFX.
-  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9):** `16:9`, 2D Motion Stills via Google Flow Nano Banana Pro (0 credits, free), micro-shot pacing (**1.5s – 2.5s per cut**, 20–25 cuts/min), 2D Ken Burns camera moves, Kokoro-82M local English voice (Puck 80% + Adam 20% + Studio De-Nasal EQ, speed 1.12x, tight ~0.15s pauses), **STRICTLY NO BGM** (`bgm_volume: 0`).
+  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free), clause-locked semantic timing (**1.0s – 2.8s per cut**, average ~2.2s/cut, ~110–220 cuts per episode), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, Kokoro-82M local English voice (expressive profiles: `puck_expressive`, `puck_fenrir`, or `puck_open_throat` + Studio De-Nasal EQ + automatic dead-silence trimming: 0.08s intra-clause / 0.22s inter-sentence), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
   - **Preset D — Story-Driven Cinematic Series:** `16:9`, multi-shot episodes (e.g. 30×10s = 5m), character asset consistency via `@Character` chips, cinema-grade Dual-Zone ASS subtitles.
   - **Custom Formats:** Any combination of parameters configured via `examples/storyboards/universal_template.json`.
 
@@ -44,11 +44,13 @@ projects/VideoGen/
 │   ├── bridge.js             # Windows Chrome & proxy verification
 │   ├── cdp_proxy.js          # TCP proxy on Windows (forwarding 9223 -> 9222)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompt, dl)
+│   ├── explainer.js          # Semantic clause segmenter & visual strategy explainer engine
 │   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, Kokoro, ElevenLabs)
 │   ├── vieneu_engine.py      # Local VieNeu-TTS v3 Turbo neural engine (48 kHz, Vietnamese)
 │   ├── kokoro_engine.py      # Local Kokoro-82M neural engine (English, Puck-Adam blend, studio EQ)
 │   ├── subtitles.js          # Subtitle generator (Dual-Zone ASS & Shorts ASS)
 │   ├── compositor.js         # FFmpeg concatenation, Ken Burns motion stills, audio mixing
+│   ├── shorts.js             # Vertical 9:16 Shorts highlight extractor (Option B Cinematic Blur)
 │   ├── archive.js            # External drive archival & working tree cleanup
 │   ├── youtube.js            # YouTube Studio uploader module
 │   ├── youtube_uploader.js   # CDP script for YouTube Studio UI upload (multi-channel support)
@@ -119,12 +121,23 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
 
 #### B. Kokoro-82M Local English Voiceover Rules (Minimalist Explainer Series)
 When generating voice via `./videogen voice <storyboard.json>` with `voice.provider: "kokoro"`:
-1. **Voice Blending & Persona:** Uses custom tensor blend `puck_open_throat` = **80% `am_puck` + 20% `am_adam`**. This replicates the witty, curious, storytelling cadence of top explainer channels while keeping the throat resonance natural.
-2. **Speed Scaling & Micro-Pauses:** Run at **1.12x speed** with punctuation pause compression. Clauses are linked tightly with micro-pauses of **0.12s – 0.18s**, and sentence transitions under **0.35s** to eliminate dead air.
+1. **Expressive Voice Profiles & Persona:**
+   - `puck_expressive` (Pure `am_puck` 100%): Dynamic 172 Hz F0 pitch range, sarcastic, witty, bouncy modulation for comedic punchlines.
+   - `puck_fenrir` (65% `am_puck` + 35% `am_fenrir`): 166 Hz, rich explorer timbre, warm yet high-energy (ideal for science & history explainers).
+   - `fenrir_punchy` (`am_fenrir` 100%): 181 Hz, high animated drama, maximum pitch swings.
+   - `puck_open_throat` (80% `am_puck` + 20% `am_adam`): 140 Hz, calm, thoughtful narrative tone.
+2. **Speed Scaling & Dead-Silence Trimming:**
+   - Kokoro outputs ~0.8s trailing silence per audio clip. Trimming is essential to prevent cumulative dead air.
+   - Run at **1.12x speed** with 2-tier padding:
+     * Intra-sentence clause padding: **0.08s (80ms)**.
+     * Sentence-end breath pause: **0.22s (220ms)**.
+     * Micro fade-in (**5ms**) / fade-out (**10ms**) to eliminate boundary clicks.
 3. **Studio De-Nasal EQ Chain:**
    - High-pass filter at **75 Hz** (removes mic rumble).
    - Narrow notch filter at **1350 Hz (-4.5 dB, Q=3.0)** (surgically removes Kokoro's boxy nasal congestion).
    - Gentle high-shelf presence boost at **7 kHz (+2.5 dB)** (restores studio air and intimacy).
+4. **Windows FFmpeg UNC Pathing in WSL2:**
+   - In WSL2 environments where FFmpeg is linked to Windows `ffmpeg.exe`, all paths passed to `ffmpeg` and `ffprobe` must be converted to Windows UNC paths (`//wsl.localhost/Ubuntu-24.04/...`) via `config.toWinPath()`.
 
 #### C. Anti-Voice Doubling Rule (Strict MD5 Hash Check)
 - **ElevenLabs History Latency Caveat:** ElevenLabs History API has a 2–5s indexing delay on newly generated audio. Fetching `/v1/history` immediately may return the audio of the *previous* shot, resulting in identical duplicate voice clips across consecutive shots.
@@ -146,16 +159,65 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
 For educational explainers (like Ink Explainer / hand-drawn minimalist style):
 - **Model:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (1376×768 native high-resolution).
 - **Zero Credit Cost:** Image generation consumes 0 Flow credits, enabling unlimited batch generation for long-form episodes (10–15 minutes).
-- **Parallel CDP Queueing:** Prompts are injected into the ProseMirror editor and queued rapidly in parallel via CDP mouse clicks without waiting sequentially.
-- **Art Style Specification:** Standardized on warm amber/ochre gradient backgrounds (`scene_demo_04`), primitive cave art accents, and bold comic contour lines.
-- **Pacing Standard (Empirical Ink Explainer Law):** 
-  - Each micro-shot lasts **1.5s – 2.5s** (maximum 3.0s). Never allow a static illustration to linger beyond 3 seconds.
-  - Video cut frequency: **20 to 25 visual cuts per minute**, tightly synchronized with voiceover visual punchlines/keywords.
-- **Automated Ken Burns Motion:** `./videogen assemble` automatically detects image inputs (`.png`/`.jpg`) and applies smooth camera moves (`zoom_in`, `pan_left`, `zoom_out`, `pan_right`) matching exact voiceover clip durations.
+- **In-Browser Base64 Download via CDP:** Signed CDN URLs from Google Flow (`flow-content.google`) return 403 Forbidden when requested directly from external Node/curl due to active session cookie requirements. Image downloading is performed inside the Chrome session via CDP `evaluate()` executing `fetch(url)` and returning Base64 directly to Node.js buffers.
+- **MD5 Deduplication Guard:** Google Flow sometimes generates an identical image when prompt variance is low. `engine/flow.js` hashes every downloaded image buffer (`crypto.createHash('md5')`) against `seenHashes` and automatically re-rolls if a collision is detected.
+- **Tesseract OCR Anti-Watermark / Zero-Leak Guard:** Prompts must NEVER contain brand terms like `ink explainer style`, as diffusion models may render channel text/badges. Prompts must use generic descriptors (`minimalist 2D comic animation style, bold black ink contours, STRICTLY NO WATERMARK, NO LOGO, NO CHANNEL NAME, NO TEXT BANNER`). All frames must pass OCR screening before master assembly.
+- **Authentic Ink Explainer Art Style & Contextual Color Palette:**
+  - **Character Anatomy:** Pure white round cartoon head (`#ffffff`), bold clean black comic ink contours, expressive meme eyes, messy hair, stickman body.
+  - **Contextual Palette:** Flexible background coloring tailored to scene narrative:
+    * *Night / Forest / Danger:* Dark olive-green (`#2a3b2c`) and deep charcoal slate, warm campfire glow, glowing yellow predator eyes.
+    * *Winter / Frost:* Pale ice-blue, cold white mist, shivering purple tint.
+    * *Everyday / Diagrams / Farming:* Clean light cream/parchment paper, dusty earth tones, golden yellow accents.
+    * *Modern Indoor:* Warm off-white apartment walls, colorful plush sofa, glowing smartphone screens.
+    * *Eureka / Ideas:* Deep dark navy slate background, bright glowing golden sparks and lightbulbs.
+- **Dynamic Pacing & Micro-Shot Rhythm (Empirical Ink Explainer Law):** 
+  - **Pure Static Hard Cuts (Strictly 0 Ken Burns):** Completely eliminate pan/zoom motion. Static illustrations hard-cut crisply on exact syllable/keyword boundaries, keeping the viewer's eyes alert and matching the authentic Ink Explainer aesthetic.
+  - **Clause-Locked Timing:** Cuts are locked to semantic speech clauses (**1.0s – 2.8s per cut**, average ~2.5s/cut, ~110–220 cuts per episode).
+  - **Dynamic 3-Tier Pacing:**
+    1. *Rapid Montage / Gag Bursts (1.0s – 1.4s):* Rapid lists (e.g. fire -> bed -> needle -> wheel -> steam engine -> remote control), rapid action sequences, or emotional reactions.
+    2. *Standard Narrative Flow (1.6s – 2.0s):* Historical explanations, step-by-step actions.
+    3. *Punchline & Impact Holds (2.2s – 2.8s):* Infographics, text gag badges, or impactful comedic conclusions to let the humor land.
+- **The 5 Cognitive Visual Strategies (Explainer Semantic Engine):**
+  When segmenting scripts into visual clauses via `./videogen explainer` (`engine/explainer.js`), every clause (1.5s–2.5s / 4–8 words) is assigned one of 5 distinct visual categories:
+  1. `LITERAL`: Direct physical actions, named objects, settings (e.g. digital clock at 3:00, shivering in ice storm, bare foot on cracked permafrost).
+  2. `METAPHOR`: Meme and symbolic abstraction for complex or abstract thoughts (e.g. low-battery phone icon with floating spark particles for calorie burn, tilted/broken scale of justice for morality, heavy mechanical gears crushing a dry tree branch for nature's harshness, empty wooden bowl with glowing red question mark for desperate food choices).
+  3. `TITLE_CARD` / `GAG_CARD`: Stark clean pure white background with hand-drawn bold black marker lettering and cute doodles (e.g. "NIGHT OWL?", "AHA!").
+  4. `SPLIT_SCREEN`: Direct side-by-side contrast (e.g. modern pampered stickman scratching head in kitchen vs rugged wild caveman in African savanna).
+  5. `POSE_CHURN`: Sequential clauses sharing the exact same background/environment while the character rapidly changes pose and emotional state (e.g. lying awake staring at ceiling -> holding up glowing smartphone -> sitting up clutching head in stress).
+- **Standardized Prompt Formula for Nano Banana Pro:**
+  ```text
+  A minimalist 2D vector ink explainer illustration. SCENE: [SCENE_DESCRIPTION]. ENVIRONMENT: [CONTEXT_PALETTE]. STYLE: Bold clean black comic ink contours, simple expressive white stick figure, cartoon meme eyes, flat color fills, subtle warm watercolor paper wash background, high contrast graphic novel aesthetic. STRICTLY NO 3D, NO PHOTOREALISM, NO GRADIENT SHADING, NO CLUTTER, NO WATERMARK, NO LOGO, NO CHANNEL NAME, NO TEXT BANNER.
+  ```
+- **CLI Workflow for Minimalist Explainers:**
+  ```bash
+  # 1. Generate storyboard from transcript
+  ./videogen explainer transcript.txt --title="Episode Title" --series="series_name" --ep="ep01"
+  # 2. Render all static clause illustrations via Nano Banana Pro (0 credits)
+  ./videogen render storyboards/series_name_ep01.json
+  # 3. Synthesize Kokoro English narration & master audio
+  ./videogen voice storyboards/series_name_ep01.json
+  # 4. Ultrafast 1-pass FFmpeg concat demuxer assembly
+  ./videogen assemble storyboards/series_name_ep01.json
+  ```
+- **Ultrafast 1-Pass Concat Demuxer:** `./videogen assemble` compiles all static cuts in ~0.5s via `compositor.assembleStaticCuts` using FFmpeg `ffconcat version 1.0` muxed directly with the master voiceover (`master_voice_tight.wav`), perfectly synchronized to 1080p Full HD.
 
 ---
 
-### 3.5. Master Video Assembly & Audio Mixing
+### 3.5. Vertical 9:16 Shorts Extraction SOP (From 16:9 Master)
+For converting high-performing 16:9 segments into viral vertical Shorts (`engine/shorts.js`):
+1. **Option B — Cinematic Blur Overlay Canvas (1080×1920):**
+   - Layer 0 (Background): Master video scaled to `1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=25:5`.
+   - Layer 1 (Foreground Center): Crisp 16:9 master video centered at `1080×608` with subtle drop shadow and gold separator accent lines (`#D4AF37`).
+   - Layer 2 (Top Branding): High-contrast category Badge (Segoe UI 32px Bold) and Hook Title (Segoe UI 56px Bold) + Neon Accent (Segoe UI 64px Bold).
+   - Layer 3 (Bottom Call-to-Action): CTA Button banner (Segoe UI 48px Bold) and CTA Subtitle (Segoe UI 40px Bold).
+2. **Kinetic Subtitle Micro-Splitting (ASS Subtitles):**
+   - Split subtitles into **1.2s – 1.8s micro-chunks** (3–5 words per chunk) matching spoken cadence verbatim.
+   - Highlight key punch words in glowing yellow (`&H0000FFFF`).
+   - Apply a clean **0.25s audio outro fade** (`afade=t=out:st=<dur-0.25>:d=0.25`) to eliminate audio spill from adjacent scenes.
+
+---
+
+### 3.6. Master Video Assembly & Audio Mixing
 - Operated via `./videogen assemble <storyboard.json>`.
 - **Configurable Audio Mixing Bus:**
   - **Voice:** Configurable via `audio_mix.voice_volume` (default `1.0`).
@@ -166,13 +228,18 @@ For educational explainers (like Ink Explainer / hand-drawn minimalist style):
 
 ---
 
-### 3.6. Multi-Platform Publishing & Scheduling SOP
+### 3.7. Multi-Platform Publishing & Scheduling SOP
 - Operated via `./videogen upload <storyboard.json>`.
 - **Publishing Order:** Always schedule **YouTube Studio first**, then **Meta Business Suite (Facebook Reels)**. Skip TikTok unless explicitly requested.
+- **YouTube Daily Upload Quota & Verification Handling:**
+  - New YouTube channels have a standard upload limit of ~3–10 videos per day. Reaching this limit triggers the dialog: *"Đã đạt giới hạn tải video lên hằng ngày"* (Daily upload limit reached).
+  - Unlocking advanced limits requires Advanced Features verification (6-second video KYC or government ID) in YouTube Studio settings. If locked, schedule remaining videos after the 24-hour quota reset.
 - **Navigation & Dialog Hygiene:**
   - Video upload pages retain dirty state; navigation triggers native Chrome `beforeunload` dialogs or platform "Discard changes?" modals.
   - Automation must listen to `Page.javascriptDialogOpening` and respond with `Page.handleJavaScriptDialog({ accept: true })` or click the platform Confirm/Leave buttons.
   - If a flow appears blocked, capture a screenshot via CDP (`Page.captureScreenshot`) for visual diagnosis instead of waiting for timeout.
+- **Mobile Notification Integration:**
+  - Instant dispatch notifications to the project operator are sent via the local notification bridge CLI: `/home/asus/.local/bin/zalo-notify "<message>"`.
 
 ---
 

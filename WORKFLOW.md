@@ -21,15 +21,23 @@ VideoGen supports three high-performance voice generation engines:
   - **Phonetic Transliteration:** Transliterate foreign proper nouns/locations into natural Vietnamese phonetics (e.g. "Ô-rê-gơn", "Tho", "ba-dan", "ki-lô-gam").
   - **Presets & Profiles:** Presets "Hải Đăng" (conversational natural), "Thiện Minh" (warm documentary narrator), and "Minh Đức" (broadcast news). Custom profiles loaded dynamically from gitignored `assets/voice_profiles.json`.
 - **Mode B (Local Neural TTS — English):** Powered by **Kokoro-82M** (`engine/kokoro_engine.py`), synthesizing **24 kHz / 48 kHz studio-grade** English narration directly on local CUDA GPU in ~0.5s per sentence. Zero API tokens, 100% free offline.
-  - **Voice Blending & Persona:** Custom tensor blend `puck_open_throat` = **80% `am_puck` + 20% `am_adam`**, delivering an expressive, witty explainer cadence without throat fatigue.
-  - **Speed & Micro-Pause Timing:** Paced at **1.12x speed** with micro-pauses of **0.12s – 0.18s** between clauses and sentence pauses under **0.35s** for continuous momentum.
+  - **Expressive Voice Profiles:**
+    * `puck_expressive` (Pure `am_puck` 100%): 172 Hz F0 pitch range, witty, sarcastic, dynamic pitch swings for comedic beats.
+    * `puck_fenrir` (65% `am_puck` + 35% `am_fenrir`): 166 Hz, rich explorer timbre, warm yet energetic.
+    * `fenrir_punchy` (`am_fenrir` 100%): 181 Hz, high animated drama.
+    * `puck_open_throat` (80% `am_puck` + 20% `am_adam`): 140 Hz, calm, thoughtful.
+  - **Dead-Silence Trimming:** Automatically trims Kokoro's ~0.8s trailing silence down to 2-tier natural pauses:
+    * Intra-sentence clause padding: **0.08s (80ms)**.
+    * Sentence-end breath pause: **0.22s (220ms)**.
+    * Micro fade-in (**5ms**) / fade-out (**10ms**) to eliminate boundary clicks.
   - **Studio De-Nasal EQ Chain:** High-pass filter at **75 Hz**, narrow notch cut at **1350 Hz (-4.5 dB)** to remove nasal resonance, and high-shelf boost at **7 kHz (+2.5 dB)** for breath clarity.
+  - **Windows FFmpeg UNC Pathing:** Automatically resolves paths to `//wsl.localhost/Ubuntu-24.04/...` via `config.toWinPath()` for Windows `ffmpeg.exe` compatibility.
 - **Mode C (Browser CDP):** Operated via CDP directly on the active ElevenLabs Text-to-Speech tab (`engine/tts.js`). Auto-downloads MP3 files to `audio/<project_id>/`.
   - **Anti-Voice Doubling Assertion:** Guarded against ElevenLabs History API 2–5s indexing delays via `previousHistoryId` checks and strict MD5 checksum assertions in `engine/compositor.js`.
 
 ### 1.3. Post-Production, Motion Stills & Audio Mixing (FFmpeg)
 - Stitches all scenes sequentially into a master video (`engine/compositor.js`).
-- **2D Motion Stills (Ken Burns Effect):** When shots are images (`.png` / `.jpg` from Nano Banana Pro), the engine automatically transforms them into 1080p clips with smooth camera motion (`zoom_in`, `pan_left`, `zoom_out`, `pan_right`) matching exact voiceover clip durations.
+- **2D Static Hard Cuts (Pure Ink Explainer Aesthetic):** For educational explainer animations, the engine assembles static illustrations using crisp hard cuts (0 Ken Burns pan/zoom) via FFmpeg `ffconcat version 1.0` demuxer, matching exact voiceover clip durations. (Ken Burns motion remains available as an opt-in flag for documentary still photo sequences).
 - Dynamically scales voiceover speed (`atempo`) or aligns voice onset delay (`adelay`).
 - Balances audio levels: Voiceover at 100% volume, background ambient SFX at 20–25% volume, background music (BGM) at 12–15% volume.
 - **Strictly No BGM Rule (Minimalist Explainer Series):** For hand-drawn explainer animations (Ink Explainer style), set `"bgm_volume": 0` or `"bgm": "none"`. The BGM track is completely omitted, leaving a pure, intimate monologue with punchy SFX.
@@ -280,14 +288,15 @@ VideoGen powers multiple independent production channels running in parallel:
 - **Subtitles:** `hardsub: true`, style `bouncy_neon` (animated yellow-neon micro-chunks).
 - **Audio Mix:** Voice 100%, SFX 30%, BGM 12%.
 
-### 8.4. Recipe 3: Minimalist Hand-Drawn Explainer (16:9 2D Motion Stills)
-- **Geometry:** `16:9` widescreen, 1920×1080.
-- **Timeline:** Micro-shots of **1.5s – 2.5s** (never exceed 3.0s per shot). Frequency: **20 to 25 visual cuts per minute** tightly synchronized with voiceover punchlines.
-- **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). Warm golden amber / ochre background gradient, primitive cave art accents, bold black comic ink contours, expressive stickman memes.
-- **Motion:** 2D Ken Burns camera push/pan (`zoom_in`, `pan_left`, `zoom_out`, `pan_right`) automatically applied by `./videogen assemble`.
-- **Voice:** Provider `kokoro`, voice `puck_open_throat` (80% Puck + 20% Adam), speed `1.12`, tight micro-pauses (0.12–0.18s), Studio De-Nasal EQ.
+### 8.4. Recipe 3: Minimalist Hand-Drawn Explainer (16:9 Static Micro-Shot Cuts)
+- **Geometry:** `16:9` widescreen, 1920×1080 Full HD.
+- **Timeline:** Dynamic micro-shots of **1.0s – 2.8s** (average ~2.5s per cut, clause-locked semantic timing, ~110–220 cuts for a 5-minute video) tightly synchronized with voiceover punchlines, lists, and dialogue beats.
+- **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). In-browser Base64 fetch via Chrome CDP, MD5 deduplication guard against Flow duplicate image generation, and Tesseract OCR screening to ensure 0% watermark/channel text leaks. Authentic Ink Explainer aesthetic: pure white round cartoon head (`#ffffff`), bold clean black ink contours, expressive meme eyes, and contextual color palettes (dark olive/charcoal for night & danger, pale ice-blue for cold, clean cream parchment for everyday diagrams, warm indoors for modern scenes).
+- **Motion:** Pure Static Hard Cuts (0 Ken Burns camera motion) for maximum visual punch and authentic comic-book pacing.
+- **Voice:** Provider `kokoro`, voice `puck_expressive`, `puck_fenrir`, or `puck_open_throat`, speed `1.12`, automatic dead-silence trimming (0.08s intra-clause / 0.22s inter-sentence), Studio De-Nasal EQ. Batch synthesis (`--batch-json`) synthesizes entire episodes in ~18s.
 - **Subtitles:** Optional / clean footage.
 - **Audio Mix:** Voice 100%, Foley SFX (pops, whooshes, rock taps), **STRICTLY NO BGM** (`bgm_volume: 0`).
+- **Assembly:** Rapid 1-pass FFmpeg Concat Demuxer (`ffconcat version 1.0`) in ~0.5s via `./videogen assemble`.
 - **Publishing:** YouTube Studio (Widescreen Channel).
 
 ### 8.5. Recipe 4: Story-Driven Cinematic Series (16:9 Widescreen)
@@ -300,7 +309,43 @@ VideoGen powers multiple independent production channels running in parallel:
 
 ---
 
-### 8.6. Authoring Custom Recipes via `universal_template.json`
+### 8.6. Recipe 5: Minimalist Explainer Production Workflow (Ink Explainer / Stickman 2.0)
+- **Geometry:** `16:9` widescreen (or `9:16` vertical).
+- **Engine:** Google Flow 🍌 **Nano Banana Pro** (Image mode, 0 Flow credits, 100% free).
+- **Pacing:** `static_cuts` (Strictly 0 Ken Burns motion, 1-pass FFmpeg demuxer assembly in ~0.5s).
+- **Audio Mix:** Voice 100%, Strictly NO BGM (`bgm_volume: 0`).
+- **Voice:** Local Kokoro-82M (English) or VieNeu-TTS (Vietnamese).
+- **Clause-Locked Semantic Workflow (`./videogen explainer`):**
+  1. **Segment Transcript:** Splits voiceover into semantic visual clauses (1.5s–2.5s / 4–8 words).
+  2. **Classify Visual Strategy:** Assigns each clause one of 5 cognitive visual strategies:
+     - `LITERAL`: Direct physical depiction (clock, coffee, trembling fingers).
+     - `METAPHOR`: Meme / symbolic abstraction (red low-battery icon for calorie burn, broken scale of justice for morality, mechanical gears crushing dry branch for harsh nature, empty bowl with red question mark for food crisis).
+     - `TITLE_CARD` / `GAG_CARD`: Stark white background with hand-drawn bold black marker text and cute doodles.
+     - `SPLIT_SCREEN`: Contrast comparisons (modern pampered human vs rugged caveman).
+     - `POSE_CHURN`: Same background across sequential clauses with rapid pose/expression shifts.
+  3. **Contextual Color Palettes:** Routes scenes to `ice_age` (pale slate-blue wash `#a0c0d0`), `prehistoric` (warm ochre `#f5d5b0`), `interior_cozy` (muted olive/tan), `clean_card` (stark white), or `metaphor_dark` (deep charcoal navy).
+  4. **Execution Commands:**
+     ```bash
+     ./videogen explainer transcript.txt --title="Episode Title" --series="series_name" --ep="ep01"
+     ./videogen render storyboards/series_name_ep01.json
+     ./videogen voice storyboards/series_name_ep01.json
+     ./videogen assemble storyboards/series_name_ep01.json
+     ```
+
+---
+
+### 8.7. Vertical 9:16 Shorts Extraction from 16:9 Master
+To extract and render viral vertical Shorts from a completed 16:9 master episode:
+```bash
+./videogen shorts storyboards/<project>.json output/<project>_Master_1080p.mp4
+```
+- **Option B — Cinematic Blur Overlay:** Canvas 1080×1920 with blurred master background (`boxblur=25:5`), centered 16:9 video at 1080×608 with drop shadow and gold separator accents (`#D4AF37`).
+- **Kinetic Micro-Subtitles:** Subtitle phrases are split into **1.2s–1.8s chunks** with yellow keyword highlights (`&H0000FFFF`).
+- **Outro Audio Fade:** Applied via `afade=t=out:st=<dur-0.25>:d=0.25` to cleanly cut trailing dialogue.
+
+---
+
+### 8.8. Authoring Custom Recipes via `universal_template.json`
 To build any format, copy `examples/storyboards/universal_template.json` into your private `storyboards/` directory, replace the `${PLACEHOLDER}` values, and run:
 ```bash
 ./videogen run storyboards/my_custom_video.json
@@ -353,6 +398,13 @@ Then run:
 ./videogen archive storyboards/<project>.json
 ```
 Migrates raw clips, voice files, and storyboard backups to external storage and purges temporary working directories (`renders/`, `audio/`, `output/`).
+
+### 9.5. Mobile Dispatch Notification Bridge (Zalo Bot)
+For instant notification upon video completion or schedule verification:
+```bash
+/home/asus/.local/bin/zalo-notify "🎬 [VideoGen] Video đã được xuất bản và lên lịch thành công: https://youtu.be/..."
+```
+Delivers notifications directly to the operator's mobile Zalo via the local OpenClaw gateway.
 
 
 
