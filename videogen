@@ -33,6 +33,7 @@ const youtube = require('./engine/youtube');
 const thumbnail = require('./engine/thumbnail');
 const shorts = require('./engine/shorts');
 const tiktok = require('./engine/tiktok_uploader');
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const facebook = require('./engine/facebook');
 const pipelineLoop = require('./engine/pipeline_loop');
 
@@ -277,6 +278,7 @@ async function main() {
                 outputPath: outFile,
                 seenHashes
               });
+              await sleep(3500);
             } else {
               // 1. Clear characters
               await flow.clearCharacters();

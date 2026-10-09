@@ -22,7 +22,9 @@ function craftThumbnailPrompt(sb) {
     return p.thumbnail_prompt;
   }
 
-  return `Widescreen 16:9 anime key visual thumbnail for dark fantasy sci-fi anime "${series}" Episode ${ep}: "${title}". Young cyber swordsman hero with silver-white hair and glowing cyan eye in battle-damaged silver and black armor. Intense sharp gaze directly at the camera. In the background, a massive dark dimensional portal vortex tearing the sky with purple and dark blue energy storm. Glowing cyan holographic tech HUD glyphs floating in the air. High contrast, dramatic rim lighting, embers and glowing data particles, Ufotable anime style, 8k resolution, ultra detailed, cinematic YouTube anime thumbnail.`;
+  // Universal Explainer default thumbnail with Golden Hook & Visual Paradox
+  const hookText = p.thumbnail_hook || (title.split(/[^a-zA-Z0-9]+/).find(w => w.length >= 5) || 'WHY?').toUpperCase();
+  return `A high-contrast 2D comic YouTube thumbnail. SCENE: At the very top, one single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines reads exactly: "${hookText}?". Below the text, on the left, an expressive white stickman mascot effortlessly lifting an entire heavy pickup truck overhead with ONE HAND like a superhero. On the right, floating next to his head is a simple kindergarten math chalkboard showing "7 + 5 = ?" with red question marks, and the stickman has wide derpy cartoon eyes and a sweat drop, completely incapable of simple math. ENVIRONMENT: Warm apricot and terracotta gradient watercolor wash vignette on subtle cream parchment paper, educational indicator arrows. STYLE: High-contrast educational graphic novel illustration, bold black ink line art, flat vibrant color accents, clean paper texture. STRICTLY NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM.`;
 }
 
 // Helper: Classify thumbnail prompt refusal or error using TypeSafe Jev

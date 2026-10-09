@@ -71,7 +71,7 @@ const PALETTES = {
 };
 
 // 2. Negative safety prompt footer - guards 2D vector graphic novel integrity
-const NEGATIVE_PROMPT = 'NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.';
+const NEGATIVE_PROMPT = 'STRICTLY NO TITLE BANNER, NO TOP HEADER, NO "INK EXPLAINER" TEXT, NO "MINIMALIST" TEXT, NO CHANNEL NAME, NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO BLURRY ARTIFACTS, NO STOCK PHOTO.';
 
 // 3. Segment transcript text into semantic visual clauses (1.5s–2.5s / 4–8 words)
 function segmentTranscript(text) {
@@ -219,7 +219,7 @@ function buildPrompt({ clause, strategy, index = 0, customScenes = null }) {
   const sceneDesc = resolveSemanticAction(clause, strategy, index, customScenes);
   const selectedPalette = PALETTES[paletteKey] || PALETTES.dark_vignette;
 
-  const prompt = `An authentic Ink Explainer style 2D comic illustration. SCENE: ${sceneDesc}. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${selectedPalette.bg}. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+  const prompt = `2D comic illustration of ${sceneDesc}. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${selectedPalette.bg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
   return {
     prompt,

@@ -607,33 +607,84 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
 
       // Insert prompt
       await cdp.send('Input.insertText', { text: prompt });
-      await sleep(200);
+      await sleep(250);
 
-      // Click generate button or dispatch Enter
-      const btnRect = await cdp.evaluate(`(() => {
-        const b = document.querySelector('button[aria-label="Bắt đầu tạo"], button.generate-icon-button, button.send-button');
-        if (!b || b.disabled) return null;
-        const r = b.getBoundingClientRect();
-        return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2), disabled: b.disabled };
-      })()`);
+      // Wait for Angular to enable the generate button and click it via CDP native mouse event
+      let btnRect = null;
+      for (let w = 0; w < 15; w++) {
+        await sleep(150);
+        btnRect = await cdp.evaluate(`(() => {
+          const b = document.querySelector('button[aria-label="Bắt đầu tạo"], button.generate-icon-button');
+          if (!b || b.disabled || b.classList.contains('mat-mdc-button-disabled')) return null;
+          const r = b.getBoundingClientRect();
+          return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) };
+        })()`);
+        if (btnRect) break;
+      }
 
-      if (btnRect && !btnRect.disabled) {
+      if (btnRect) {
         await cdp.clickMouse(btnRect.x, btnRect.y);
       } else {
+        // Fallback: send Enter key
         await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 13, text: '\r' });
         await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 13, text: '\r' });
       }
 
-      // Wait for image tile
+      // Wait for pending tile to appear
+      let hasPending = false;
+      for (let p = 0; p < 8; p++) {
+        await sleep(250);
+        hasPending = await cdp.evaluate('!!document.querySelector("flow-pending-tile")');
+        if (hasPending) break;
+      }
+      if (!hasPending && btnRect) {
+        await cdp.clickMouse(btnRect.x, btnRect.y);
+      }
+
+      // Wait for generation to complete (pending tile disappears)
       const startWait = Date.now();
       let freshUrl = null;
+      let seenPending = hasPending;
+
       while (Date.now() - startWait < timeoutSec * 1000) {
-        await sleep(2000);
-        const poll = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).map(i => i.src).filter(Boolean))()`);
-        const fresh = (poll || []).filter(src => !initialSet.has(src) && src.includes('flow-content.google'));
-        if (fresh.length > 0) {
-          freshUrl = fresh[0];
+        await sleep(1500);
+
+        // Track pending state
+        const curPending = await cdp.evaluate('!!document.querySelector("flow-pending-tile")');
+        if (curPending) seenPending = true;
+
+        // Check for error tile or rate limit card
+        const errText = await cdp.evaluate(`(() => {
+          const cards = document.querySelectorAll('flow-error-tile, [class*="error"], mat-card');
+          for (const c of cards) {
+            if (c.innerText && (c.innerText.includes('Không thành công') || c.innerText.includes('hoạt động bất thường') || c.innerText.includes('unusual activity'))) {
+              return c.innerText;
+            }
+          }
+          return null;
+        })()`);
+
+        if (errText) {
+          console.warn(`    └─ [!] Phát hiện cảnh báo giãn cách Google Flow ("${errText.replace(/\\n/g, ' ').slice(0, 50)}..."), tạm dừng 10s và tải lại trang...`);
+          await sleep(10000);
+          try {
+            await cdp.send('Page.reload');
+            await sleep(5000);
+          } catch {}
           break;
+        }
+
+        // When pending finishes or new tile arrives
+        const topSrc = await cdp.evaluate(`(() => {
+          const first = document.querySelector('flow-image-tile img');
+          return first ? first.src : null;
+        })()`);
+
+        if (topSrc && topSrc.includes('flow-content.google') && !initialSet.has(topSrc)) {
+          if (!curPending || seenPending) {
+            freshUrl = topSrc;
+            break;
+          }
         }
       }
 

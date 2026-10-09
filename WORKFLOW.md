@@ -359,16 +359,22 @@ VideoGen powers multiple independent production channels running in parallel:
      ./videogen voice storyboards/series_name_ep01.json
      ./videogen assemble storyboards/series_name_ep01.json
      ```
-  5. **High-CTR Thumbnail SOP (Golden Typography & Visual Conflict — Standardized from EP01):**
-     - **Aspect Ratio:** `16:9` widescreen (1920×1080).
-     - **Anchor Position:** Always anchor big typography in the **Top-Left corner** over a dark slate-gray or textured cave wall background for maximum contrast.
-     - **The 2-Word Hook Formula:** Standardized short punchline `[WHY / STILL] + [KEYWORD]` matching Episode 1's `"WHY WORK?"` (e.g. EP01: `"WHY WORK?"`, EP02: `"WHY HUNGRY?"`, EP03: `"WHY SLEEP?"`).
-     - **Golden Typography:** Heavy/Black non-serif font (Impact, Montserrat Black, Bangers), lemon yellow fill (`#FFE500` / `#FFF000`), thick black stroke (18–24px), deep drop shadow.
-     - **Color Accents:** White cartoon stick figure head (`#ffffff`) with warm vibrant scene accents (yellow sofa, orange fire, food colors) on a dark contrasting wall wash. Strictly NO flat, lifeless monochrome black-and-white thumbnails.
-     - **Visual Conflict:** Evolution paradox or hilarious irony (pampered modern human lounging with pizza vs baffled caveman ancestor).
-     - **Prompt Blueprint:**
+  5. **High-CTR Thumbnail SOP (Golden Hook & Visual Paradox — Standardized from EP01):**
+     - **Aspect Ratio:** `16:9` widescreen (1920×1080 / 1376×768 native Flow).
+     - **The Top Golden Hook Text:**
+       * A single line of giant, massive comic hook text across the very top in bold bright golden-yellow typography with thick black outlines and slight dynamic tilt: `ADRENALINE?`, `WHY STUPID?`, `SUPERHUMAN?`, `BRAIN OFF?`.
+       * Flow Prompt Syntax: `At the very top, one single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines reads exactly: "<HOOK_TEXT>?".`
+     - **Extreme Visual Paradox (2-Way Conflict):**
+       * **Feat (Superhuman):** Stickman casually lifting a heavy pickup truck overhead with one hand (`RUMBLE`), bending steel, or outrunning a missile.
+       * **Failure (Utter Stupidity):** Stickman sweating cold bullets, wide derpy cartoon eyes, facing a kindergarten chalkboard (`7 + 5 = ?` with bright red `???`), utterly baffled and unable to solve simple logic.
+     - **Environment & Palettes:**
+       * Warm apricot and terracotta gradient watercolor wash vignette on cream parchment paper (`#fbf9f5`), comic screentone halftone dot textures, dynamic motion lines, educational indicator arrows.
+     - **Negative Guards for Thumbnail:**
+       * Strictly use: `STRICTLY NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM.`
+       * Do NOT include `NO TITLE BANNER` or `NO TOP HEADER` in thumbnail prompts, as it suppresses the desired top golden hook line.
+     - **Standardized Thumbnail Prompt Blueprint:**
        ```text
-       A high-CTR minimalist 2D vector ink explainer YouTube thumbnail illustration. SCENE: [CHARACTER_ACTION_AND_WARM_COLORED_PROPS]. Generous clean, uncluttered dark background in the top-left area specifically reserved for large yellow text. ENVIRONMENT: Dark slate-gray and navy watercolor paper texture wall for maximum text contrast. STYLE: Bold clean black comic ink contours, flat vibrant color accents, minimalist white stick figure, expressive meme face, stark graphic novel aesthetic, 16:9 widescreen composition. STRICTLY NO 3D, NO PHOTOREALISM, NO GRADIENT SHADING, NO CLUTTER, NO WATERMARK, NO LOGO.
+       A high-contrast 2D comic YouTube thumbnail. SCENE: At the very top, one single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines reads exactly: "[HOOK_TEXT]?". Below the text, on the left, an expressive white stickman mascot effortlessly lifting an entire heavy pickup truck overhead with ONE HAND like a superhero. On the right, floating next to his head is a simple kindergarten math chalkboard showing "7 + 5 = ?" with red question marks, and the stickman has wide derpy cartoon eyes and a sweat drop, completely incapable of simple math. ENVIRONMENT: Warm apricot and terracotta gradient watercolor wash vignette on subtle cream parchment paper, educational indicator arrows. STYLE: High-contrast educational graphic novel illustration, bold black ink line art, flat vibrant color accents, clean paper texture. STRICTLY NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM.
        ```
 
 ---
