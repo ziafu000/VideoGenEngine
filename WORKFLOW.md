@@ -398,6 +398,24 @@ To build any format, copy `examples/storyboards/universal_template.json` into yo
 
 ---
 
+### 8.9. Universal Explainer Series (16:9 Minimalist 2D Ink Explainer)
+An ultra-fast, zero-API-cost format for educational and narrative explainer videos (Casually Explained / Kurzgesagt style).
+- **Configuration:** Authored via `examples/storyboards/universal_template.json` with `aspect_ratio: "16:9"`, `engine: "nano_banana_pro"`, `pacing: "static_cuts"`, `tts_provider: "f5-tts"`, and `bgm_volume: 0`.
+- **Visual Engine:** Google Flow Nano Banana Pro in 16:9 (`1376x768` native upscaled to `1080p`).
+- **Pacing & Editing:** 100% Static Cuts (hard cut per clause/sentence). No artificial Ken Burns motion. Assembled in single-pass via `ffconcat version 1.0` demuxer mapped to narrator audio duration.
+- **Audio Hygiene (Strictly No BGM):** Set `bgm_volume: 0`. The entire audio spectrum remains pristine for local F5-TTS studio narration at `0.90x` speed with natural micro-pauses.
+- **Scene Prompt Hygiene (Zero-Banner Rule):**
+  * Do NOT include the words `"Ink Explainer"` or `"Minimalist Stick Figure"` in the positive prompt, as image generators mistake them for titles and render huge header banners.
+  * Positive Prompt Formula: `2D comic illustration of [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel illustration, bold black ink line art, flat vibrant color accents, clean paper texture.`
+  * Mandatory Negative Prompt: `STRICTLY NO TITLE BANNER, NO TOP HEADER, NO "INK EXPLAINER" TEXT, NO "MINIMALIST" TEXT, NO CHANNEL NAME, NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO BLURRY ARTIFACTS, NO STOCK PHOTO.`
+- **High-CTR Thumbnail Formula (Top Golden Hook & Visual Paradox):**
+  * **Top Golden Hook:** A single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines at the very top: `At the very top, one single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines reads exactly: "<HOOK_QUESTION>?".`
+  * **Visual Paradox:** Superhuman/extreme feat on the left vs complete kindergarten logic failure on the right.
+  * **Background:** Warm apricot and terracotta gradient watercolor wash vignette on cream parchment paper with educational indicator arrows.
+  * **Negative Guard:** Include `STRICTLY NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM.` (Never include `NO TITLE BANNER` on thumbnails to avoid stripping the golden hook text).
+
+---
+
 ## 9. Multi-Platform Publishing, CDP Hygiene & Continuous Batch Loop
 
 ### 9.1. Publishing Sequence & Posture
@@ -427,6 +445,17 @@ Run fully automated, continuous batch video production across multiple storyboar
 
 # Process all storyboards in storyboards/*.json
 ./videogen loop
+```
+
+---
+
+### 9.4. Strict YouTube Channel Routing & Lock Guard
+- **The Channel Drift Problem:** Navigating to `https://studio.youtube.com` without an explicit channel ID causes Google to automatically redirect to the Google Account's primary default/personal channel rather than the intended brand channel.
+- **Strict Channel Lock Architecture:**
+  1. `engine/config.js` always maps channel aliases to explicit studio URLs: `https://studio.youtube.com/channel/${channelId}`.
+  2. `engine/youtube_uploader.js` verifies `curUrl.includes(targetCid)` before triggering the upload modal. If the browser is on a different channel, it actively navigates to the target channel URL.
+  3. **Fail-Closed Assertion:** If the current URL fails to match `targetCid` after navigation, the uploader immediately throws a critical error and aborts the upload, preventing any video from leaking onto the wrong channel.
+  4. In multi-channel environments, specify the target channel via `--channel <name_or_id>` or set `DEFAULT_CHANNEL_NAME` / `YOUTUBE_CHANNEL_ID` in `.env`.
 
 # Draft mode / no-upload
 ./videogen loop --draft

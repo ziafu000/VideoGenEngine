@@ -182,15 +182,22 @@ async function cmdUpload(args) {
       throw new Error('Chưa đăng nhập tài khoản YouTube. Vui lòng mở Chrome đăng nhập vào studio.youtube.com trước.');
     }
 
-    // 1b. Đảm bảo trang Studio ở trạng thái sạch sẽ hoàn toàn
+    // 1b. Đảm bảo trang Studio ở trạng thái sạch sẽ hoàn toàn và đúng kênh
     console.error(`[-] Chuẩn bị giao diện Studio sạch...`);
     const studioUrl = config.resolveChannelUrl ? config.resolveChannelUrl(channel) : (config.YOUTUBE_STUDIO_URL || 'https://studio.youtube.com');
-    const curUrl = await client.eval('window.location.href');
     const targetChannelMatch = studioUrl.match(/channel\/([^\/\?]+)/);
     const targetCid = targetChannelMatch ? targetChannelMatch[1] : null;
-    if (!targetCid || !curUrl.includes(targetCid)) {
+
+    let curUrl = await client.eval('window.location.href');
+    if (targetCid && !curUrl.includes(targetCid)) {
+      console.error(`[-] Điều hướng chính xác sang kênh đích: ${studioUrl}`);
       await client.send('Page.navigate', { url: studioUrl });
-      await sleep(4000);
+      await sleep(5000);
+      curUrl = await client.eval('window.location.href');
+    }
+
+    if (targetCid && !curUrl.includes(targetCid)) {
+      throw new Error(`[CRITICAL] Kênh hiện tại (${curUrl}) không khớp với Channel ID đích (${targetCid})! Dừng upload ngay lập tức.`);
     }
     await client.dismissModals();
 

@@ -29,13 +29,14 @@
   },
 
   "visuals": {
-    "engine": "${flow_video_OR_motion_stills}",
+    "engine": "${flow_video_OR_nano_banana_pro_OR_motion_stills}",
+    "pacing": "${motion_video_OR_static_cuts}",
     "style": "${CINEMATIC_OR_MINIMALIST_OR_CUSTOM}"
   },
 
   "subtitles": {
     "enabled": false,
-    "style": "clean"
+    "style": "${clean_OR_bouncy_neon_OR_dual_zone}"
   },
 
   "audio_mix": {
@@ -43,6 +44,11 @@
     "sfx_volume": 0.25,
     "bgm_path": "assets/bgm.mp3",
     "bgm_volume": 0.15
+  },
+
+  "thumbnail": {
+    "hook": "${OPTIONAL_TWO_WORD_HOOK_QUESTION}",
+    "prompt": "${OPTIONAL_HIGH_CTR_THUMBNAIL_PROMPT}"
   },
 
   "distribution": {
