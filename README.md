@@ -107,7 +107,8 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
    - **Precision Audio-Subtitle Onset Sync:** Storyboard `audio.voice_delay_sec` dynamically locks FFmpeg `adelay` and subtitle timestamps (`subStart`), ensuring subtitles appear at the exact second speech begins. Overridable via `subtitle_style` in storyboard JSON.
    - **Anti-Subtitle Hallucination:** Strict negative prompt hygiene (`CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`) ensures zero burned-in foreign text before final master hardsubbing.
 7. 🚀 **Unified CLI (`./videogen`):** Single executable command to control every phase or execute end-to-end autonomous runs (`./videogen run storyboard.json`).
-8. 💾 **Automated D: Drive Archival & Clean Git:** Automatically migrates hundreds of megabytes of raw scene clips, voice files, and master videos to external storage, keeping the Git repository ultra-lightweight (<200KB).
+8. ⏱️ **Universal Timeline Prompting Engine (Google Flow 10s SOP):** Eliminates static, repetitive AI video shots by structuring every 10-second video clip into 3 to 4 kinetic micro-scenes with explicit second markers (`[0.0s - 3.0s]: [Establishing composition] ... [3.0s - 6.5s]: [Focal shift & macro detail] ... [6.5s - 10.0s]: [Panoramic resolution]`). Pre-flight validation in `engine/flow.js` ensures prompts maintain cinematic camera choreography, environmental transitions, and synchronized diegetic foley (`AUDIO: SFX ONLY`) without dialogue clashing.
+9. 💾 **Automated D: Drive Archival & Clean Git:** Automatically migrates hundreds of megabytes of raw scene clips, voice files, and master videos to external storage, keeping the Git repository ultra-lightweight (<200KB).
 
 ---
 

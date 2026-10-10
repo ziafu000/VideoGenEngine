@@ -93,17 +93,15 @@ if (process.env.YOUTUBE_CHANNELS_JSON) {
   } catch {}
 }
 
-const defaultChannelId = process.env.YOUTUBE_CHANNEL_ID || Object.values(customChannels)[0] || null;
-const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || (defaultChannelId ? `https://studio.youtube.com/channel/${defaultChannelId}` : 'https://studio.youtube.com');
+const YOUTUBE_STUDIO_URL = process.env.YOUTUBE_STUDIO_URL || 'https://studio.youtube.com';
 
 function resolveChannelUrl(channelIdOrName) {
-  const target = channelIdOrName || process.env.DEFAULT_CHANNEL_NAME || Object.keys(customChannels)[0] || null;
-  if (!target) return YOUTUBE_STUDIO_URL;
-  if (target.startsWith('http://') || target.startsWith('https://')) {
-    return target;
+  if (!channelIdOrName) return null;
+  if (channelIdOrName.startsWith('http://') || channelIdOrName.startsWith('https://')) {
+    return channelIdOrName;
   }
-  const normalized = String(target).toLowerCase().replace(/[\s-]+/g, '_');
-  const matchedId = customChannels[normalized] || target;
+  const normalized = String(channelIdOrName).toLowerCase().replace(/[\s-]+/g, '_');
+  const matchedId = customChannels[normalized] || channelIdOrName;
   if (matchedId.startsWith('http://') || matchedId.startsWith('https://')) {
     return matchedId;
   }

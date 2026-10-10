@@ -74,7 +74,7 @@
       "id": "shot_01",
       "duration_sec": "${DURATION_SEC}",
       "hook_type": "visual_hook",
-      "prompt": "${SCENE_VISUAL_PROMPT_OR_FLOW_PROMPT}",
+      "prompt": "${SCENE_PROMPT_OR_TIMELINE_PROMPT: [Overview] [0.0s - 3.0s]: [Action 1] [3.0s - 6.5s]: [Action 2] [6.5s - 10.0s]: [Action 3] CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO WATERMARK. AUDIO: SFX ONLY. [SFX]}",
       "voice": {
         "speaker": "narrator",
         "text": "${SCENE_NARRATION_OR_DIALOGUE_TEXT}",

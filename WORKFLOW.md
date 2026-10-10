@@ -416,6 +416,45 @@ An ultra-fast, zero-API-cost format for educational and narrative explainer vide
 
 ---
 
+### 8.10. Universal Timeline Prompting Specification (Google Flow 10s Video SOP)
+To maximize cinematic value and eliminate static, boring AI shots, every 10-second video prompt generated on Google Flow (Omni 1.1 Flash / Veo) **must strictly follow Timeline Prompting**. Instead of a single static descriptive paragraph, the prompt is divided into **3 to 4 sequential micro-scenes** with explicit second markers:
+
+#### 1. Canonical Timeline Prompt Formula
+```text
+[Scene Overview & Primary Subject]
+[0.0s - 3.0s]: [Opening framing, establishing shot, camera movement, initial subject action]
+[3.0s - 6.5s]: [Camera transition, close-up details, dynamic subject reaction, lighting or environmental shift]
+[6.5s - 10.0s]: [Camera pull-back or crane elevation, visual climax/crescendo, atmospheric resolution]
+CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO WATERMARK.
+AUDIO: SFX ONLY. [Synchronized sound design across the timeline beats].
+```
+
+#### 2. Key Choreography Principles
+1. **Camera Dynamics Across Beats:**
+   - **Beat 1 (0.0s–3.0s):** Establish spatial scale (wide drone glide, low-angle tracking, sweeping arc).
+   - **Beat 2 (3.0s–6.5s):** Shift focal plane (push in, tilt down, macro focus on geological/character details).
+   - **Beat 3 (6.5s–10.0s):** Broaden perspective or resolve motion (crane upward, pull back, cinematic reveal).
+2. **Audio SFX Synchronization:**
+   - Always enforce `AUDIO: SFX ONLY.` with dedicated sound layers (wind, water trickling, cracking ice, environmental ambiance).
+   - **Never prompt character speech** inside Google Flow; voice is handled 100% by TTS engines (VieNeu-TTS / F5-TTS) to prevent audio clash.
+3. **Negative Constraint Hygiene:**
+   - Always conclude with: `CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO WATERMARK.`
+
+---
+
+### 8.11. Robust Video Stitching & Anti-Freeze Architecture (Concat Filter SOP)
+- **The Frozen Video Problem:** Raw video clips downloaded from AI video engines like Google Flow often contain divergent MP4 container profiles and mismatched timebases across scenes (e.g. Shot 1 encoded with `mp42` at `90,000 tbn`, while Shots 2–4 use `isom` at `12,288 tbn`).
+- **The `-c copy` Pitfall:** Using naive FFmpeg concat demuxer (`-f concat -i video_concat.txt -c copy`) causes catastrophic Non-monotonic DTS packet timestamp errors at scene transitions. Video decoders (including YouTube, Chrome, and iOS players) abort video decoding at the boundary (e.g. second 10), freezing playback on the last frame of Shot 1 for the remainder of the runtime while audio continues playing.
+- **The Standardized Concat Filter Solution:** In `engine/compositor.js`, stitching is handled exclusively via the **FFmpeg Concat Filter**:
+  ```bash
+  ffmpeg -y -i shot_01.mp4 -i shot_02.mp4 -i shot_03.mp4 -i shot_04.mp4 \
+    -filter_complex "[0:v][0:a][1:v][1:a][2:v][2:a][3:v][3:a]concat=n=4:v=1:a=1[v][a]" \
+    -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 17 -c:a aac raw_master.mp4
+  ```
+  Decodes raw frames and re-indexes all presentation timestamps (PTS) into a unified timebase, guaranteeing 100% continuous, fluid video playback across all shots.
+
+---
+
 ## 9. Multi-Platform Publishing, CDP Hygiene & Continuous Batch Loop
 
 ### 9.1. Publishing Sequence & Posture

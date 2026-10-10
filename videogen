@@ -401,9 +401,10 @@ async function main() {
         let countMissingVoice = 0;
 
         const isShorts = (sb.aspect_ratio === '9:16') ||
+                         (sb.geometry && sb.geometry.aspect_ratio === '9:16') ||
                          (sb.format === 'shorts_40s') ||
                          (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
-        const noHardsub = noSubsFlag || sb.hardsub === false || (sb.project && sb.project.hardsub === false);
+        const noHardsub = noSubsFlag || sb.hardsub === false || (sb.subtitles && sb.subtitles.hardsub === false) || (sb.project && sb.project.hardsub === false);
 
         // 1. Kiểm tra chế độ dựng tĩnh siêu tốc (Minimalist Explainer / Static Hard Cuts)
         const isStaticCuts = (sb.pacing === 'static_cuts' || sb.pacing === 'hard_cuts' || sb.format === 'minimalist_explainer' || sb.motion === 'none');
@@ -489,7 +490,7 @@ async function main() {
             videoFiles.push(vFile);
 
             // Kiến trúc chuẩn hóa: 100% lời thoại và phụ đề do ElevenLabs/VieNeu/Kokoro đảm nhiệm
-            const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
+            const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || s.text || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
             const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
 
             if (hasAudioFile) {

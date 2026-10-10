@@ -113,19 +113,14 @@ async function compositeVideo({
   execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winPaddedAudioList)} -c:a pcm_s16le ${JSON.stringify(winMasterVoice)} 2>/dev/null`);
   console.log(`[✓] Đã tạo master voice track: ${getDuration(masterVoice).toFixed(2)}s`);
 
-  // 3. Concatenate video clips into raw_master.mp4
-  const videoConcatList = path.join(tempDir, 'video_concat.txt');
-  let videoConcatContent = '';
-  for (const vf of videoFiles) {
-    videoConcatContent += `file '${config.toWinPath(vf).replace(/\\/g, '/')}'\n`;
-  }
-  fs.writeFileSync(videoConcatList, videoConcatContent, 'utf8');
-
+  // 3. Concatenate video clips into raw_master.mp4 using robust concat filter to prevent timebase mismatch freezes
   const rawMaster = path.join(tempDir, 'raw_master.mp4');
-  const winVideoConcatList = config.toWinPath(videoConcatList);
   const winRawMaster = config.toWinPath(rawMaster);
-  console.log(`[-] Đang nối các clip video...`);
-  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winVideoConcatList)} -c copy ${JSON.stringify(winRawMaster)} 2>/dev/null`);
+  console.log(`[-] Đang nối các clip video (chuẩn hóa filter concat chống đơ lệch timebase)...`);
+  const inputs = videoFiles.map(vf => `-i ${JSON.stringify(config.toWinPath(vf))}`).join(' ');
+  const filterInputs = videoFiles.map((_, idx) => `[${idx}:v][${idx}:a]`).join('');
+  const concatFilter = `${filterInputs}concat=n=${videoFiles.length}:v=1:a=1[v][a]`;
+  execSync(`ffmpeg -y ${inputs} -filter_complex "${concatFilter}" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 17 -c:a aac ${JSON.stringify(winRawMaster)}`);
   console.log(`[✓] Đã nối xong raw master video: ${getDuration(rawMaster).toFixed(2)}s`);
 
   // 4. Final Compositing: Audio mix (voice + ambient) + 1080p Lanczos upscale + Optional Subtitle burn

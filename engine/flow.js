@@ -132,6 +132,12 @@ async function submitPrompt(promptText) {
     }
   } catch {}
 
+  // Pre-flight Timeline Prompting syntax check for multi-second video clips
+  const hasTimelineMarkers = /\[?\b\d+(\.\d+)?s?\s*[-–—]\s*\d+(\.\d+)?s?\]?/i.test(promptText);
+  if (!hasTimelineMarkers && promptText.length > 60 && !promptText.includes('NO TITLE BANNER')) {
+    console.warn(`[!] [SOP TIMELINE PROMPTING] Lưu ý: Prompt video chưa chứa mốc thời gian (ví dụ: [0.0s - 3.0s]). Đảm bảo áp dụng Timeline Prompting theo WORKFLOW.md §8.10 để tối ưu camera choreography.`);
+  }
+
   const cdp = await getFlowClient();
   try {
     const inputRes = await cdp.evaluate(`(() => {

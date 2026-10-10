@@ -203,7 +203,7 @@ async function getClientForPage(urlPattern) {
   const pages = await listPages();
   const page = pages.find(p => p.type === 'page' && p.url && (
     typeof urlPattern === 'string'
-      ? (p.url.startsWith('http') && p.url.includes(urlPattern) && (!p.url.includes('stripe') && !p.url.includes('inner.html')))
+      ? (p.url.startsWith('http') && p.url.includes(urlPattern) && !p.url.includes('RotateCookiesPage') && !p.url.includes('accounts.google.com') && !p.url.includes('stripe') && !p.url.includes('inner.html'))
       : urlPattern.test(p.url)
   ));
   if (!page) {

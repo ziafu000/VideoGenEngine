@@ -84,7 +84,7 @@ async function renderShort({
 
   // 3. Render 9:16 layout with FFmpeg filter_complex
   const filterComplex = (
-    `[0:v]split=2[bg_in][fg_in];` +
+    `[0:v]fps=30,split=2[bg_in][fg_in];` +
     `[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=luma_radius=35:luma_power=3,eq=brightness=-0.18:contrast=1.15[bg];` +
     `[fg_in]scale=1080:608:flags=lanczos[fg];` +
     `[bg][fg]overlay=0:656[comp];` +
@@ -97,7 +97,7 @@ async function renderShort({
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   console.log(`    - Đang tổng hợp 9:16 Cinematic Blur Overlay...`);
-  execSync(`ffmpeg -y -i ${JSON.stringify(tempCut)} -filter_complex "${filterComplex}" -map "[v]" -map 0:a -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)} 2>/dev/null`);
+  execSync(`ffmpeg -y -i ${JSON.stringify(tempCut)} -filter_complex "${filterComplex}" -map "[v]" -map 0:a -r 30 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)} 2>/dev/null`);
 
   const stat = fs.statSync(outputVideoPath);
   const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
