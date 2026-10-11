@@ -160,11 +160,14 @@ function toWinPath(p) {
   return resolvedAbs;
 }
 
+const CHROME_DEVTOOLS_AXI_SESSION = process.env.CHROME_DEVTOOLS_AXI_SESSION || null;
+
 module.exports = {
   WIN_USER,
   WIN_HOST,
   CDP_PORT,
   CDP_URL,
+  CHROME_DEVTOOLS_AXI_SESSION,
   PROJECT_DIR,
   RENDERS_DIR,
   AUDIO_DIR,

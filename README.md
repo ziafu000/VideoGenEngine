@@ -227,8 +227,9 @@ All production phases are orchestrated through the central `./videogen` CLI:
 
 | Command | Action | Description |
 | :--- | :--- | :--- |
-| `./videogen doctor` | **Health & Preflight** | Runs system diagnostics: Node.js, FFmpeg, auto-detects Windows host/user, verifies CDP bridge, and checks open-source IP security. |
+| `./videogen doctor` | **Health & Preflight** | Runs system diagnostics: Node.js, FFmpeg, Windows host/user auto-detection, CDP bridge, ElevenLabs quota preflight via `quota-axi`, and open-source IP security. |
 | `./videogen bridge [status]` | **Bridge Health** | Checks or auto-spawns Windows Chrome & CDP proxy. |
+| `./videogen board <sb> [--open]` | **Director's Visual Board** | Generates an interactive HTML review board in `.lavish/board_<name>.html` with chronological micro-shot cards, prompts, narration clauses, palette badges, and live render previews. Supports instant human review via `lavish-axi`. |
 | `./videogen explainer <transcript.txt \| "text">` | **Explainer Storyboard** | Segments transcript into 1.5s–2.5s semantic visual clauses, assigns cognitive strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`), and compiles a complete Nano Banana Pro storyboard. |
 | `./videogen render <sb> [shots...] [--720p]` | **Render Video** | Controls Google Flow: configures settings, attaches `@Character` chips, submits prompts, activates Cloud AI 1080p Super-Resolution (or `--720p` for fast draft). |
 | `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue via local VieNeu-TTS 48 kHz (default) or ElevenLabs CDP (`--provider elevenlabs`). |
@@ -310,6 +311,30 @@ VideoGen integrates **TypeSafe System One AI (`jev-latest`)** via `browser-jev` 
 
 ---
 
+## 🛠️ Axi Ecosystem Tooling Integration
+
+VideoGen deeply integrates with the Axi developer toolchain for visual review, quota intelligence, and browser diagnostic telemetry:
+
+1. **🎨 Director's Visual Review Board (`lavish-axi`):**
+   - Run `./videogen board <storyboard.json> [--open]` to generate an interactive, responsive review surface (`.lavish/board_<name>.html`) built with DaisyUI v5 & Tailwind CSS v4.
+   - Renders chronological micro-shot cards, clause-by-clause narration text, words-per-second (WPS) calibration, visual prompt blueprints, palette badges, and live render preview links (`renders/<episode>/...`).
+   - Inspect and annotate storyboards interactively via Lavish Editor:
+     ```bash
+     ./videogen board storyboards/episode.json --open
+     # Or launch manually:
+     lavish-axi .lavish/board_episode.html
+     ```
+
+2. **📊 Quota Preflight Telemetry (`quota-axi`):**
+   - Automatically audited during `./videogen doctor` and preflighted before batch voice synthesis in `./videogen voice`.
+   - Queries `quota-axi --provider elevenlabs --json` to detect quota windows, runway, and remaining balance. Gracefully falls back to local zero-cost engines (`vieneu`, `f5-tts`) or direct browser CDP if CLI credentials are unconfigured.
+
+3. **📸 Visual Diagnostic Telemetry (`chrome-devtools-axi`):**
+   - Multi-platform uploaders (`youtube`, `facebook`, `tiktok`) automatically capture high-resolution diagnostic screenshots of unexpected dialogs or verification modals via `captureDiagnosticScreenshot`, with seamless fallback to `chrome-devtools-axi screenshot`.
+   - Supports concurrent multi-platform session isolation via the `CHROME_DEVTOOLS_AXI_SESSION` environment variable.
+
+---
+
 ## 🎬 Prompt Engineering Rules (The Secret Sauce)
 
 Included in `skills/omni-video-prompts.md` and `skills/faceless-script-writer.md`:
@@ -364,12 +389,13 @@ VideoGen/
 ├── videogen                  # Unified Central Executable CLI
 ├── engine/                   # Modular Engine Core
 │   ├── config.js             # Environment paths, auto-directory creation & Windows path translation
-│   ├── cdp.js                # WebSocket & HTTP Chrome DevTools client
+│   ├── cdp.js                # WebSocket & HTTP Chrome DevTools client with diagnostic screenshot helpers
 │   ├── bridge.js             # Windows Chrome & proxy health verification
 │   ├── cdp_proxy.js          # TCP forwarder (0.0.0.0:9223 -> 127.0.0.1:9222)
+│   ├── board.js              # Director's Visual Review Board generator (Lavish HTML & DaisyUI)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompts, signed CDN dl)
 │   ├── explainer.js          # Semantic visual clause segmentation & cognitive visual strategies
-│   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, F5-TTS, ElevenLabs)
+│   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, F5-TTS, ElevenLabs quota preflight)
 │   ├── vieneu_engine.py      # Local VieNeu-TTS v3 Turbo engine (48 kHz, Vietnamese)
 │   ├── f5_engine.py          # Local F5-TTS zero-shot voice cloning engine (English)
 │   ├── thumbnail.js          # Google Flow image-mode 16:9 thumbnail generator & 1080p scaler
@@ -377,7 +403,7 @@ VideoGen/
 │   ├── compositor.js         # FFmpeg concatenation, audio padding/ducking, hardsub
 │   ├── shorts.js             # Vertical 9:16 Shorts highlight extractor (Option B Cinematic Blur)
 │   ├── archive.js            # Storage archival & local working tree purge
-│   ├── doctor.js             # System health diagnostics & zero-leak audit
+│   ├── doctor.js             # System health diagnostics, quota preflight & zero-leak audit
 │   ├── jev.js                # TypeSafe Jev System One AI decider wrapper
 │   ├── pipeline_loop.js      # Continuous batch production loop runner
 │   ├── youtube.js            # YouTube Studio unlisted upload automation

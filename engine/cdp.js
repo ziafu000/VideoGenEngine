@@ -2,6 +2,7 @@ const EventEmitter = require('events');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 const config = require('./config');
 
 function sleep(ms) {
@@ -137,6 +138,10 @@ class CDPClient extends EventEmitter {
     return null;
   }
 
+  async captureDiagnosticScreenshot(filename = null, dir = null) {
+    return await captureDiagnosticScreenshot(filename, dir, this);
+  }
+
   async dismissModals() {
     try {
       return await this.evaluate(`(() => {
@@ -217,9 +222,68 @@ async function getClientForPage(urlPattern) {
   return client;
 }
 
+/**
+ * Capture visual diagnostic evidence of unexpected modals, errors, or page state.
+ * 1. Attempts direct screenshot using active CDPClient instance if available.
+ * 2. Falls back to `chrome-devtools-axi screenshot <path>` CLI if CDPClient is offline/busy.
+ * Supports CHROME_DEVTOOLS_AXI_SESSION environment variable for isolated sessions.
+ *
+ * @param {string} [filename] - Custom output filename (default: diagnostic_<timestamp>.png)
+ * @param {string} [dir] - Output directory (default: renders/diagnostics)
+ * @param {CDPClient} [clientInstance] - Optional active CDPClient
+ * @returns {Promise<string|null>} - Absolute path of saved screenshot, or null on failure
+ */
+async function captureDiagnosticScreenshot(filename = null, dir = null, clientInstance = null) {
+  const targetDir = dir || path.join(config.RENDERS_DIR, 'diagnostics');
+  if (!fs.existsSync(targetDir)) {
+    fs.mkdirSync(targetDir, { recursive: true });
+  }
+
+  const name = filename || `diagnostic_${Date.now()}.png`;
+  const targetFile = path.resolve(targetDir, name);
+
+  // 1. Direct CDP client capture
+  if (clientInstance && typeof clientInstance.send === 'function') {
+    try {
+      await clientInstance.send('Page.enable').catch(() => {});
+      const res = await clientInstance.send('Page.captureScreenshot', { format: 'png' });
+      if (res && res.data) {
+        fs.writeFileSync(targetFile, Buffer.from(res.data, 'base64'));
+        console.log(`[CDP Diagnostic] Đã lưu ảnh chẩn đoán: ${targetFile}`);
+        return targetFile;
+      }
+    } catch (e) {
+      console.warn(`[CDP Diagnostic] Direct CDP captureScreenshot thất bại: ${e.message}. Đang thử chrome-devtools-axi...`);
+    }
+  }
+
+  // 2. Fallback to chrome-devtools-axi screenshot
+  try {
+    const session = process.env.CHROME_DEVTOOLS_AXI_SESSION || config.CHROME_DEVTOOLS_AXI_SESSION || null;
+    const env = { ...process.env };
+    if (session) {
+      env.CHROME_DEVTOOLS_AXI_SESSION = session;
+    }
+    spawnSync('chrome-devtools-axi', ['screenshot', targetFile], {
+      encoding: 'utf8',
+      env,
+      timeout: 12000
+    });
+    if (fs.existsSync(targetFile) && fs.statSync(targetFile).size > 100) {
+      console.log(`[CDP Diagnostic] Đã lưu ảnh chẩn đoán qua chrome-devtools-axi${session ? ` [Session: ${session}]` : ''}: ${targetFile}`);
+      return targetFile;
+    }
+  } catch (err) {
+    console.warn(`[CDP Diagnostic] chrome-devtools-axi screenshot thất bại: ${err.message}`);
+  }
+
+  return null;
+}
+
 module.exports = {
   CDPClient,
   listPages,
   getClientForPage,
+  captureDiagnosticScreenshot,
   sleep
 };

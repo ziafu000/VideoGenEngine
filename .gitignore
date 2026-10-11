@@ -29,6 +29,8 @@ renders/
 audio/
 output/
 /backup/
+.lavish/
+/.lavish/
 
 # OS, Temp & Logs
 .DS_Store
