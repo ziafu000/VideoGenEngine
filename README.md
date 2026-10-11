@@ -351,8 +351,8 @@ When you or an automated coding agent clones this repository:
    ```
 3. To start production, copy the open-source sample storyboard from `examples/storyboards/` into `storyboards/`:
    ```bash
-   cp examples/storyboards/example_anime_series.json storyboards/my_series.json
-   ./videogen run storyboards/my_series.json
+   cp examples/storyboards/universal_template.json storyboards/my_project.json
+   ./videogen run storyboards/my_project.json
    ```
 
 ---
@@ -368,11 +368,18 @@ VideoGen/
 │   ├── bridge.js             # Windows Chrome & proxy health verification
 │   ├── cdp_proxy.js          # TCP forwarder (0.0.0.0:9223 -> 127.0.0.1:9222)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompts, signed CDN dl)
-│   ├── tts.js                # ElevenLabs TTS automation (voice profiles & slider calibration)
+│   ├── explainer.js          # Semantic visual clause segmentation & cognitive visual strategies
+│   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, F5-TTS, ElevenLabs)
+│   ├── vieneu_engine.py      # Local VieNeu-TTS v3 Turbo engine (48 kHz, Vietnamese)
+│   ├── f5_engine.py          # Local F5-TTS zero-shot voice cloning engine (English)
 │   ├── thumbnail.js          # Google Flow image-mode 16:9 thumbnail generator & 1080p scaler
 │   ├── subtitles.js          # Subtitle generator (Dual-Zone ASS & Shorts ASS)
 │   ├── compositor.js         # FFmpeg concatenation, audio padding/ducking, hardsub
+│   ├── shorts.js             # Vertical 9:16 Shorts highlight extractor (Option B Cinematic Blur)
 │   ├── archive.js            # Storage archival & local working tree purge
+│   ├── doctor.js             # System health diagnostics & zero-leak audit
+│   ├── jev.js                # TypeSafe Jev System One AI decider wrapper
+│   ├── pipeline_loop.js      # Continuous batch production loop runner
 │   ├── youtube.js            # YouTube Studio unlisted upload automation
 │   ├── youtube_uploader.js   # CDP script for YouTube Studio UI interactions
 │   ├── facebook.js           # Facebook Reels high-level wrapper
@@ -383,9 +390,10 @@ VideoGen/
 │   ├── test_tiktok_uploader.js   # TikTok Studio uploader tests
 │   └── test_pipeline_loop.js     # End-to-end storyboard & compositor tests
 ├── examples/                 # Public Open-Source Templates (Committed to Git)
+│   ├── pronunciation_dict.example.json # Example pronunciation dictionary for phonetics
+│   ├── voice_profiles.example.json     # Example voice profiles configuration
 │   └── storyboards/
-│       ├── example_anime_series.json # Public template for 3D CGI Anime Series
-│       └── scenes.json               # Public template for Faceless Shorts
+│       └── universal_template.json     # Universal declarative storyboard schema template
 ├── storyboards/              # Private Declarative Storyboards (Gitignored, 100% Private IP)
 ├── assets/                   # Private Channel Branding & SFX Assets (Gitignored, 100% Private IP)
 ├── skills/                   # Prompt & Scriptwriting Playbooks (Permanent Director Cognitive Core)
