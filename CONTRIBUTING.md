@@ -25,28 +25,44 @@ Please keep the following principles in mind when contributing:
    chmod +x ./videogen
    ```
 
-2. **Zero Dependencies:**
+2. **Enable Pre-Commit Security Hooks:**
+   - VideoGen enforces an automated pre-commit guard to prevent accidental commits of private channel IDs, proprietary metadata, or credentials.
+   - Configure git hooks by running:
+     ```bash
+     npm run prepare
+     ```
+     *(Or manually: `git config core.hooksPath .githooks`)*
+
+3. **Zero Dependencies:**
    - The engine is designed to run entirely on **native Node.js v20+** standard libraries without requiring `npm install` or third-party packages.
    - You can optionally link the CLI globally during development:
      ```bash
      npm link
      ```
 
-3. **Verify Health:**
-   ```bash
-   ./videogen bridge status
-   ```
+4. **Verify System Health & Zero-Leak Audit:**
+   - Run the comprehensive preflight diagnostic to verify Node.js runtime, FFmpeg, paths, bridge readiness, and the Zero-Leak IP Protection audit:
+     ```bash
+     ./videogen doctor
+     ```
+   - You can also check browser CDP bridge connectivity independently:
+     ```bash
+     ./videogen bridge status
+     ```
 
 ---
 
 ## 📋 Pull Request Guidelines
 
-1. **Focus on Modularity:**
+1. **Zero-Leak Security Guard Preflight:**
+   - Contributors must ensure all staged changes pass the automated security audit.
+   - Verify that your staged changes pass `.githooks/pre-commit` and run `./videogen doctor` (the **Zero Leak Audit** must be 100% green before submitting a pull request).
+2. **Focus on Modularity:**
    - Keep module boundaries clean (`engine/flow.js`, `engine/tts.js`, `engine/compositor.js`, etc.).
    - Follow the established CDP error-handling and fallback conventions.
-2. **TypeSafe Jev Compatibility:**
+3. **TypeSafe Jev Compatibility:**
    - Whenever adding browser interaction steps, ensure they are resilient to UI variations and consider adding semantic classification via `browser-jev` with safe heuristic fallbacks.
-3. **Shell & Node.js Standards:**
+4. **Shell & Node.js Standards:**
    - Ensure all code passes syntax checks (`node -c <file>`).
    - Keep scripts ShellCheck-clean if contributing bash utilities.
 
