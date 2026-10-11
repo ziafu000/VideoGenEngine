@@ -216,8 +216,10 @@ The Director evaluates 5 vital quality indicators across the interactive card gr
 1. **WPS (Words-Per-Second) Pacing & Speech Density:**
    - Each card displays its calculated word count and real-time WPS badge.
    - *Documentary Shorts (9:16):* Calibrated to **36–39 words per 10s shot** (~3.8 wps). Shots > 4.2 wps risk hurried narration; shots < 2.5 wps indicate dead air.
-   - *Minimalist Stickman Explainers (16:9):* Calibrated to dynamic high-retention pacing with an **average duration of ~1.0 second per image (~300 images per 5-minute video)**. Each voice clause/sentence (2.5s–4.5s) is dynamically paired with **2 to 4 sequential static images** illustrating each micro-phrase in the spoken sentence (*"Voice reading to where the image pops up"*).
-     * *Concrete Opening Hook Example:* Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and drop-off), that 4-second opening segment is paired with 4 sequential images (~1.0s each): `0–1s` stickman enters puzzled -> `1–2s` close-up insomnia eyes -> `2–3s` sweating reaction -> `3–4s` giant visual metaphor/diagram pops up, hooking attention from second 0.
+   - *Minimalist Stickman Explainers (16:9):* Calibrated to the **flexible 3-tier contextual pacing matrix (0.8s to 3.5s)**:
+     * **70% Fast ~1.0s Dominance:** Rapid ~0.8s–1.2s cuts dominate the majority of shots (~70%), **especially in the opening seconds (0–4s)** where high visual velocity is mandatory to hook viewers from second 0. E.g. a 4-second opening segment is dynamically paired with 4 sequential images (~1.0s each): `0–1s` stickman enters puzzled -> `1–2s` insomnia eyes -> `2–3s` sweating reaction -> `3–4s` giant visual metaphor/diagram pops up.
+     * **Purposeful Slower Tiers:** Standard narrative runs at **~1.5s–2.0s**, while complex diagrams, anatomical cross-sections, and comedic punchlines use **~2.5s–3.5s** (~15–20% of cuts) to give viewers time to absorb intricate details.
+     * **Multi-Image Clause Mapping:** Each spoken voice clause/sentence (2.5s–4.5s) is paired with 2–4 sequential static images illustrating each micro-phrase in real time (*"Voice reading to where the image pops up"*).
 2. **Prompt Hygiene & Cleanliness Guardrails:**
    - Verify camera dynamics, lighting, and environmental context.
    - Confirm mandatory negative constraints are present: `AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
@@ -337,7 +339,7 @@ VideoGen is a **zero-hardcoding, parameter-driven video production engine**. Rat
 - `provider`: `"vieneu"` (local 48 kHz neural TTS, Vietnamese), `"f5-tts"` (local zero-shot studio clone, English), or `"elevenlabs"` (browser CDP).
 - `target_density_wps`: Words-per-second speech density:
   - **Documentary Narrative Pacing:** ~3.8–4.0 wps. For a 10s shot, write exactly **36–39 words** (~8.5s–9.5s audio duration) to naturally fill the cut without dead air.
-  - **Stickman Explainer Pacing (16:9 Ink Explainer):** Dynamic high-retention pacing with an average duration of **~1.0 second per image** (~300 images per 5-minute video). A single voice clause/sentence (2.5s–4.5s) is dynamically paired with **2–4 sequential static images** matching spoken micro-phrases (*"Voice reading to where the image pops up"*). E.g., across a 4s opening clip, 4 rapid images pop up sequentially (~1.0s each) to hook viewer attention from second 0.
+  - **Stickman Explainer Pacing (16:9 Ink Explainer):** Flexible 3-tier contextual matrix (0.8s to 3.5s) where fast ~1.0s cuts dominate the majority of the production (~70%), especially in the opening seconds (0–4s) to capture viewer retention. Standard narrative progresses at ~1.5s–2.0s, while complex infographics and punchlines use ~2.5s–3.5s. A single voice clause/sentence (2.5s–4.5s) is dynamically paired with **2–4 sequential static images** matching spoken micro-phrases (*"Voice reading to where the image pops up"*). E.g., across a 4s opening clip, 4 rapid images pop up sequentially (~1.0s each) to hook viewer attention from second 0.
   - **Rapid Social Explainer Pacing:** ~2.75–3.0 wps. Approximately 80–85 words per 30 seconds.
 - `settings`:
   - `temperature`: `0.4`–`0.5` (prevents slurring and consonant lisping in VieNeu).
@@ -397,9 +399,12 @@ VideoGen powers multiple independent production channels running in parallel:
 
 ### 8.4. Recipe 3: Minimalist Hand-Drawn Explainer (16:9 Static Micro-Shot Cuts)
 - **Geometry:** `16:9` widescreen, 1920×1080 Full HD.
-- **Timeline & Dynamic Pacing:** Average duration of 1 image is **~1.0 second** (fast, high-retention pacing, **~300 images per 5-minute video**).
+- **Timeline & Flexible 3-Tier Contextual Pacing (0.8s to 3.5s):**
+  * **~70% High-Tempo Velocity (~0.8s–1.2s, avg ~1.0s):** Fast ~1.0s cuts dominate the majority of cuts (~70%), **especially across opening seconds (0–4s)** to hook audience attention from second 0.
+  * **Concrete Opening Hook Blueprint:** Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and viewer drop-off), that 4-second segment is dynamically paired with 4 sequential images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up.
+  * **Standard Narrative Flow (~1.5s–2.0s):** Conversational visual progression matching standard sentences.
+  * **Complex Infographics & Punchlines (~2.5s–3.5s):** Deliberate minority (~15–20% of cuts) allowing viewers time to absorb complex anatomical cutaways or let a punchline breathe.
 - **Multi-Image Semantic Clause Mapping:** A single voice clause/sentence (**2.5s – 4.5s**) is dynamically paired with **2–4 sequential static images** describing each micro-phrase in the spoken sentence (*"Voice reading to where the image pops up"*).
-  * *Concrete Opening Hook Example:* Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and viewer drop-off), that 4-second segment is dynamically paired with 4 sequential images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up, hooking attention from second 0.
 - **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). In-browser Base64 fetch via Chrome CDP, MD5 deduplication guard against Flow duplicate image generation, and Tesseract OCR screening to ensure 0% watermark/channel text leaks. Authentic Ink Explainer aesthetic: pure white round cartoon head (`#ffffff`), bold clean black ink contours, expressive meme eyes, and contextual color palettes (dark olive/charcoal for night & danger, pale ice-blue for cold, clean cream parchment for everyday diagrams, warm indoors for modern scenes).
 - **Motion & Assembly:** **100% Pure Static Hard Cuts (Strictly 0 pan/zoom or Ken Burns latency)** via FFmpeg concat demuxer (`ffconcat version 1.0`) in ~0.5s for maximum visual punch and authentic comic-book pacing.
 - **Voice & Rhythm Standardization (Snappy Explainer Pacing):** Provider `f5-tts` (or `f5`), voice `f5-tts-latest`, speed `1.0`.
@@ -428,7 +433,7 @@ VideoGen powers multiple independent production channels running in parallel:
 ### 8.6. Recipe 5: Minimalist Explainer Production Workflow (Authentic Ink Explainer / Before Civilization Style)
 - **Geometry:** `16:9` widescreen (1920×1080).
 - **Engine:** Google Flow 🍌 **Nano Banana Pro** (Image mode, 0 Flow credits, 100% free).
-- **Pacing:** Dynamic high-retention pacing with an average duration of **~1.0s per image** (~300 images per 5-minute episode). 100% static hard cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with strictly 0 pan/zoom or Ken Burns latency in ~0.5s.
+- **Pacing:** Flexible 3-tier contextual pacing matrix (0.8s to 3.5s) where fast ~1.0s cuts dominate ~70% of the video (especially opening hooks 0–4s), standard narrative flows at ~1.5s–2.0s, and complex diagrams/punchlines use ~2.5s–3.5s. 100% static hard cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with strictly 0 pan/zoom or Ken Burns latency in ~0.5s.
 - **Audio Mix:** Voice 100%, Strictly NO BGM (`bgm_volume: 0`).
 - **Voice:** Local F5-TTS (English, `f5-tts-latest`, speed `0.90x`, micro-pauses ~0.15s).
 - **Core Visual DNA (Learned directly from Before Civilization Reference & @Inkexplainer96 Benchmark):**
@@ -513,7 +518,7 @@ To build any format, copy `examples/storyboards/universal_template.json` into yo
 An ultra-fast, zero-API-cost format for educational and narrative explainer videos (Casually Explained / Kurzgesagt style).
 - **Configuration:** Authored via `examples/storyboards/universal_template.json` with `aspect_ratio: "16:9"`, `engine: "nano_banana_pro"`, `pacing: "static_cuts"`, `tts_provider: "f5-tts"`, and `bgm_volume: 0`.
 - **Visual Engine:** Google Flow Nano Banana Pro in 16:9 (`1376x768` native upscaled to `1080p`).
-- **Pacing & Editing:** 100% Static Cuts (average ~1.0s per image, ~300 images per 5-min episode, with 2–4 images per 2.5s–4.5s clause). Strictly 0 artificial Ken Burns or pan/zoom latency. Assembled in single-pass in ~0.5s via `ffconcat version 1.0` demuxer mapped to narrator audio duration.
+- **Pacing & Editing:** 100% Static Cuts with flexible 3-tier contextual pacing (0.8s to 3.5s). Fast ~1.0s cuts dominate ~70% (mandatory for opening hooks), standard narrative flows at ~1.5s–2.0s, and complex diagrams/punchlines breathe at ~2.5s–3.5s (2–4 images per 2.5s–4.5s clause). Strictly 0 artificial Ken Burns or pan/zoom latency. Assembled in single-pass in ~0.5s via `ffconcat version 1.0` demuxer mapped to narrator audio duration.
 - **Audio Hygiene (Strictly No BGM):** Set `bgm_volume: 0`. The entire audio spectrum remains pristine for local F5-TTS studio narration at `0.90x` speed with natural micro-pauses.
 - **Scene Prompt Hygiene (Zero-Banner Rule):**
   * Do NOT include the words `"Ink Explainer"` or `"Minimalist Stick Figure"` in the positive prompt, as image generators mistake them for titles and render huge header banners.
