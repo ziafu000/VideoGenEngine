@@ -19,7 +19,12 @@ This file provides comprehensive, self-contained instructions for coding agents 
 - **Reference Presets (Configurable Case Studies):**
   - **Preset A — Clean Documentary Shorts (Vertical 9:16):** `9:16`, 40s (4×10s), clean footage (`hardsub: false`), 36–39 words/shot (~3.8 wps), BGM at 15%, SFX at 25%, Voice at 100% via VieNeu-TTS v3 Turbo 48kHz.
   - **Preset B — Kinetic Explainer Shorts:** `9:16`, 30s–60s, word-by-word animated yellow-neon subtitles (`hardsub: true`, `bouncy_neon`), rapid 2.75 wps pacing, layered UI SFX.
-  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free), clause-locked semantic timing (**1.0s – 2.8s per cut**, average ~2.2s/cut, ~110–220 cuts per episode), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, F5-TTS local zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
+  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free).
+    * **Dynamic High-Retention Pacing:** Average duration of 1 image is **~1.0 second** (fast, high-retention pacing, **~300 images per 5-minute episode**).
+    * **Multi-Image Semantic Clause Mapping:** A single voice clause/sentence (**2.5s – 4.5s**) is dynamically paired with **2–4 sequential static images** describing each micro-phrase in the spoken sentence (*"Voice reading to where the image pops up"*).
+    * **Concrete Opening Hook Example:** Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and drop-off), that 4-second segment is dynamically paired with 4 sequential images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up, hooking viewer attention from second 0.
+    * **100% Static Hard Cuts:** Pure static cuts via FFmpeg Concat Demuxer (`ffconcat version 1.0`) with **strictly 0 pan/zoom or Ken Burns latency**, rapid 1-pass assembly in ~0.5s.
+    * **Voice & Audio:** Local F5-TTS zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor).
   - **Preset D — Story-Driven Cinematic Series:** `16:9`, multi-shot episodes (e.g. 30×10s = 5m), character asset consistency via `@Character` chips, cinema-grade Dual-Zone ASS subtitles.
   - **Custom Formats:** Any combination of parameters configured via `examples/storyboards/universal_template.json`.
 
@@ -102,7 +107,7 @@ This prevents model hallucination of unwanted burned-in text or clashing audio.
 #### D. Visual Review & Human-in-the-Loop Inspection Gate (Mandatory Agent Rule)
 - **Mandatory Board Generation:** Whenever an agent creates or modifies a storyboard JSON, it **MUST** generate and inspect the storyboard via `./videogen board <storyboard.json>` before triggering batch generation (`./videogen run` or `./videogen loop`).
 - **Inspection Checklist:**
-  1. Verify WPS (Words-Per-Second) density pacing matches format guidelines (Documentary: 36–39 words/10s shot; Explainer: 4–7 words/micro-shot, ~2.5–3.5 wps).
+  1. Verify visual pacing and density: Explainer calibrated to dynamic pacing with an average duration of **~1.0s per image** (~300 images per 5-minute episode) and 2–4 sequential images per voice clause/sentence (2.5s–4.5s). Documentary calibrated to 36–39 words/10s shot.
   2. Confirm prompt cleanliness guardrails and negative prompt hygiene are present on every shot.
   3. Validate character chips (`@Character`) and visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
   4. Test single-shot re-rendering (`./videogen render <sb> <shot_id>`) for direct feedback iterations prior to full pipeline execution.
@@ -191,6 +196,15 @@ For educational explainers (like Ink Explainer / hand-drawn minimalist style):
     ```text
     An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
     ```
+- **Dynamic Pacing & Multi-Image Semantic Clause Mapping (Stickman Explainer 16:9):**
+  - **~1.0s Average Cut Duration:** Average duration per image is **~1.0 second** (yielding ~300 illustrations per 5-minute video).
+  - **Micro-Phrase Synchronization:** A single spoken voice clause or sentence (2.5s–4.5s) is paired with **2 to 4 sequential static images** illustrating each micro-phrase in real time (*"Voice reading to where the image pops up"*).
+  - **Concrete Opening Hook Blueprint:** Instead of holding 1 static image across a 4-second voice clip (which causes boredom and drop-off), that 4-second opening segment is dynamically paired with 4 sequential images (~1.0s each):
+    * `0.0s – 1.0s`: Stickman enters frame with puzzled posture.
+    * `1.0s – 2.0s`: Extreme close-up of unblinking cartoon insomnia eyes.
+    * `2.0s – 3.0s`: Trembling panic reaction with exaggerated blue sweat drops.
+    * `3.0s – 4.0s`: Giant visual metaphor or chalkboard anatomy diagram pops up.
+  - **100% Static Hard Cuts:** Pure static cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with **zero pan/zoom or Ken Burns latency**, keeping pacing razor-sharp.
 - **CLI Workflow for Minimalist Explainers:**
   ```bash
   # 1. Generate storyboard from transcript with 1-to-1 visual clauses
