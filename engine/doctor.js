@@ -127,7 +127,20 @@ async function runDoctor() {
     console.log(`  [i] Quota Preflight: quota-axi chưa cài đặt (bỏ qua tiền kiểm)`);
   }
 
-  // 9. Open-Source IP Security & Gitignore Hygiene
+  // 9. Lavish Visual Studio Check (lavish-axi)
+  try {
+    const lavishVer = execSync('lavish-axi --version', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000
+    }).trim();
+    const verStr = lavishVer.startsWith('v') ? lavishVer : `v${lavishVer}`;
+    console.log(`  [✓] Lavish Visual Studio: Sẵn sàng (${verStr})`);
+  } catch {
+    console.log(`  [!] Lavish Visual Studio: Chưa cài đặt (Khuyến nghị: npm install -g lavish-axi)`);
+  }
+
+  // 10. Open-Source IP Security & Gitignore Hygiene
   console.log(`\n--- KIỂM TRA BẢO MẬT MÃ NGUỒN MỞ (IP PROTECTION) ---`);
   try {
     const trackedFiles = execSync('git ls-files', { encoding: 'utf8', cwd: config.PROJECT_DIR }).split('\n');

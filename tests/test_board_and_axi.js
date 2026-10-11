@@ -56,4 +56,13 @@ assert.strictEqual(quotaResult.ok, true, 'Quota preflight must return ok');
 assert.strictEqual(quotaResult.totalChars, 'First shot voiceover'.length + 'Second shot voiceover'.length);
 console.log('  [PASS] preflightElevenLabsQuota calculates character count and handles quota audit gracefully.');
 
+// Test 5: Lavish detection and browser fallback
+console.log('\nTest 5: Lavish Visual Studio detection and standalone fallback...');
+assert.strictEqual(typeof board.isLavishInstalled, 'function', 'isLavishInstalled must be exported');
+const lavishStatus = board.isLavishInstalled();
+console.log(`  [i] lavish-axi detected: ${lavishStatus ? 'Yes' : 'No'}`);
+assert.strictEqual(typeof lavishStatus, 'boolean', 'isLavishInstalled must return a boolean');
+assert.strictEqual(typeof board.openInSystemBrowser, 'function', 'openInSystemBrowser must be exported');
+console.log('  [PASS] isLavishInstalled and openInSystemBrowser helpers verified.');
+
 console.log('\n=== ALL BOARD & AXI TESTS PASSED ===\n');

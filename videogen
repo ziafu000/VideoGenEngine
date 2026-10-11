@@ -74,7 +74,8 @@ Lệnh điều phối:
   ./videogen board <storyboard.json> [--open] [--out=path.html]
       Tạo Director's Visual Review Board tương tác (HTML) với lưới phân cảnh,
       thời lượng micro-cuts, prompt chi tiết, thẻ palette, và ảnh preview render.
-      Hỗ trợ mở trực tiếp qua Lavish Editor (lavish-axi) để duyệt kịch bản trực quan.
+      Hỗ trợ mở trực tiếp qua Lavish Editor (lavish-axi) để duyệt kịch bản trực quan,
+      hoặc mở trực tiếp trên trình duyệt web bất kỳ (standalone HTML fallback).
 
   ./videogen explainer <transcript.txt | "text"> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--scenes=scenes.js] [--out=storyboard.json]
       Tự động phân tích transcript thành các mệnh đề thị giác (semantic clauses 1.5s–2.5s),

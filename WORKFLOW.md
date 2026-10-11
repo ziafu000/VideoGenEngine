@@ -54,6 +54,17 @@ VideoGen supports three high-performance voice generation engines:
 
 To bypass Cloudflare / Google bot protections, the system attaches to the user's authentic Windows Chrome browser via remote debugging.
 
+### 2.0. Prerequisites & Tooling Requirements
+- **Runtime:** Node.js v20+ (Node.js v24 recommended) & FFmpeg with `libass` and `freetype` support.
+- **Recommended Visual Studio Tools (`lavish-axi` & `quota-axi`):**
+  Install the official productivity toolchain globally via npm:
+  ```bash
+  npm install -g lavish-axi quota-axi
+  ```
+  - `lavish-axi`: Visual Web UI studio for interactive storyboard reviews, prompt inspection, and shot-by-shot debugging.
+  - `quota-axi`: API quota preflight telemetry for ElevenLabs and AI platforms.
+  - *Standalone Fallback:* Users without `lavish-axi` can seamlessly view and interact with the review board via the standalone browser fallback (`file://.../.lavish/director_board.html`).
+
 ### 2.1. Port Architecture
 - **Windows Chrome:** Launched with `--remote-debugging-port=9222` and profile at `C:\Users\<YourUser>\AppData\Local\Google\Chrome\AutomationProfile`.
 - **CDP Proxy (`engine/cdp_proxy.js`):** Node.js TCP bridge on Windows forwarding `0.0.0.0:9223` -> `127.0.0.1:9222`.
@@ -176,34 +187,122 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 
 ---
 
-## 6. End-to-End Production Checklist (v2.0)
+## 6. End-to-End Production Workflow & Operational Phases (v2.0)
 
-1. **Prepare Storyboard (Director):** Author `storyboards/<project>.json` following the SSOT schema above or generate via `./videogen explainer`.
-2. **Review Storyboard Visually (Director's Board):**
-   Generate and inspect the interactive visual board to verify shot breakdown, narration density (wps), prompt accuracy, and render status:
-   ```bash
-   ./videogen board storyboards/<project>.json
-   # Or launch with Lavish Editor for collaborative human-in-the-loop inspection:
-   lavish-axi .lavish/board_<project>.html
-   ```
-3. **Select Resolution Mode:** Agent asks user for 1080p or 720p preference (see Section 3 above).
-4. **Execute Automated Production (Worker):**
-   - Single command (full pipeline):
-     ```bash
-     ./videogen run storyboards/<project>.json           # 1080p (default)
-     ./videogen run storyboards/<project>.json --720p    # 720p draft mode
-     ```
-   - Or step-by-step for fine control:
-     ```bash
-     ./videogen bridge
-     ./videogen render storyboards/<project>.json [--720p]
-     ./videogen voice storyboards/<project>.json
-     ./videogen subs storyboards/<project>.json
-     ./videogen assemble storyboards/<project>.json
-     ./videogen verify output/<project>/<master>.mp4
-     ./videogen archive storyboards/<project>.json
-     ./videogen upload storyboards/<project>.json
-     ```
+VideoGen structures production into distinct, standardized operational phases. The central human-in-the-loop review milestone occurs immediately after storyboard creation:
+
+### Phase 1: Storyboard Authoring & Semantic Segmentation (SSOT)
+- **Authoring:** Create `storyboards/<project>.json` following the declarative schema (or copy `examples/storyboards/universal_template.json`).
+- **Automated Clause Segmentation:** For explainers, run `./videogen explainer <transcript.txt>` to automatically segment narration into 1.5s–2.5s semantic visual clauses with cognitive strategy tags (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+- Defines all 6 dimensions of the parameter matrix (geometry, timeline, voice, visuals, subtitles, audio mix).
+
+---
+
+### Phase 2: The Visual UI Layer & Human-in-the-Loop Gate (Lavish Director's Board)
+Before rendering entire sequences or consuming batch compute/credits, the Director or Agent inspects the production plan through **Lavish Director's Board**:
+
+#### (a) Launching the Review Board
+```bash
+# Generate the Director's Board and automatically open in Lavish Visual Studio:
+./videogen board storyboards/<project>.json --open
+
+# Or generate the HTML artifact without auto-launching:
+./videogen board storyboards/<project>.json
+```
+The engine compiles a responsive, cinema-grade dashboard in `.lavish/board_<project>.html` and mirrors it to the canonical `.lavish/director_board.html`.
+
+#### (b) Storyboard Inspection Criteria
+The Director evaluates 5 vital quality indicators across the interactive card grid:
+1. **WPS (Words-Per-Second) Pacing & Speech Density:**
+   - Each card displays its calculated word count and real-time WPS badge.
+   - *Documentary Shorts (9:16):* Calibrated to **36–39 words per 10s shot** (~3.8 wps). Shots > 4.2 wps risk hurried narration; shots < 2.5 wps indicate dead air.
+   - *Minimalist Explainers (16:9):* Calibrated to **4–8 words per 1.5s–2.5s micro-shot** (~2.5–2.8 wps) with natural breathing pauses.
+2. **Prompt Hygiene & Cleanliness Guardrails:**
+   - Verify camera dynamics, lighting, and environmental context.
+   - Confirm mandatory negative constraints are present: `AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
+3. **Character Chips (`@Character`):**
+   - Confirm character asset chips are accurately attached.
+   - Verify the **Zero Physical Descriptors Rule**: when `@Character` is attached, the prompt text must not repeat hair/eye/clothing descriptors.
+4. **Color Palettes & Visual Strategies:**
+   - Verify visual strategy badges (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+   - Check contextual background wash tags (`dark_vignette`, `clean_diagram`, `prehistoric`, `ice_age`, `interior_cozy`, `clean_card`) for color harmony.
+5. **Video & Image Previews:**
+   - Completed clips display direct thumbnail and video previews directly inside each shot card (`renders/<project>/<shot_id>.mp4` or `.png`).
+   - Clicking any card opens a full-screen lightbox for in-depth inspection and one-click prompt copying.
+
+#### (c) Targeted Single-Shot Re-rendering & Direct Iteration
+If a shot requires aesthetic iteration or prompt adjustment, re-render only the affected shot without regenerating the entire timeline:
+```bash
+# 1. Edit the prompt in storyboards/<project>.json
+# 2. Re-render only the specific shot:
+./videogen render storyboards/<project>.json shot_03
+
+# Or re-render multiple target shots:
+./videogen render storyboards/<project>.json shot_01 shot_04
+
+# 3. Refresh the Director's Board to verify updated visuals:
+./videogen board storyboards/<project>.json
+```
+
+#### (d) Standalone Browser Fallback (Zero-Dependency Mode)
+Users or headless environments without `lavish-axi` installed can seamlessly use the review board:
+- Open `.lavish/director_board.html` directly in any web browser (`file:///absolute/path/to/.lavish/director_board.html`).
+- Built with CDN-backed Tailwind CSS v4 and DaisyUI v5 (Luxury theme), the board requires **zero local build tools, web servers, or dependencies**.
+- If `--open` is passed and `lavish-axi` is not found, `./videogen board` automatically prints the clickable `file://` URI, attempts to launch your default system browser (`google-chrome` or `xdg-open`), and provides a friendly installation tip (`npm install -g lavish-axi`).
+
+---
+
+### Phase 3: Visual Generation & AI Rendering (Google Flow / Nano Banana Pro)
+- **Resolution Mode:** Agent prompts user to choose **1080p Cloud Super-Resolution** (highest fidelity) or **720p Direct CDN** (high-speed draft).
+- **Google Flow Automation:** Configures aspect ratio, attaches `@Character` chips, runs TypeSafe Jev policy pre-flight, and pulls Full HD media into `renders/`.
+- **Minimalist Explainer Stills:** Generates 🍌 Nano Banana Pro 16:9 images with in-browser Base64 extraction and MD5 deduplication (0 credits consumed).
+
+---
+
+### Phase 4: Studio Voiceover Synthesis & Calibration (VieNeu-TTS / F5-TTS / ElevenLabs)
+- **Vietnamese Voice (Mode A):** VieNeu-TTS v3 Turbo 48 kHz (temp 0.4, watermark off, phonetic loanword transliteration).
+- **English Voice (Mode B):** F5-TTS Zero-Shot Studio Clone at 0.90x speed with 2-tier dead-silence trimming (80ms intra-clause, 220ms sentence-end). Measures exact durations via `ffprobe` for frame-accurate video synchronization.
+- **Global Acting (Mode C):** ElevenLabs CDP slider calibration and synthesis with quota preflight via `quota-axi`.
+
+---
+
+### Phase 5: Subtitles & Cinema Typography (Dual-Zone ASS / Dynamic Shorts)
+- **Cinema Dual-Zone ASS:** Tier A dialogue (bottom 34px Arial) + Tier B tech HUD (top 28px Consolas cyan).
+- **Dynamic Shorts ASS:** Animated yellow-neon micro-chunks (2–3 words/chunk) synchronized to speech cadence.
+
+---
+
+### Phase 6: Master Assembly, Audio Mixing & Compositing (FFmpeg)
+- **Video Concatenation:** Standardized FFmpeg concat filter re-indexes timestamps to prevent frame freezes across divergent timebases.
+- **Audio Mixing Bus:** 3-channel mix (Voice 100%, SFX 20–25%, BGM 12–15%). For Minimalist Explainers, BGM is strictly muted (`bgm_volume: 0`).
+- **Integrity Assertion:** Mandatory MD5 hash check prevents duplicate shots or repeated voice files.
+- **Verification QA:** Extracts high-resolution verification keyframes for visual review (`./videogen verify`).
+
+---
+
+### Phase 7: Multi-Platform Publishing & Archival
+- **Publishing Order:** YouTube Studio (Unlisted / Scheduled) -> Meta Business Suite (Facebook Reels) -> TikTok Studio.
+- **Dialog & Navigation Hygiene:** Auto-bypasses `ytcp-prechecks-warning-dialog` and handles `beforeunload` events.
+- **Archival:** `./videogen archive` migrates masters and assets to external drives (`DEST_ORIGINAL`, `DEST_FINAL`) and purges temp directories.
+
+---
+
+### Quick Production Execution Reference
+- **Single Command Autonomous Run (A→Z):**
+  ```bash
+  ./videogen run storyboards/<project>.json           # 1080p (default)
+  ./videogen run storyboards/<project>.json --720p    # 720p draft mode
+  ```
+- **Step-by-Step Interactive Workflow:**
+  ```bash
+  ./videogen bridge                                  # 1. Connect browser bridge
+  ./videogen board storyboards/<project>.json --open # 2. Review Director's Board (Lavish)
+  ./videogen render storyboards/<project>.json       # 3. Render visuals
+  ./videogen voice storyboards/<project>.json        # 4. Synthesize voiceover
+  ./videogen subs storyboards/<project>.json         # 5. Generate subtitles
+  ./videogen assemble storyboards/<project>.json     # 6. Stitch & mix master
+  ./videogen upload storyboards/<project>.json       # 7. Publish / schedule
+  ```
 
 ---
 
