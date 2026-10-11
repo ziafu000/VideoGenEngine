@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
@@ -821,6 +822,84 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
   }
 }
 
+/**
+ * Batch render all shots of a storyboard with cache checks and MD5 duplicate guards.
+ */
+async function renderStoryboard(sb, options = {}) {
+  const {
+    resolution = '1080p',
+    targetShots = [],
+    sbPath = ''
+  } = options;
+
+  const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
+  const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  const epRenderDir = path.join(config.RENDERS_DIR, episodeName);
+  if (!fs.existsSync(epRenderDir)) fs.mkdirSync(epRenderDir, { recursive: true });
+
+  const isImageMode = (sb.engine === 'nano_banana_pro') || 
+                      (sb.format === 'minimalist_explainer') || 
+                      (sb.render_mode === 'image') ||
+                      (sb.visual_engine === 'nano_banana_pro');
+  const seenHashes = new Set();
+  if (fs.existsSync(epRenderDir)) {
+    const existingPngs = fs.readdirSync(epRenderDir).filter(f => f.endsWith('.png'));
+    for (const f of existingPngs) {
+      try {
+        const h = crypto.createHash('md5').update(fs.readFileSync(path.join(epRenderDir, f))).digest('hex');
+        seenHashes.add(h);
+      } catch {}
+    }
+  }
+
+  const shots = sb.shots || [];
+  console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title || episodeName} [${isImageMode ? 'NANO BANANA PRO (IMAGE)' : resolution.toUpperCase()}] ===`);
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+    if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
+
+    const isShotImage = isImageMode || s.type === 'image' || (!s.flow_prompt && s.image_prompt);
+    const ext = isShotImage ? '.png' : '.mp4';
+    const outFile = path.join(epRenderDir, `${shotId}${ext}`);
+    if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
+      console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
+      continue;
+    }
+
+    console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
+    try {
+      const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
+      if (isShotImage) {
+        console.log(`    [-] [Nano Banana Pro] Gửi câu lệnh vẽ ảnh: "${promptText.slice(0, 60)}..."`);
+        await generateImage({
+          prompt: promptText,
+          outputPath: outFile,
+          seenHashes
+        });
+        await sleep(3500);
+      } else {
+        await clearCharacters();
+        const chars = s.characters || [];
+        for (const c of chars) {
+          console.log(`    [-] Gắn nhân vật: @${c}`);
+          await addCharacter(c);
+        }
+        console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
+        await submitPrompt(promptText);
+        await waitForRender(240);
+        await downloadLatest(outFile, { resolution });
+        try {
+          fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
+        } catch {}
+      }
+    } catch (err) {
+      console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
+    }
+  }
+  console.log('\n✓ Hoàn tất lượt render Google Flow!');
+}
+
 module.exports = {
   getStatus,
   clearCharacters,
@@ -831,5 +910,6 @@ module.exports = {
   downloadCloud1080p,
   downloadLatestDirect,
   generateImage,
-  ensureFlowSettings
+  ensureFlowSettings,
+  renderStoryboard
 };
