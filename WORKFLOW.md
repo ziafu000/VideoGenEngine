@@ -216,7 +216,7 @@ The Director evaluates 5 vital quality indicators across the interactive card gr
 1. **WPS (Words-Per-Second) Pacing & Speech Density:**
    - Each card displays its calculated word count and real-time WPS badge.
    - *Documentary Shorts (9:16):* Calibrated to **36–39 words per 10s shot** (~3.8 wps). Shots > 4.2 wps risk hurried narration; shots < 2.5 wps indicate dead air.
-   - *Minimalist Explainers (16:9):* Calibrated to **4–8 words per 1.5s–2.5s micro-shot** (~2.5–2.8 wps) with natural breathing pauses.
+   - *Minimalist Explainers (16:9):* Calibrated to **4–7 words per 1.5s–2.5s micro-shot** (~2.5–3.5 wps) with natural breathing pauses.
 2. **Prompt Hygiene & Cleanliness Guardrails:**
    - Verify camera dynamics, lighting, and environmental context.
    - Confirm mandatory negative constraints are present: `AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
@@ -336,7 +336,7 @@ VideoGen is a **zero-hardcoding, parameter-driven video production engine**. Rat
 - `provider`: `"vieneu"` (local 48 kHz neural TTS, Vietnamese), `"f5-tts"` (local zero-shot studio clone, English), or `"elevenlabs"` (browser CDP).
 - `target_density_wps`: Words-per-second speech density:
   - **Documentary Narrative Pacing:** ~3.8–4.0 wps. For a 10s shot, write exactly **36–39 words** (~8.5s–9.5s audio duration) to naturally fill the cut without dead air.
-  - **Hand-Drawn Explainer Pacing (Ink Explainer):** ~2.6–3.0 wps. Rapid-fire narration with micro-pauses (0.12–0.18s) matching micro-shots of **1.5s – 2.5s**.
+  - **Hand-Drawn Explainer Pacing (Ink Explainer):** ~2.5–3.5 wps. Rapid-fire narration with micro-pauses (0.12–0.18s) matching micro-shots of **1.5s – 2.5s** (typically 4–7 words per micro-shot).
   - **Rapid Social Explainer Pacing:** ~2.75–3.0 wps. Approximately 80–85 words per 30 seconds.
 - `settings`:
   - `temperature`: `0.4`–`0.5` (prevents slurring and consonant lisping in VieNeu).
@@ -453,7 +453,7 @@ VideoGen powers multiple independent production channels running in parallel:
      An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
      ```
 - **Clause-Locked Semantic Workflow (`./videogen explainer`):**
-  1. **Segment Transcript:** Splits voiceover into semantic visual clauses (1.5s–2.5s / 4–8 words).
+  1. **Segment Transcript:** Splits voiceover into semantic visual clauses (1.5s–2.5s / 4–7 words, ~2.5–3.5 wps).
   2. **Classify Visual Strategy:** Assigns each clause one of 4 pure visual strategies (no text injection):
      - `LITERAL`: Direct physical depiction (alarm clock at night, sweating in bed, clutching churning stomach, trembling fingers).
      - `METAPHOR`: Meme / symbolic visual gag (stickman lifting giant cartoon minivan, floating in mid-air with sunglasses and golden halo, brain control room with panic button).

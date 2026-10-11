@@ -1,7 +1,20 @@
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { spawnSync, spawn } = require('child_process');
 const config = require('./config');
+
+/**
+ * Safely convert a file path to a valid file:// URL
+ * @param {string} filePath
+ * @returns {string}
+ */
+function toFileUrl(filePath) {
+  if (typeof filePath === 'string' && filePath.startsWith('file://')) {
+    return filePath;
+  }
+  return pathToFileURL(path.resolve(filePath)).href;
+}
 
 /**
  * Check if lavish-axi CLI is installed and accessible
@@ -26,13 +39,29 @@ function isLavishInstalled() {
  * @returns {boolean} - True if an opener process was spawned successfully
  */
 function openInSystemBrowser(filePath) {
-  const fileUrl = filePath.startsWith('file://') ? filePath : `file://${path.resolve(filePath)}`;
-  const openers = [
-    { cmd: 'google-chrome', args: [fileUrl] },
-    { cmd: 'google-chrome-stable', args: [fileUrl] },
-    { cmd: 'xdg-open', args: [fileUrl] },
-    { cmd: 'explorer.exe', args: [config.toWinPath ? config.toWinPath(path.resolve(filePath)) : fileUrl] }
-  ];
+  if (!filePath || typeof filePath !== 'string') return false;
+
+  const resolvedPath = path.resolve(filePath);
+  const fileUrl = toFileUrl(resolvedPath);
+
+  const platform = process.platform;
+  const openers = [];
+
+  if (platform === 'darwin') {
+    openers.push({ cmd: 'open', args: [fileUrl] });
+  } else if (platform === 'win32') {
+    openers.push({ cmd: 'explorer.exe', args: [resolvedPath] });
+    openers.push({ cmd: 'cmd.exe', args: ['/c', 'start', '""', fileUrl] });
+  } else {
+    // Linux / WSL default: xdg-open first, then browsers
+    openers.push({ cmd: 'xdg-open', args: [fileUrl] });
+    openers.push({ cmd: 'google-chrome', args: [fileUrl] });
+    openers.push({ cmd: 'google-chrome-stable', args: [fileUrl] });
+    if (config.WIN_HOST || process.env.WSL_DISTRO_NAME) {
+      const winTarget = config.toWinPath ? config.toWinPath(resolvedPath) : resolvedPath;
+      openers.push({ cmd: 'explorer.exe', args: [winTarget] });
+    }
+  }
 
   for (const opener of openers) {
     try {
@@ -840,7 +869,7 @@ function generateBoard(storyboardData, options = {}) {
 
   const hasLavish = isLavishInstalled();
   const relCanonical = path.relative(config.PROJECT_DIR, canonicalPath);
-  const fileUrl = `file://${path.resolve(canonicalPath)}`;
+  const fileUrl = toFileUrl(canonicalPath);
 
   console.log(`\n============================================================`);
   console.log(`  VIDEOGEN DIRECTOR'S VISUAL REVIEW BOARD GENERATED!`);
@@ -901,5 +930,6 @@ module.exports = {
   getStrategyBadgeClass,
   findRenderFile,
   isLavishInstalled,
-  openInSystemBrowser
+  openInSystemBrowser,
+  toFileUrl
 };

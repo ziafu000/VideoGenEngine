@@ -102,7 +102,7 @@ This prevents model hallucination of unwanted burned-in text or clashing audio.
 #### D. Visual Review & Human-in-the-Loop Inspection Gate (Mandatory Agent Rule)
 - **Mandatory Board Generation:** Whenever an agent creates or modifies a storyboard JSON, it **MUST** generate and inspect the storyboard via `./videogen board <storyboard.json>` before triggering batch generation (`./videogen run` or `./videogen loop`).
 - **Inspection Checklist:**
-  1. Verify WPS (Words-Per-Second) density pacing matches format guidelines (Documentary: 36–39 words/10s shot; Explainer: 4–8 words/micro-shot).
+  1. Verify WPS (Words-Per-Second) density pacing matches format guidelines (Documentary: 36–39 words/10s shot; Explainer: 4–7 words/micro-shot, ~2.5–3.5 wps).
   2. Confirm prompt cleanliness guardrails and negative prompt hygiene are present on every shot.
   3. Validate character chips (`@Character`) and visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
   4. Test single-shot re-rendering (`./videogen render <sb> <shot_id>`) for direct feedback iterations prior to full pipeline execution.

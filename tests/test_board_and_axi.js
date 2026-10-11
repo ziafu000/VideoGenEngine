@@ -63,6 +63,10 @@ const lavishStatus = board.isLavishInstalled();
 console.log(`  [i] lavish-axi detected: ${lavishStatus ? 'Yes' : 'No'}`);
 assert.strictEqual(typeof lavishStatus, 'boolean', 'isLavishInstalled must return a boolean');
 assert.strictEqual(typeof board.openInSystemBrowser, 'function', 'openInSystemBrowser must be exported');
-console.log('  [PASS] isLavishInstalled and openInSystemBrowser helpers verified.');
+assert.strictEqual(typeof board.toFileUrl, 'function', 'toFileUrl must be exported');
+const sampleUrl = board.toFileUrl('/path/to/board.html');
+assert.ok(sampleUrl.startsWith('file://'), 'toFileUrl must return a file:// protocol URL');
+assert.ok(sampleUrl.includes('board.html'), 'toFileUrl must include file name');
+console.log('  [PASS] isLavishInstalled, openInSystemBrowser, and toFileUrl helpers verified.');
 
 console.log('\n=== ALL BOARD & AXI TESTS PASSED ===\n');
