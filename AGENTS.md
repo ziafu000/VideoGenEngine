@@ -109,10 +109,19 @@ This prevents model hallucination of unwanted burned-in text or clashing audio.
 
 #### D. Visual Review & Human-in-the-Loop Inspection Gate (Mandatory Agent Rule)
 - **Mandatory Board Generation:** Whenever an agent creates or modifies a storyboard JSON, it **MUST** generate and inspect the storyboard via `./videogen board <storyboard.json>` before triggering batch generation (`./videogen run` or `./videogen loop`).
-- **Inspection Checklist:**
+- **Studio Cutting Room Architecture (`engine/board.js`):**
+  - Generates `.lavish/board_<name>.html` and mirrors to `.lavish/director_board.html` (viewable via `lavish-axi` or direct browser).
+  - **Single Warm Studio Palette (Zero AI-Slop):** Unified warm dark cutting room aesthetic (`#1c1917` body background, `#292524` cards/panels, `#44403c` tech borders, `#f59e0b` amber hover accents). Completely eliminates extraneous theme switchers and cold blue templates for focused editorial review.
+  - **Enlarged Typography Hierarchy:** Spoken narration clauses boosted to **`16.5px` (font-semibold)** in warm cream `#fffbeb`; prompt blueprints rendered in **`13px` (font-mono)** in warm sand `#e2d6c3`; shot timecode headers in **`15px` (font-bold)** in warm amber `#fbbf24`.
+  - **Centered Modal Lightbox:** Fixed overlay centered dead-center in the viewport (`fixed inset-0 z-50 flex items-center justify-center my-auto`), with clean backdrop blur, backdrop click / `Esc` to close, keyboard arrows (`←`/`→`) to navigate cuts, and `C` to copy prompts.
+  - **Zero Full-Page Reloads & Hot-DOM In-Place Polling:** Full-page reloads (`location.reload()`) are strictly banned. Background poller tests pending shot cards via `new Image()` probes every 2.5s. As soon as a rendered PNG appears in `renders/<project>/`, the placeholder card transforms in-place to the rendered illustration, flips the status badge to `Ready`, and ticks the dynamic tab title `[X/315 · Y%]`.
+  - **6 Cognitive Strategy Semantic Badges:** Visually color-coded across all cards: `HOOK` (rose), `METAPHOR` (purple), `POSE_CHURN` (amber/orange), `SPLIT_SCREEN` (emerald), `TITLE_CARD` (yellow), and `LITERAL` (warm amber).
+  - **Syntax-Safe Metadata Map:** Shot data is encapsulated in a client-side map `const SHOTS_MAP = {...}`, and zoom click handlers use `openLightboxFor(this.dataset.shotId)` with `data-shot-id`, eliminating quote-escaping conflicts and runtime syntax crashes.
+  - **Live Floating Status Pill:** A floating badge in the bottom-right corner (`🟢 Live Hot-Sync: X/Y ready`) displays real-time progress and includes an on/off toggle switch.
+- **Inspection Checklist for Agents:**
   1. Verify visual pacing and density: Explainer calibrated to the flexible 3-tier contextual matrix (0.8s–1.2s high-tempo hooks/gags, 1.5s–2.0s standard narrative, 2.5s–3.5s complex diagrams/punchlines) with 2–4 sequential images per clause/sentence (2.5s–4.5s). Documentary calibrated to 36–39 words/10s shot.
   2. Confirm prompt cleanliness guardrails and negative prompt hygiene are present on every shot.
-  3. Validate character chips (`@Character`) and visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+  3. Validate character chips (`@Character`) and visual strategies (`HOOK`, `LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
   4. Test single-shot re-rendering (`./videogen render <sb> <shot_id>`) for direct feedback iterations prior to full pipeline execution.
 
 ---
@@ -177,8 +186,15 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
 For educational explainers (like Ink Explainer / hand-drawn minimalist style):
 - **Model:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (1376×768 native high-resolution).
 - **Zero Credit Cost:** Image generation consumes 0 Flow credits, enabling unlimited batch generation for long-form episodes (10–15 minutes).
+- **Automated Model Preflight & Lock (`ensureFlowSettings` in `engine/flow.js`):**
+  - Prior to submitting prompts, `flow.js` automatically inspects the Flow settings trigger.
+  - If settings drift, it automatically clicks the settings panel, switches mode to `Hình ảnh` (Image), selects `16:9` (`crop_16_9`), opens the model selector dropdown, clicks `Nano Banana Pro`, dismisses via ESC, and verifies.
+  - Prevents Google Flow from drifting into Video mode or `Nano Banana 2.1/Lite` during unattended batch runs.
 - **In-Browser Base64 Download via CDP:** Signed CDN URLs from Google Flow (`flow-content.google`) return 403 Forbidden when requested directly from external Node/curl due to active session cookie requirements. Image downloading is performed inside the Chrome session via CDP `evaluate()` executing `fetch(url)` and returning Base64 directly to Node.js buffers.
 - **MD5 Deduplication Guard:** Google Flow sometimes generates an identical image when prompt variance is low. `engine/flow.js` hashes every downloaded image buffer (`crypto.createHash('md5')`) against `seenHashes` and automatically re-rolls if a collision is detected.
+- **Prompt Hygiene Distinction (Crucial Rule):**
+  - **Episode Video Shots:** MUST include `STRICTLY NO TITLE BANNER, NO TOP HEADER, NO "INK EXPLAINER" TEXT, NO "MINIMALIST" TEXT` to eliminate AI-generated header banners.
+  - **Thumbnails:** MUST NOT include `NO TITLE BANNER` or `NO TOP HEADER` (which deletes the top hook text).
 - **Anti-Watermark / Zero-Leak Guard:** Prompts strictly forbid 3D, CGI, realistic textures, and watermarks/logos via standardized negative prompts (`NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO`). All frames must be free of intrusive external branding before master assembly.
 - **Authentic Ink Explainer Art Style & Visual Grammar ("Voice Gì Thị Giác Đó"):**
   - **Core Philosophy:** Direct 1-to-1 visual correspondence between the spoken narration and on-screen educational illustrations. Never draw generic standing stickmen. If the narration discusses adrenal glands, lungs expanding, liver dumping glucose, a tachometer redlining at 200 BPM, flipping an SUV, or punching a bear, the image must literally and humorously illustrate that exact science, organ, feat, or metaphor with the stickman mascot.
@@ -191,36 +207,38 @@ For educational explainers (like Ink Explainer / hand-drawn minimalist style):
     * *Ice Age / Cold Threat:* Pale slate-blue watercolor wash vignette (`#a0c0d0`), black-and-white snowflake doodles, flat jagged white ice ground line.
     * *Modern Interior (Office, Bedroom, Living Room):* Muted olive and tan flat walls, horizontal wooden plank floorboards, minimalist black-line furniture.
     * *Clean Card (Punchline / Title Card):* Stark clean cream-white parchment paper with soft warm spotlight, 80%+ negative breathing space.
-  - **Negative Prompt:**
+  - **Negative Prompt for Shots:**
     ```text
-    NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+    STRICTLY NO TITLE BANNER, NO TOP HEADER, NO "INK EXPLAINER" TEXT, NO "MINIMALIST" TEXT, NO CHANNEL NAME, NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
     ```
   - **Standardized Prompt Formula for Nano Banana Pro:**
     ```text
-    An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
+    2D comic illustration of [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel illustration, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. STRICTLY NO TITLE BANNER, NO TOP HEADER, NO "INK EXPLAINER" TEXT, NO "MINIMALIST" TEXT, NO CHANNEL NAME, NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
     ```
-- **Flexible 3-Tier Contextual Pacing Matrix (Stickman Explainer 16:9):**
-  Pacing avoids rigid uniform timing (which is exhausting), adapting dynamically to information density (0.8s to 3.5s). Fast ~1.0s cuts dominate the majority of the production (~70%), especially across the opening seconds (0–4s):
-  1. **Tier 1 — High-Tempo / Gag / Micro-phrases / Opening Hook (~0.8s–1.2s, avg ~1.0s, ~70% of cuts):** Rapid visual velocity. Mandatory across the opening seconds (0–4s) to capture viewer attention instantly from second 0. E.g. across a 4-second opening hook, 4 sequential images (~1.0s each) pop up:
-     * `0.0s – 1.0s`: Stickman enters frame with puzzled posture.
-     * `1.0s – 2.0s`: Extreme close-up of unblinking cartoon insomnia eyes.
-     * `2.0s – 3.0s`: Trembling panic reaction with exaggerated blue sweat drops.
-     * `3.0s – 4.0s`: Giant visual metaphor or chalkboard anatomy diagram pops up.
-  2. **Tier 2 — Standard Narrative Flow (~1.5s–2.0s):** Conversational visual progression matching standard explanatory sentences.
-  3. **Tier 3 — Complex Infographics / Anatomy / Deep Diagrams / Punchlines (~2.5s–3.5s, ~15–20% of cuts):** Deliberate, purposeful minority providing cognitive breathing room to absorb detailed anatomical cross-sections, formulas, and comedic punchlines.
-  - **100% Static Hard Cuts:** Pure static cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with **zero pan/zoom or Ken Burns latency**, keeping pacing razor-sharp.
+- **Automated Multi-Image Semantic Clause Mapping (`applyMultiImagePacing` in `engine/explainer.js`):**
+  Pacing avoids rigid uniform timing (which is exhausting), adapting dynamically to information density (0.8s to 3.5s). The engine hardcodes this logic automatically:
+  1. **Opening 4-Second Golden Hook:** Mandatory 4 cuts (~1.0s each) across the first 4 seconds to capture viewer attention instantly from second 0. E.g.:
+     * `0.0s – 1.0s`: Stickman enters frame with puzzled posture (`HOOK`).
+     * `1.0s – 2.0s`: Extreme close-up of unblinking cartoon insomnia eyes (`HOOK`).
+     * `2.0s – 3.0s`: Trembling panic reaction with exaggerated blue sweat drops (`HOOK`).
+     * `3.0s – 4.0s`: Giant visual metaphor or chalkboard anatomy diagram pops up (`HOOK`).
+  2. **Short Clauses (<= 1.8s) & Title Cards:** Preserved as snappy single cuts (~0.8s–1.8s).
+  3. **Medium Clauses (> 1.8s and <= 3.2s):** Automatically split into 2 visual cuts (~0.9s–1.5s/cut: Action/Focal Setup + Reaction/Punchline via `POSE_CHURN`).
+  4. **Long Clauses (> 3.2s):** Automatically split into 3 visual cuts (~1.0s–1.4s/cut: Setup Context + Key Action/Metaphor + Consequence/Meme Reaction).
+  - **70% Fast Velocity Guarantee:** Guarantees ~70% fast cuts (<= 1.5s) on any transcript automatically.
+  - **100% Static Hard Cuts:** Pure static cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with **zero pan/zoom or Ken Burns latency**, keeping pacing razor-sharp and rendering in < 2 seconds.
 - **CLI Workflow for Minimalist Explainers:**
   ```bash
-  # 1. Generate storyboard from transcript with 1-to-1 visual clauses
+  # 1. Generate storyboard from transcript with automated multi-image clause mapping
   ./videogen explainer storyboards/transcript.txt --title="Episode Title" --series="series_name" --ep="ep01" --ratio=16:9 --out="storyboards/series_name_ep01.json"
-  # 2. Render all static clause illustrations via Nano Banana Pro (0 credits)
+  # 2. Render all static clause illustrations via Nano Banana Pro (0 credits, auto-locked)
   ./videogen render storyboards/series_name_ep01.json
   # 3. Synthesize F5-TTS English narration (speed: 0.90x) & measure exact durations
   ./videogen voice storyboards/series_name_ep01.json
   # 4. Ultrafast 1-pass FFmpeg concat demuxer assembly
   ./videogen assemble storyboards/series_name_ep01.json
   ```
-- **Ultrafast 1-Pass Concat Demuxer:** `./videogen assemble` compiles all static cuts in ~0.5s via `compositor.assembleStaticCuts` using FFmpeg `ffconcat version 1.0` muxed directly with the master voiceover (`master_voice_tight.wav`), perfectly synchronized to 1080p Full HD.
+- **Ultrafast 1-Pass Concat Demuxer:** `./videogen assemble` compiles all static cuts in ~0.5s via `compositor.assembleStaticCuts` using FFmpeg `ffconcat version 1.0` muxed directly with the master voiceover (`master_voice.wav`), perfectly synchronized to 1080p Full HD.
 
 ---
 
@@ -240,12 +258,15 @@ For converting high-performing 16:9 segments into viral vertical Shorts (`engine
 
 ### 3.6. Master Video Assembly & Audio Mixing
 - Operated via `./videogen assemble <storyboard.json>`.
+- **Dual Assembly Architecture (Static Cuts vs. Video Clips):**
+  - **Static Hard Cuts (Explainer Series):** Assembled via `compositor.assembleStaticCuts` using FFmpeg Concat Demuxer (`ffconcat version 1.0`). Instant 0.5s assembly, zero pan/zoom or Ken Burns latency, perfectly synchronized with master voiceover.
+  - **Google Flow Video Concat (Anti-Frozen-Video Concat Filter):** When stitching video clips generated by Google Flow, **FFmpeg Concat Demuxer (`-c copy`) is strictly banned**. Flow clips possess variable containers and timebases (`mp42 90k tbn` vs `isom 12288 tbn`); copying streams causes Non-monotonic DTS packet drops, freezing the video at shot 1 while audio continues. `engine/compositor.js` enforces **FFmpeg Concat Filter** (`filter_complex "...concat=n=X:v=1:a=1[v][a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 17 -c:a aac`) to decode frames and resynchronize Presentation Timestamps (PTS) to a unified timebase, eliminating frozen frames forever.
 - **Configurable Audio Mixing Bus:**
   - **Voice:** Configurable via `audio_mix.voice_volume` (default `1.0`).
   - **SFX (Flow Ambience / Foley):** Configurable via `audio_mix.sfx_volume` (default `0.25`).
   - **BGM (Background Music):** Configurable via `audio_mix.bgm_path` and `audio_mix.bgm_volume`.
   - **Strictly No BGM Rule for Minimalist Explainers:** When producing for hand-drawn explainer series (Ink Explainer style), set `"bgm_volume": 0` or `"bgm": "none"`. The engine automatically omits the background music track, delivering a pristine, intimate podcast-style voiceover with crisp sound effects.
-- **MD5 Integrity Assertion:** Verifies unique MD5 checksums for all video files and audio files before FFmpeg concatenation.
+- **MD5 Integrity Assertion:** Verifies unique MD5 checksums for all video files and audio files before FFmpeg concatenation to prevent duplicate cuts or repeated voice lines.
 
 ---
 
@@ -262,12 +283,18 @@ For converting high-performing 16:9 segments into viral vertical Shorts (`engine
 - **YouTube Prechecks Warning Dialog Auto-Bypass:**
   - When uploading videos or batching uploads, YouTube Studio may not finish preliminary checks before the Save/Publish button (`#done-button`) is clicked. This triggers the modal `ytcp-prechecks-warning-dialog` ("Chúng tôi vẫn đang kiểm tra nội dung của bạn" / "We are still checking your content").
   - **Handling:** Automation in `engine/youtube_uploader.js` waits 3.5s after clicking `#done-button` to allow the modal to render in the DOM, then clicks `#secondary-action-button` ("Vẫn xuất bản" / "Publish anyway"). Without this step, the video remains trapped in the Draft state.
-- **High-CTR Thumbnail SOP (Golden Typography & Visual Conflict):**
-  - **Geometry:** `16:9` widescreen (1920×1080).
-  - **Anchor Position:** Always anchor big typography in the **Top-Left corner** over dark slate or textured background for maximum contrast.
-  - **The 2-Word Hook Formula:** Short punchline `[WHY / STILL / HOW] + [KEYWORD]` (e.g. `WHY WORK?`, `WHY TIRED?`, `ADRENALINE?`, `STILL BROKE?`).
-  - **Typography:** Heavy non-serif font (Impact, Montserrat Black, Bangers), lemon yellow fill (`#FFE500`), thick black stroke (18–24px), deep drop shadow.
-  - **Accents & Conflict:** White mascot head (`#ffffff`) with warm vibrant scene accents (red heart, yellow organs, orange fire, blue car) on dark textured paper. Must showcase an ironic visual conflict or scientific paradox.
+- **High-CTR Thumbnail SOP (Golden Hook Typography & Visual Paradox):**
+  - **Geometry:** `16:9` widescreen (1920×1080 / 1376×768 native Flow).
+  - **Top Golden Hook Text:** One single line of giant, massive hook text anchored at the very top edge, bright golden-yellow (`#FFE500`), thick black comic outline, dynamic tilt. E.g. `ADRENALINE?`, `WHY TIRED?`, `WIZARDS?`.
+  - **Two-Sided Visual Paradox (Extreme Contrast):**
+    * *Left Side (Superhuman Feat):* Stickman one-hand lifting a giant SUV (`RUMBLE`), bending a steel girder, or radiating cosmic aura.
+    * *Right Side (Derpy Logic Fail):* Stickman with cartoon meme sweat drops, insomnia eyes, staring helplessly at a childish puzzle `7 + 5 = ?` with red `???` and brain turned into a question mark.
+  - **Prompt Hygiene Distinction for Thumbnails:**
+    * NEVER add `NO TITLE BANNER` or `NO TOP HEADER` to thumbnail prompts (which would eliminate the top hook text).
+    * Standardized Thumbnail Prompt:
+      ```text
+      A high-contrast 2D comic YouTube thumbnail. SCENE: At the very top, one single line of giant, massive comic hook text in bold bright golden-yellow typography with thick black outlines reads exactly: "[HOOK]?". Below the text, on the left, [EXTREME_FEAT]. On the right, [DERPY_LOGIC_FAIL]. ENVIRONMENT: Warm apricot and terracotta gradient watercolor wash vignette on subtle cream parchment paper, educational indicator arrows. STYLE: High-contrast educational graphic novel illustration, bold black ink line art, flat vibrant color accents, clean paper texture. STRICTLY NO WATERMARK, NO LOGO, NO 3D, NO CGI, NO PHOTOREALISM.
+      ```
 - **Mobile Notification Integration:**
   - Instant dispatch notifications to the project operator are sent via the local notification bridge CLI: `~/.local/bin/zalo-notify "<message>"`.
 
