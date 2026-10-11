@@ -610,9 +610,16 @@ async function cmdUpload(args) {
     console.error(`  -> Chế độ: ${schedData ? `LÊN LỊCH (${schedData.formattedDate} ${schedData.time})` : visibility.toUpperCase()}\n`);
 
   } catch (err) {
-    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `yt_error_${Date.now()}.png`);
-    await client.captureScreenshot(errorScreenshot).catch(() => {});
-    client.close();
+    const errorDir = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect');
+    const errorFile = `yt_error_${Date.now()}.png`;
+    let errorScreenshot = path.join(errorDir, errorFile);
+    if (client && typeof client.captureDiagnosticScreenshot === 'function') {
+      const saved = await client.captureDiagnosticScreenshot(errorFile, errorDir).catch(() => null);
+      if (saved) errorScreenshot = saved;
+    } else if (client) {
+      await client.captureScreenshot(errorScreenshot).catch(() => {});
+    }
+    if (client) client.close();
     console.error(JSON.stringify({ success: false, error: err.message, screenshot: errorScreenshot }, null, 2));
     process.exit(1);
   }

@@ -160,7 +160,9 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 
 | Command | Function | Description |
 | :--- | :--- | :--- |
+| `./videogen doctor` | System Preflight & Quota | Verifies Node.js, FFmpeg, CDP bridge, ElevenLabs quota preflight via `quota-axi`, and Zero-Leak IP security. |
 | `./videogen bridge [status]` | Bridge Health | Auto-starts Windows Chrome & CDP proxy; verifies tab connections. |
+| `./videogen board <sb> [--open]` | Director's Visual Board | Generates interactive HTML review board in `.lavish/` with shot cards, narration density, prompts, and render previews for `lavish-axi` review. |
 | `./videogen render <sb> [shots...] [--720p]` | Render Google Flow | Configures settings, attaches `@Character` chips, runs Jev pre-flight, renders, downloads 1080p (or `--720p`). |
 | `./videogen voice <sb> [shots...]` | Voiceover ElevenLabs | Reads `voice_profiles`, auto-calibrates Radix UI sliders, downloads MP3s. |
 | `./videogen subs <sb>` | Subtitle Generation | Generates cinema Dual-Zone ASS (Mode 2) or Bouncy Neon (Shorts). |
@@ -176,9 +178,16 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 
 ## 6. End-to-End Production Checklist (v2.0)
 
-1. **Prepare Storyboard (Director):** Author `storyboards/<project>.json` following the SSOT schema above.
-2. **Select Resolution Mode:** Agent asks user for 1080p or 720p preference (see Section 3 above).
-3. **Execute Automated Production (Worker):**
+1. **Prepare Storyboard (Director):** Author `storyboards/<project>.json` following the SSOT schema above or generate via `./videogen explainer`.
+2. **Review Storyboard Visually (Director's Board):**
+   Generate and inspect the interactive visual board to verify shot breakdown, narration density (wps), prompt accuracy, and render status:
+   ```bash
+   ./videogen board storyboards/<project>.json
+   # Or launch with Lavish Editor for collaborative human-in-the-loop inspection:
+   lavish-axi .lavish/board_<project>.html
+   ```
+3. **Select Resolution Mode:** Agent asks user for 1080p or 720p preference (see Section 3 above).
+4. **Execute Automated Production (Worker):**
    - Single command (full pipeline):
      ```bash
      ./videogen run storyboards/<project>.json           # 1080p (default)

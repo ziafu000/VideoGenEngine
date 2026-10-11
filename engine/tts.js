@@ -744,6 +744,54 @@ async function generateAllVoicesF5(storyboardData, targetShotIds = null, sbPath 
 }
 
 // Generate all voices defined in a storyboard
+/**
+ * Run ElevenLabs character estimation & quota preflight check via quota-axi
+ * @param {Array} pendingShots - Array of { shotId, text } to be synthesized
+ */
+function preflightElevenLabsQuota(pendingShots) {
+  const totalChars = pendingShots.reduce((sum, s) => sum + s.text.length, 0);
+  console.log(`\n--- TIỀN KIỂM HẠN NGẠCH ELEVENLABS (QUOTA PREFLIGHT) ---`);
+  console.log(`  [i] Ước tính: ${pendingShots.length} shot(s) cần tổng hợp (~${totalChars} ký tự).`);
+
+  if (totalChars === 0) {
+    console.log(`  [✓] Không có ký tự nào cần tạo mới.`);
+    return { ok: true, totalChars };
+  }
+
+  try {
+    const { spawnSync } = require('child_process');
+    const res = spawnSync('quota-axi', ['--provider', 'elevenlabs', '--json'], {
+      encoding: 'utf8',
+      timeout: 5000
+    });
+    if (res.stdout) {
+      try {
+        const data = JSON.parse(res.stdout);
+        const p = data.providers?.find(item => item.provider === 'elevenlabs');
+        if (p) {
+          if (p.notSetUp || p.state?.status === 'auth_required') {
+            console.log(`  [i] quota-axi: ElevenLabs API key chưa cấu hình CLI. Tiếp tục tổng hợp qua phiên CDP trực tiếp.`);
+          } else {
+            const avail = p.quotaSemantics?.effectiveAvailability?.[0];
+            const win = p.windows?.[0];
+            const pct = avail?.effectivePercentRemaining ?? win?.percentRemaining ?? null;
+            const resetsAt = win?.resetsAt || 'N/A';
+            if (pct !== null && pct <= 0) {
+              console.warn(`  [!] CẢNH BÁO: Hạn ngạch ElevenLabs đã cạn (0%)! Reset: ${resetsAt}`);
+              console.warn(`      Việc tạo ${totalChars} ký tự có thể gặp lỗi quota_exceeded.`);
+            } else if (pct !== null && pct <= 10) {
+              console.warn(`  [!] CẢNH BÁO: Hạn ngạch ElevenLabs sắp hết (~${pct}%)! Cần ~${totalChars} ký tự.`);
+            } else if (pct !== null) {
+              console.log(`  [✓] Hạn ngạch ElevenLabs khả dụng: ~${pct}% (Reset: ${resetsAt}).`);
+            }
+          }
+        }
+      } catch {}
+    }
+  } catch {}
+  return { ok: true, totalChars };
+}
+
 async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = null) {
   const provider = (storyboardData && storyboardData.voice && storyboardData.voice.provider)
     || (storyboardData && storyboardData.tts_provider)
@@ -762,23 +810,38 @@ async function generateAllVoices(storyboardData, targetShotIds = null, sbPath = 
     return await generateAllVoicesVieNeu(storyboardData, targetShotIds, sbPath);
   }
 
-  const profiles = { ...DEFAULT_PROFILES, ...(storyboardData.voice_profiles || {}) };
-  const shots = storyboardData.shots || [];
-  const cdp = await getElevenLabsClient();
-
-  const baseName = sbPath ? path.basename(sbPath, '.json') : '';
-  const episodeName = storyboardData.series_id ||
-    (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : '') ||
-    baseName ||
-    (storyboardData.series ? `ep${String(storyboardData.episode || 1).padStart(2, '0')}` : '') ||
-    'episode_01';
-
   const outDir = path.join(config.AUDIO_DIR, episodeName);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   console.log(`\n=== BẮT ĐẦU TỔNG HỢP VOICE TIẾNG VIỆT (ELEVEN V3): ${episodeName.toUpperCase()} ===`);
   console.log(`Thư mục đích: ${outDir}`);
 
+  // Preflight character estimation and quota audit
+  const pendingShots = [];
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+    if (targetShotIds && targetShotIds.length > 0 && !targetShotIds.includes(shotId)) continue;
+    const voiceoverText = (s.voice && s.voice.text)
+      || ((s.audio && s.audio.voiceover && !/[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uffef\u4e00-\u9faf]/.test(s.audio.voiceover)) ? s.audio.voiceover : null)
+      || (s.audio && s.audio.sub_text)
+      || s.vietnamese_subtitles
+      || (s.audio && s.audio.voiceover)
+      || s.subtitles;
+    if (!voiceoverText || voiceoverText.trim() === '' || voiceoverText.includes('Hết Tập')) continue;
+    const destFile = path.join(outDir, `voice_${shotId}.mp3`);
+    if (fs.existsSync(destFile) && fs.statSync(destFile).size > 2000) continue;
+    pendingShots.push({ shotId, text: voiceoverText });
+  }
+
+  preflightElevenLabsQuota(pendingShots);
+
+  if (pendingShots.length === 0) {
+    console.log(`[✓] Toàn bộ voice clips đã tồn tại đầy đủ trong ${outDir}, bỏ qua kết nối CDP.`);
+    return outDir;
+  }
+
+  const cdp = await getElevenLabsClient();
   const seenHashes = new Set();
   let lastHistoryId = null;
 
@@ -856,5 +919,6 @@ module.exports = {
   generateAllVoices,
   generateAllVoicesVieNeu,
   generateAllVoicesF5,
+  preflightElevenLabsQuota,
   DEFAULT_PROFILES
 };

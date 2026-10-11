@@ -41,7 +41,7 @@ Please keep the following principles in mind when contributing:
      ```
 
 4. **Verify System Health & Zero-Leak Audit:**
-   - Run the comprehensive preflight diagnostic to verify Node.js runtime, FFmpeg, paths, bridge readiness, and the Zero-Leak IP Protection audit:
+   - Run the comprehensive preflight diagnostic to verify Node.js runtime, FFmpeg, paths, bridge readiness, ElevenLabs quota preflight via `quota-axi`, and the Zero-Leak IP Protection audit:
      ```bash
      ./videogen doctor
      ```
@@ -49,6 +49,10 @@ Please keep the following principles in mind when contributing:
      ```bash
      ./videogen bridge status
      ```
+
+5. **Axi Tooling Ecosystem Compatibility:**
+   - Ensure `./videogen board <storyboard.json>` generates compliant portable HTML review artifacts compatible with `lavish-axi`.
+   - Maintain non-blocking fallbacks when querying `quota-axi` or capturing diagnostic screenshots with `chrome-devtools-axi`.
 
 ---
 
@@ -58,10 +62,11 @@ Please keep the following principles in mind when contributing:
    - Contributors must ensure all staged changes pass the automated security audit.
    - Verify that your staged changes pass `.githooks/pre-commit` and run `./videogen doctor` (the **Zero Leak Audit** must be 100% green before submitting a pull request).
 2. **Focus on Modularity:**
-   - Keep module boundaries clean (`engine/flow.js`, `engine/tts.js`, `engine/compositor.js`, etc.).
+   - Keep module boundaries clean (`engine/board.js`, `engine/flow.js`, `engine/tts.js`, `engine/compositor.js`, etc.).
    - Follow the established CDP error-handling and fallback conventions.
-3. **TypeSafe Jev Compatibility:**
+3. **TypeSafe Jev & Axi Ecosystem Compatibility:**
    - Whenever adding browser interaction steps, ensure they are resilient to UI variations and consider adding semantic classification via `browser-jev` with safe heuristic fallbacks.
+   - Support `CHROME_DEVTOOLS_AXI_SESSION` for concurrent multi-platform upload session isolation.
 4. **Shell & Node.js Standards:**
    - Ensure all code passes syntax checks (`node -c <file>`).
    - Keep scripts ShellCheck-clean if contributing bash utilities.

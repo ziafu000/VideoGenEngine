@@ -413,8 +413,15 @@ async function uploadSingleShortToTikTok({
 
     return { success: true, video: winVideo };
   } catch (err) {
-    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `tt_error_${Date.now()}.png`);
-    await cdp.captureScreenshot(errorScreenshot).catch(() => {});
+    const errorDir = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect');
+    const errorFile = `tt_error_${Date.now()}.png`;
+    let errorScreenshot = path.join(errorDir, errorFile);
+    if (cdp && typeof cdp.captureDiagnosticScreenshot === 'function') {
+      const saved = await cdp.captureDiagnosticScreenshot(errorFile, errorDir).catch(() => null);
+      if (saved) errorScreenshot = saved;
+    } else if (cdp) {
+      await cdp.captureScreenshot(errorScreenshot).catch(() => {});
+    }
     console.error(`[!] Lỗi TikTok upload: ${err.message}. Đã chụp màn hình chẩn đoán tại: ${errorScreenshot}`);
     throw err;
   } finally {

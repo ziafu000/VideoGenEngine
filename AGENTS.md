@@ -43,6 +43,7 @@ projects/VideoGen/
 │   ├── cdp.js                # Unified CDP WebSocket & HTTP client
 │   ├── bridge.js             # Windows Chrome & proxy verification
 │   ├── cdp_proxy.js          # TCP proxy on Windows (forwarding 9223 -> 9222)
+│   ├── board.js              # Director's visual review board generator (Lavish HTML & DaisyUI)
 │   ├── flow.js               # Google Flow automation (settings, chips, prompt, dl)
 │   ├── explainer.js          # Semantic clause segmenter & visual strategy explainer engine
 │   ├── tts.js                # Multi-engine TTS coordinator (VieNeu, F5-TTS, ElevenLabs)

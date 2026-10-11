@@ -85,7 +85,49 @@ async function runDoctor() {
     console.log(`  [i] TypeSafe AI Key: Chưa cấu hình (Chế độ heuristic DOM fallback)`);
   }
 
-  // 8. Open-Source IP Security & Gitignore Hygiene
+  // 8. Quota Preflight Audit (quota-axi)
+  try {
+    const { spawnSync } = require('child_process');
+    const res = spawnSync('quota-axi', ['--provider', 'elevenlabs', '--json'], {
+      encoding: 'utf8',
+      timeout: 5000
+    });
+    if (res.stdout) {
+      try {
+        const data = JSON.parse(res.stdout);
+        const p = data.providers?.find(item => item.provider === 'elevenlabs');
+        if (p) {
+          if (p.notSetUp || p.state?.status === 'auth_required') {
+            console.log(`  [i] Quota Preflight (ElevenLabs via quota-axi): Chưa cấu hình CLI API key`);
+            console.log(`      └─ Chế độ: Sử dụng VieNeu / F5-TTS (0 cost) hoặc ElevenLabs qua phiên trình duyệt CDP`);
+          } else {
+            const avail = p.quotaSemantics?.effectiveAvailability?.[0];
+            const win = p.windows?.[0];
+            const pct = avail?.effectivePercentRemaining ?? win?.percentRemaining ?? null;
+            const resetsAt = win?.resetsAt || 'N/A';
+            if (pct !== null && pct <= 0) {
+              console.log(`  [!] Quota Preflight (ElevenLabs): Hạn ngạch cạn (0%)! Reset lúc: ${resetsAt}`);
+              console.log(`      └─ Gợi ý: Chuyển sang voice.provider: "f5-tts" hoặc "vieneu"`);
+            } else if (pct !== null) {
+              console.log(`  [✓] Quota Preflight (ElevenLabs): Còn ~${pct}% quota (Reset: ${resetsAt})`);
+            } else {
+              console.log(`  [✓] Quota Preflight (ElevenLabs): Trạng thái ${p.state?.status || 'Active'}`);
+            }
+          }
+        } else {
+          console.log(`  [i] Quota Preflight: ElevenLabs không có trong danh mục quota-axi`);
+        }
+      } catch {
+        console.log(`  [i] Quota Preflight: Không thể phân tích JSON từ quota-axi`);
+      }
+    } else {
+      console.log(`  [i] Quota Preflight: quota-axi chưa cài đặt (bỏ qua tiền kiểm)`);
+    }
+  } catch {
+    console.log(`  [i] Quota Preflight: quota-axi chưa cài đặt (bỏ qua tiền kiểm)`);
+  }
+
+  // 9. Open-Source IP Security & Gitignore Hygiene
   console.log(`\n--- KIỂM TRA BẢO MẬT MÃ NGUỒN MỞ (IP PROTECTION) ---`);
   try {
     const trackedFiles = execSync('git ls-files', { encoding: 'utf8', cwd: config.PROJECT_DIR }).split('\n');

@@ -7,6 +7,7 @@
  * 
  * Usage:
  *   ./videogen bridge                      Check or start Chrome CDP bridge
+ *   ./videogen board <storyboard>          Generate interactive Director's Visual Review Board
  *   ./videogen render <storyboard> [shots] Render Google Flow clips
  *   ./videogen voice <storyboard> [shots]  Generate ElevenLabs voiceovers
  *   ./videogen subs <storyboard>           Generate Dual-Zone or Shorts ASS subtitles
@@ -33,6 +34,7 @@ const youtube = require('./engine/youtube');
 const thumbnail = require('./engine/thumbnail');
 const shorts = require('./engine/shorts');
 const tiktok = require('./engine/tiktok_uploader');
+const board = require('./engine/board');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const facebook = require('./engine/facebook');
 const pipelineLoop = require('./engine/pipeline_loop');
@@ -68,6 +70,11 @@ function printHelp() {
 Lệnh điều phối:
   ./videogen bridge [status]
       Kiểm tra hoặc tự động kích hoạt Chrome CDP bridge trên Windows.
+
+  ./videogen board <storyboard.json> [--open] [--out=path.html]
+      Tạo Director's Visual Review Board tương tác (HTML) với lưới phân cảnh,
+      thời lượng micro-cuts, prompt chi tiết, thẻ palette, và ảnh preview render.
+      Hỗ trợ mở trực tiếp qua Lavish Editor (lavish-axi) để duyệt kịch bản trực quan.
 
   ./videogen explainer <transcript.txt | "text"> [--title="..."] [--series="..."] [--ep="..."] [--ratio=16:9|9:16] [--scenes=scenes.js] [--out=storyboard.json]
       Tự động phân tích transcript thành các mệnh đề thị giác (semantic clauses 1.5s–2.5s),
@@ -169,6 +176,26 @@ async function main() {
       case 'check': {
         const doctor = require('./engine/doctor');
         await doctor.runDoctor();
+        break;
+      }
+
+      case 'board':
+      case 'director': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp file storyboard: ./videogen board <storyboard.json> [--open]');
+          process.exit(1);
+        }
+        const isOpen = args.includes('--open');
+        const outArg = args.find(a => a.startsWith('--out='));
+        const explicitOut = outArg ? outArg.split('=')[1].replace(/^["']|["']$/g, '') : null;
+
+        const { path: sbPath, data: sb } = loadStoryboard(sbArg);
+        board.generateBoard(sb, {
+          storyboardPath: sbPath,
+          out: explicitOut,
+          open: isOpen
+        });
         break;
       }
 

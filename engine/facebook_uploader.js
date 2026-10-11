@@ -210,8 +210,11 @@ async function cmdStatus() {
     console.log(JSON.stringify({ ok: true, status }, null, 2));
     return { ok: true, status };
   } catch (err) {
-    console.error(JSON.stringify({ ok: false, error: err.message }, null, 2));
-    process.exit(1);
+    if (require.main === module) {
+      console.error(JSON.stringify({ ok: false, error: err.message }, null, 2));
+      process.exit(1);
+    }
+    throw err;
   }
 }
 
@@ -848,10 +851,17 @@ async function uploadReel({
 
     return result;
   } catch (err) {
-    const errorScreenshot = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect', `fb_error_${Date.now()}.png`);
-    await client.captureScreenshot(errorScreenshot).catch(() => {});
+    const errorDir = path.join(config.PROJECT_DIR, 'renders', 'qa_inspect');
+    const errorFile = `fb_error_${Date.now()}.png`;
+    let errorScreenshot = path.join(errorDir, errorFile);
+    if (client && typeof client.captureDiagnosticScreenshot === 'function') {
+      const saved = await client.captureDiagnosticScreenshot(errorFile, errorDir).catch(() => null);
+      if (saved) errorScreenshot = saved;
+    } else if (client) {
+      await client.captureScreenshot(errorScreenshot).catch(() => {});
+    }
     console.error(`[!] Lỗi Facebook Reels upload: ${err.message}. Đã chụp màn hình chẩn đoán tại: ${errorScreenshot}`);
-    client.close();
+    if (client) client.close();
     throw err;
   }
 }
