@@ -245,6 +245,164 @@ function getAudioDuration(filePath) {
 }
 
 /**
+ * Multi-Image Semantic Clause Mapping (Chuẩn hóa cứng 2026-10-11 theo chỉ thị Captain):
+ * Tự động chia nhỏ các câu thoại dài (>2.0s) thành 2 đến 3 visual cuts (~0.8s – 1.2s/ảnh).
+ * Voice đọc đến cụm từ nào, hình lập tức nhảy sang biểu cảm/đạo cụ đó.
+ * Đặc biệt: 4 giây đầu tiên (Opening Hook) bắt buộc duy trì nhịp nhanh dồn dập (~1.0s/ảnh).
+ */
+function applyMultiImagePacing(rawShots) {
+  const pacedShots = [];
+  let cumulativeTime = 0;
+
+  for (let i = 0; i < rawShots.length; i++) {
+    const orig = rawShots[i];
+    let dur = orig.duration;
+    if (isNaN(dur) || dur <= 0) {
+      const words = (orig.clause || '').trim().split(/\s+/).length;
+      dur = Math.max(1.2, Math.round((words / 2.5) * 100) / 100);
+    }
+
+    const pBg = (PALETTES[orig.palette] && PALETTES[orig.palette].bg)
+      || PALETTES.modern_interior.bg;
+
+    const basePromptCore = orig.image_prompt.includes('.. CHARACTERS:')
+      ? orig.image_prompt.split('.. CHARACTERS:')[0].replace('2D comic illustration of ', '')
+      : orig.clause;
+
+    // 1. Đặc biệt: 4 giây đầu tiên (Opening Hook) - Bắt buộc chia nhỏ dồn dập ~1.0s/ảnh
+    if (cumulativeTime < 4.0) {
+      if (dur > 1.8) {
+        const numCuts = dur >= 3.0 ? 3 : 2;
+        const subDur = Math.round((dur / numCuts) * 100) / 100;
+        for (let c = 0; c < numCuts; c++) {
+          const actualSubDur = (c === numCuts - 1)
+            ? Math.round((dur - subDur * (numCuts - 1)) * 100) / 100
+            : subDur;
+
+          let subPrompt = orig.image_prompt;
+          if (c > 0) {
+            const angle = c === 1 ? 'Dynamic close-up and exaggerated reaction' : 'Dramatic wide view and impact';
+            subPrompt = `2D comic illustration of ${angle} to ${basePromptCore}.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+          }
+
+          pacedShots.push({
+            id: '',
+            clause: orig.clause,
+            sub_clause: `Hook Cut ${c + 1}/${numCuts}`,
+            duration: actualSubDur,
+            strategy: 'HOOK',
+            palette: orig.palette,
+            image_prompt: subPrompt,
+            audio: orig.audio
+          });
+          cumulativeTime += actualSubDur;
+        }
+        continue;
+      }
+    }
+
+    // 2. Các câu thoại ngắn (<= 1.8s) hoặc Title Card: giữ nguyên 1 cut snappy (~0.8s – 1.8s)
+    if (dur <= 1.8 || orig.strategy === 'TITLE_CARD') {
+      pacedShots.push({
+        id: '',
+        clause: orig.clause,
+        duration: dur,
+        strategy: orig.strategy,
+        palette: orig.palette,
+        image_prompt: orig.image_prompt,
+        audio: orig.audio
+      });
+      cumulativeTime += dur;
+      continue;
+    }
+
+    // 3. Các câu thoại dài (> 1.8s và <= 3.2s): tự động chia nhỏ thành 2 visual cuts (~0.9s – 1.5s/ảnh)
+    if (dur > 1.8 && dur <= 3.2) {
+      const dur1 = Math.round(dur * 0.48 * 100) / 100;
+      const dur2 = Math.round((dur - dur1) * 100) / 100;
+
+      pacedShots.push({
+        id: '',
+        clause: orig.clause,
+        sub_clause: 'Action / Focal Setup',
+        duration: dur1,
+        strategy: orig.strategy,
+        palette: orig.palette,
+        image_prompt: orig.image_prompt,
+        audio: orig.audio
+      });
+
+      const reactionPrompt = `2D comic illustration of Dynamic comic close-up and exaggerated reaction to ${basePromptCore}, with expressive cartoon meme eyes and comic motion lines.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+
+      pacedShots.push({
+        id: '',
+        clause: orig.clause,
+        sub_clause: 'Reaction / Punchline',
+        duration: dur2,
+        strategy: 'POSE_CHURN',
+        palette: orig.palette,
+        image_prompt: reactionPrompt,
+        audio: orig.audio
+      });
+
+      cumulativeTime += dur;
+      continue;
+    }
+
+    // 4. Các câu thoại rất dài (> 3.2s): tự động chia nhỏ thành 3 visual cuts (~1.0s – 1.4s/ảnh)
+    const dur1 = Math.round((dur / 3) * 100) / 100;
+    const dur2 = Math.round((dur / 3) * 100) / 100;
+    const dur3 = Math.round((dur - dur1 - dur2) * 100) / 100;
+
+    pacedShots.push({
+      id: '',
+      clause: orig.clause,
+      sub_clause: 'Setup Context',
+      duration: dur1,
+      strategy: orig.strategy,
+      palette: orig.palette,
+      image_prompt: orig.image_prompt,
+      audio: orig.audio
+    });
+
+    const actionPrompt = `2D comic illustration of Exaggerated comic focal angle of ${basePromptCore}, bold visual metaphor and dynamic motion trails.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+
+    pacedShots.push({
+      id: '',
+      clause: orig.clause,
+      sub_clause: 'Key Action / Metaphor',
+      duration: dur2,
+      strategy: 'METAPHOR',
+      palette: orig.palette,
+      image_prompt: actionPrompt,
+      audio: orig.audio
+    });
+
+    const outcomePrompt = `2D comic illustration of Aftermath and meme reaction to ${basePromptCore}, character with funny derp face and educational indicator arrows.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+
+    pacedShots.push({
+      id: '',
+      clause: orig.clause,
+      sub_clause: 'Consequence / Meme Reaction',
+      duration: dur3,
+      strategy: 'POSE_CHURN',
+      palette: orig.palette,
+      image_prompt: outcomePrompt,
+      audio: orig.audio
+    });
+
+    cumulativeTime += dur;
+  }
+
+  // Gán ID tuần tự chuẩn xác: shot_001, shot_002...
+  pacedShots.forEach((s, idx) => {
+    s.id = `shot_${String(idx + 1).padStart(3, '0')}`;
+  });
+
+  return pacedShots;
+}
+
+/**
  * Generate a complete production-ready storyboard JSON from a transcript text or file.
  */
 function createExplainerStoryboard({
@@ -293,6 +451,12 @@ function createExplainerStoryboard({
     };
   });
 
+  // Multi-Image Semantic Clause Mapping (Chuẩn hóa cứng 2026-10-11 theo chỉ thị Captain):
+  // Tự động chia nhỏ các câu thoại dài (>2.0s) thành 2 đến 3 visual cuts (~0.8s – 1.2s/ảnh).
+  // "Voice đọc đến cụm từ nào, hình lập tức nhảy sang biểu cảm/đạo cụ đó".
+  // Đặc biệt: 4 giây đầu tiên (Opening Hook) bắt buộc duy trì nhịp nhanh dồn dập (~1.0s/ảnh).
+  const finalShots = applyMultiImagePacing(shots);
+
   const storyboard = {
     project: {
       id: projectId,
@@ -317,7 +481,7 @@ function createExplainerStoryboard({
     voice_profile: 'f5-tts-latest',
     bgm_volume: 0,
     hardsub: false,
-    shots: shots
+    shots: finalShots
   };
 
   if (outputStoryboardPath) {

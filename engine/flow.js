@@ -584,8 +584,82 @@ async function downloadLatest(targetFile, options = {}) {
   return await downloadLatestDirect(targetFile);
 }
 
-// 7. Generate image via Google Flow (Nano Banana Pro) with in-browser Base64 fetch & Zero-Dupe Guard
+// 7. Ensure Flow Settings (Model, Mode, Aspect Ratio)
+async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nano Banana Pro' } = {}) {
+  const cdp = await getClientForPage('flow.google.com');
+  try {
+    const curSettings = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
+    })()`);
+
+    const hasBanana = curSettings.includes('Banana');
+    const hasRatio = ratio === '16:9' ? curSettings.includes('crop_16_9') : curSettings.includes('crop_9_16');
+    const hasPro = model === 'Nano Banana Pro' ? curSettings.includes('Pro') : true;
+
+    if (hasBanana && hasRatio && hasPro) {
+      return true;
+    }
+
+    console.log(`    [-] [Flow Preflight] Tự động cấu hình chuẩn giao diện Flow: ${model} | ${ratio}...`);
+
+    await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      if (b) b.click();
+    })()`);
+    await sleep(600);
+
+    if (mode === 'image') {
+      await cdp.evaluate(`(() => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button'));
+        const imgBtn = btns.find(b => (b.innerText || '').includes('Hình ảnh'));
+        if (imgBtn) imgBtn.click();
+      })()`);
+      await sleep(500);
+    }
+
+    if (ratio === '16:9') {
+      await cdp.evaluate(`(() => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button'));
+        const ratioBtn = btns.find(b => (b.innerText || '').includes('16:9'));
+        if (ratioBtn) ratioBtn.click();
+      })()`);
+      await sleep(500);
+    }
+
+    if (model === 'Nano Banana Pro') {
+      await cdp.evaluate(`(() => {
+        const btn = document.querySelector('button[aria-label="Chọn nhóm mô hình"], .model-select-trigger-content');
+        if (btn) btn.click();
+      })()`);
+      await sleep(600);
+
+      await cdp.evaluate(`(() => {
+        const items = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="menuitem"], .cdk-overlay-pane mat-option'));
+        const proItem = items.find(i => (i.innerText || '').toLowerCase().includes('pro'));
+        if (proItem) proItem.click();
+      })()`);
+      await sleep(500);
+    }
+
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, text: '' });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, text: '' });
+    await sleep(500);
+
+    const verified = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
+    })()`);
+    console.log(`    [✓] [Flow Preflight] Đã kích hoạt cấu hình Flow chuẩn: "${verified}"`);
+    return true;
+  } finally {
+    cdp.close();
+  }
+}
+
+// 8. Generate image via Google Flow (Nano Banana Pro) with in-browser Base64 fetch & Zero-Dupe Guard
 async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 50, retries = 3 }) {
+  await ensureFlowSettings({ mode: 'image', ratio: '16:9', model: 'Nano Banana Pro' });
   const cdp = await getClientForPage('flow.google.com');
   const crypto = require('crypto');
   try {
@@ -680,15 +754,22 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
           break;
         }
 
-        // When pending finishes or new tile arrives
-        const topSrc = await cdp.evaluate(`(() => {
-          const first = document.querySelector('flow-image-tile img');
-          return first ? first.src : null;
+        // Only consider the top tile completed when flow-pending-tile has vanished from the FIRST tile
+        const topTileResult = await cdp.evaluate(`(() => {
+          const firstTile = document.querySelector('flow-image-tile');
+          if (!firstTile) return null;
+          const pending = firstTile.querySelector('flow-pending-tile');
+          if (pending) return { pending: true, src: null };
+          const img = firstTile.querySelector('img');
+          return {
+            pending: false,
+            src: (img && img.src && img.src.includes('flow-content.google')) ? img.src : null
+          };
         })()`);
 
-        if (topSrc && topSrc.includes('flow-content.google') && !initialSet.has(topSrc)) {
-          if (!curPending || seenPending) {
-            freshUrl = topSrc;
+        if (topTileResult && !topTileResult.pending && topTileResult.src) {
+          if (!initialSet.has(topTileResult.src)) {
+            freshUrl = topTileResult.src;
             break;
           }
         }
@@ -749,5 +830,6 @@ module.exports = {
   downloadLatest,
   downloadCloud1080p,
   downloadLatestDirect,
-  generateImage
+  generateImage,
+  ensureFlowSettings
 };
