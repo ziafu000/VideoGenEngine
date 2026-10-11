@@ -83,7 +83,13 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
    Zero hardcoding or format lock-in. Any video output—from 15s social ads and 40s clean documentaries to 16:9 educational hand-drawn explainers and cinematic series—is declared through 6 orthogonal parameter dimensions in JSON (`geometry`, `timeline`, `voice`, `visuals`, `subtitles`, `audio_mix`). Canonical recipes include:
    - **Preset 1 — Clean Documentary Shorts (40s Clean Master — Vertical 9:16):** `9:16` vertical, 4 shots × 10s = 40s (60 credits), 100% clean footage without burned-in captions or subtitles (`hardsub: false`), single narrator voiceover via VieNeu-TTS 48kHz tuned to the **36–39 words/shot Golden Ratio** (8.5s–9.5s reading duration), standardized BGM at 15%, Flow SFX at 25%, Voice at 100%.
    - **Preset 2 — Kinetic Explainer Shorts (30s–60s):** `9:16` vertical, rapid 2.75–4.0 words/sec retention pacing, dynamic animated word-by-word subtitles (`bouncy_neon`), automated cinematic SFX (sub-bass impacts, scene swishes, accent pops).
-   - **Preset 3 — Minimalist Hand-Drawn Explainer (16:9 Static Micro-Shot Cuts):** `16:9` widescreen, micro-shot pacing (**1.0s – 2.8s per cut**, average ~2.5s/cut, clause-locked semantic timing), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, F5-TTS local zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor). Visuals powered by Google Flow 🍌 **Nano Banana Pro 16:9** (0 credits consumed, 100% free) with in-browser Base64 fetch, MD5 deduplication guard, and contextual palettes (`dark_vignette`, `clean_diagram`, `prehistoric`, `ice_age`, `modern_interior`). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
+   - **Preset 3 — Minimalist Hand-Drawn Explainer (16:9 Static Micro-Shot Cuts):** `16:9` widescreen, **Flexible 3-Tier Contextual Pacing Matrix (0.8s to 3.5s)**:
+     * **70% Fast ~1.0s Velocity:** Rapid ~0.8s–1.2s cuts dominate the majority of shots (~70%), **especially the opening seconds (0–4s)** where high visual velocity is mandatory to lock audience attention from second 0.
+     * **Multi-Image Semantic Clause Mapping:** A single spoken voice clause or sentence (2.5s–4.5s) is paired with **2 to 4 sequential static images** illustrating each micro-phrase in real time (*"Voice reading to where the image pops up"*).
+     * **Concrete Opening Hook Blueprint:** Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and drop-off), that 4-second segment is dynamically paired with 4 sequential images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up.
+     * **Purposeful Slower Tiers:** Standard narrative flow runs at **~1.5s–2.0s**, while complex infographics, anatomical cross-sections, and comedic punchlines use **~2.5s–3.5s** (~15–20% of cuts) to give viewers cognitive room to absorb intricate details.
+     * **100% Pure Static Hard Cuts:** Assembled via FFmpeg Concat Demuxer (`ffconcat version 1.0`) in ~0.5s with **strictly 0 pan/zoom or Ken Burns latency**.
+     * **Voice & Audio:** F5-TTS local zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor). Visuals powered by Google Flow 🍌 **Nano Banana Pro 16:9** (0 credits consumed, 100% free) with in-browser Base64 fetch, MD5 deduplication guard, and contextual palettes (`dark_vignette`, `clean_diagram`, `prehistoric`, `ice_age`, `modern_interior`).
    - **Preset 4 — Story-Driven Cinematic Series (16:9):** 16:9 widescreen, multi-character asset consistency via `@Character` chips, multi-voice dialogue casting, and cinema-grade **Dual-Zone ASS Subtitles** (Tier A bottom dialogue + Tier B top tech HUD).
    - **Universal Template:** Completely customizable schema template (`examples/storyboards/universal_template.json`) with parameter placeholders to author any custom video recipe.
 4. 🎙️ **Multi-Engine Audio Architecture (Local VieNeu-TTS 48kHz + Local F5-TTS Zero-Shot + ElevenLabs):**
@@ -106,6 +112,11 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
    - **Tier B (AI System HUD Captions):** Top-center cyan neon Consolas (**28px** bold, 1.8px outline) for sci-fi system and ancient protocol alerts.
    - **Precision Audio-Subtitle Onset Sync:** Storyboard `audio.voice_delay_sec` dynamically locks FFmpeg `adelay` and subtitle timestamps (`subStart`), ensuring subtitles appear at the exact second speech begins. Overridable via `subtitle_style` in storyboard JSON.
    - **Anti-Subtitle Hallucination:** Strict negative prompt hygiene (`CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`) ensures zero burned-in foreign text before final master hardsubbing.
+6. 🎨 **The Visual UI Layer: Lavish Director's Board & Human-in-the-Loop Review:**
+   While VideoGen operates as a headless, token-efficient CLI engine for AI agents, **Lavish Director's Board** (`./videogen board <storyboard.json> [--open]`) provides an interactive Web UI for storyboard review, prompt inspection, words-per-second (WPS) pacing analysis, color palette badges, and shot-by-shot debugging.
+   - **Interactive Web UI Studio:** Generates a cinema-grade, responsive visual dashboard (`.lavish/director_board.html`) powered by DaisyUI v5 & Tailwind CSS v4 in luxury theme.
+   - **Seamless Standalone Fallback:** Users without `lavish-axi` can view the review board immediately in any standard browser via local file URL (`file://...`) with zero dependencies, build tools, or web servers required.
+   - **Targeted Shot Iteration:** Inspect shot-by-shot cards, preview downloaded video/image clips in full-screen lightboxes, and re-render individual shots (`./videogen render <sb> <shot_id>`) with surgical precision before triggering full batch runs.
 7. 🚀 **Unified CLI (`./videogen`):** Single executable command to control every phase or execute end-to-end autonomous runs (`./videogen run storyboard.json`).
 8. ⏱️ **Universal Timeline Prompting Engine (Google Flow 10s SOP):** Eliminates static, repetitive AI video shots by structuring every 10-second video clip into 3 to 4 kinetic micro-scenes with explicit second markers (`[0.0s - 3.0s]: [Establishing composition] ... [3.0s - 6.5s]: [Focal shift & macro detail] ... [6.5s - 10.0s]: [Panoramic resolution]`). Pre-flight validation in `engine/flow.js` ensures prompts maintain cinematic camera choreography, environmental transitions, and synchronized diegetic foley (`AUDIO: SFX ONLY`) without dialogue clashing.
 9. 💾 **Automated D: Drive Archival & Clean Git:** Automatically migrates hundreds of megabytes of raw scene clips, voice files, and master videos to external storage, keeping the Git repository ultra-lightweight (<200KB).
@@ -125,35 +136,40 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
 │  1. BRIDGE VERIFICATION (`engine/bridge.js`, `engine/cdp.js`)          │
 │     └── Windows Chrome Remote Debugging (9222) ──> TCP Proxy (9223)   │
 │                                                                        │
-│  2. VISUAL GENERATION (`engine/flow.js` + TypeSafe Jev)                │
+│  2. VISUAL UI LAYER & REVIEW GATE (`engine/board.js`)                  │
+│     ├── Interactive Director's Board (`.lavish/director_board.html`)   │
+│     ├── Human-in-the-loop review: WPS pacing, prompt hygiene, palettes │
+│     └── Lavish Visual Studio (`lavish-axi`) & standalone HTML fallback │
+│                                                                        │
+│  3. VISUAL GENERATION (`engine/flow.js` + TypeSafe Jev)                │
 │     ├── Jev pre-flight prompt safety screening (noul risk eval)        │
 │     ├── Configure resolution, 16:9 / 9:16, 10s duration               │
 │     ├── Attach character asset chips (`<flow-character-chip>` `@`)     │
 │     ├── Fast policy refusal early abort (5s fail-fast vs 240s wait)    │
 │     └── Cloud AI Super-Resolution (Native 1080p Full HD download)      │
 │                                                                        │
-│  3. VOICEOVER GENERATION (`engine/tts.js`, `engine/vieneu_engine.py`)    │
+│  4. VOICEOVER GENERATION (`engine/tts.js`, `engine/vieneu_engine.py`)    │
 │     ├── Mode A (Default): Local VieNeu-TTS v3 Turbo (48 kHz, 0 cost)    │
 │     │   └── Profiles: `assets/voice_profiles.json` (Private IP safe)    │
 │     └── Mode B: Browser ElevenLabs CDP (Radix UI calibration)           │
 │     └── Output high-fidelity dialogue audio (48 kHz / MP3)             │
 │                                                                        │
-│  4. SUBTITLE ENGINE (`engine/subtitles.js`)                            │
+│  5. SUBTITLE ENGINE (`engine/subtitles.js`)                            │
 │     ├── Mode 1: Dynamic Bouncy Neon Yellow Subtitles (Shorts)          │
 │     └── Mode 2: Cinema Dual-Zone ASS (Bottom: Dialogue | Top: HUD)     │
 │                                                                        │
-│  5. POST-PRODUCTION COMPOSITOR (`engine/compositor.js`)                │
+│  6. POST-PRODUCTION COMPOSITOR (`engine/compositor.js`)                │
 │     ├── Multi-clip seamless concatenation                              │
 │     ├── Dynamic silence padding & dialogue-to-cut synchronization      │
 │     ├── Multi-track audio mix: Voice (100%) + Ambient SFX (30%)        │
 │     └── Hardware-accelerated subtitle burn-in (`libass`)               │
 │                                                                        │
-│  6. POST-PRODUCTION ARCHIVAL (`engine/archive.js`)                     │
+│  7. POST-PRODUCTION ARCHIVAL (`engine/archive.js`)                     │
 │     ├── Migrate raw clips & voiceover to `File video original/`        │
 │     ├── Save final video to `File video after edit/`                   │
 │     └── Purge workspace (`renders/`, `audio/`, `output/`)              │
 │                                                                        │
-│  7. YOUTUBE STUDIO UPLOAD (`engine/youtube.js`)                        │
+│  8. YOUTUBE STUDIO UPLOAD (`engine/youtube.js`)                        │
 │     └── Automated Unlisted upload via Chrome CDP (0 YouTube API cost)  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -169,6 +185,13 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
   ```bash
   sudo apt-get update && sudo apt-get install -y ffmpeg
   ```
+- **Recommended Tools (`lavish-axi` & `quota-axi`):**
+  Install the official Axi productivity developer tools globally:
+  ```bash
+  npm install -g lavish-axi quota-axi
+  ```
+  - `lavish-axi`: Visual Web UI studio for interactive storyboard reviews, prompt inspection, and shot-by-shot debugging. (Users without `lavish-axi` can use the standalone HTML fallback via their system browser).
+  - `quota-axi`: Automated API and account quota preflight telemetry.
 - **Google Chrome (Windows or Linux):** Logged into Google AI Pro (Google Flow) and ElevenLabs (if using ElevenLabs mode).
 - **Python 3.10+ (Recommended for Local Neural TTS):**
   ```bash
@@ -316,14 +339,15 @@ VideoGen integrates **TypeSafe System One AI (`jev-latest`)** via `browser-jev` 
 VideoGen deeply integrates with the Axi developer toolchain for visual review, quota intelligence, and browser diagnostic telemetry:
 
 1. **🎨 Director's Visual Review Board (`lavish-axi`):**
-   - Run `./videogen board <storyboard.json> [--open]` to generate an interactive, responsive review surface (`.lavish/board_<name>.html`) built with DaisyUI v5 & Tailwind CSS v4.
-   - Renders chronological micro-shot cards, clause-by-clause narration text, words-per-second (WPS) calibration, visual prompt blueprints, palette badges, and live render preview links (`renders/<episode>/...`).
-   - Inspect and annotate storyboards interactively via Lavish Editor:
+   - Run `./videogen board <storyboard.json> [--open]` to generate an interactive, responsive review surface (`.lavish/board_<name>.html` and `.lavish/director_board.html`) built with DaisyUI v5 & Tailwind CSS v4 in luxury theme.
+   - Renders chronological micro-shot cards, clause-by-clause narration text, words-per-second (WPS) speech density pacing, visual prompt blueprints, palette badges, and live render preview links (`renders/<episode>/...`).
+   - Inspect, debug, and annotate storyboards interactively via Lavish Editor:
      ```bash
      ./videogen board storyboards/episode.json --open
      # Or launch manually:
-     lavish-axi .lavish/board_episode.html
+     lavish-axi .lavish/director_board.html
      ```
+   - **Standalone Browser Fallback:** Environments without `lavish-axi` can open `.lavish/director_board.html` directly in any web browser (`file:///...`) without installing local build servers or packages.
 
 2. **📊 Quota Preflight Telemetry (`quota-axi`):**
    - Automatically audited during `./videogen doctor` and preflighted before batch voice synthesis in `./videogen voice`.

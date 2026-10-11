@@ -19,7 +19,15 @@ This file provides comprehensive, self-contained instructions for coding agents 
 - **Reference Presets (Configurable Case Studies):**
   - **Preset A — Clean Documentary Shorts (Vertical 9:16):** `9:16`, 40s (4×10s), clean footage (`hardsub: false`), 36–39 words/shot (~3.8 wps), BGM at 15%, SFX at 25%, Voice at 100% via VieNeu-TTS v3 Turbo 48kHz.
   - **Preset B — Kinetic Explainer Shorts:** `9:16`, 30s–60s, word-by-word animated yellow-neon subtitles (`hardsub: true`, `bouncy_neon`), rapid 2.75 wps pacing, layered UI SFX.
-  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free), clause-locked semantic timing (**1.0s – 2.8s per cut**, average ~2.2s/cut, ~110–220 cuts per episode), **Pure Static Hard Cuts (Strictly 0 Ken Burns)**, F5-TTS local zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor). Rapid 1-pass assembly in ~0.5s via FFmpeg Concat Demuxer (`ffconcat version 1.0`).
+  - **Preset C — Minimalist Hand-Drawn Explainer (Widescreen 16:9 & Vertical 9:16):** `16:9` (or `9:16`), static micro-shot cuts via Google Flow Nano Banana Pro (0 credits, free).
+    * **Flexible 3-Tier Contextual Pacing Matrix (0.8s to 3.5s):** Avoids rigid uniform timing (which is exhausting), adapting visual rhythm dynamically to content complexity:
+      1. *Tier 1 — High-Tempo / Gag / Micro-phrases / Opening Hook (~0.8s–1.2s, avg ~1.0s):* Rapid sequential visual pops (e.g. 4-second opening hook split across 4 images to capture attention from second 0).
+      2. *Tier 2 — Standard Narrative Flow (~1.5s–2.0s):* Natural conversational visual cadence matching sentence progression.
+      3. *Tier 3 — Complex Infographics / Anatomy / Deep Diagrams / Punchlines (~2.5s–3.5s):* Extended hold times providing cognitive breathing room to absorb detailed anatomical cross-sections, formulas, and visual punchlines.
+    * **Multi-Image Semantic Clause Mapping:** A single voice clause/sentence (**2.5s – 4.5s**) is dynamically paired with **2–4 sequential static images** describing each micro-phrase in the spoken sentence (*"Voice reading to where the image pops up"*).
+    * **Concrete Opening Hook Example:** Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and drop-off), that 4-second segment is dynamically paired with 4 high-tempo Tier 1 images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up, hooking viewer attention from second 0.
+    * **100% Static Hard Cuts:** Pure static cuts via FFmpeg Concat Demuxer (`ffconcat version 1.0`) with **strictly 0 pan/zoom or Ken Burns latency**, rapid 1-pass assembly in ~0.5s.
+    * **Voice & Audio:** Local F5-TTS zero-shot English voice (profile: `f5-tts-latest`, speed standardized to **0.90x** with micro-pauses ~0.15s for slow, emotive, sarcastic wit delivery + Studio De-Nasal EQ chain), **STRICTLY NO BGM** (`bgm_volume: 0`). Automated transcript segmentation into semantic visual clauses via `./videogen explainer` with 5 cognitive visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`). Authentic Ink Explainer art style ("Voice gì thị giác đó" — direct 1-to-1 visual correspondence to the spoken science/anatomy/metaphor).
   - **Preset D — Story-Driven Cinematic Series:** `16:9`, multi-shot episodes (e.g. 30×10s = 5m), character asset consistency via `@Character` chips, cinema-grade Dual-Zone ASS subtitles.
   - **Custom Formats:** Any combination of parameters configured via `examples/storyboards/universal_template.json`.
 
@@ -98,6 +106,14 @@ This prevents model hallucination of unwanted burned-in text or clashing audio.
 - Set `"hardsub": false` in storyboard for clean footage without burned-in captions.
 - Set `"hardsub": true` with `subtitle_style.preset: "kinetic_neon_yellow"` for animated word-by-word subtitles.
 - Set `"hardsub": true` with `subtitle_style.preset: "dual_zone"` for 16:9 cinema dialogue + HUD.
+
+#### D. Visual Review & Human-in-the-Loop Inspection Gate (Mandatory Agent Rule)
+- **Mandatory Board Generation:** Whenever an agent creates or modifies a storyboard JSON, it **MUST** generate and inspect the storyboard via `./videogen board <storyboard.json>` before triggering batch generation (`./videogen run` or `./videogen loop`).
+- **Inspection Checklist:**
+  1. Verify visual pacing and density: Explainer calibrated to the flexible 3-tier contextual matrix (0.8s–1.2s high-tempo hooks/gags, 1.5s–2.0s standard narrative, 2.5s–3.5s complex diagrams/punchlines) with 2–4 sequential images per clause/sentence (2.5s–4.5s). Documentary calibrated to 36–39 words/10s shot.
+  2. Confirm prompt cleanliness guardrails and negative prompt hygiene are present on every shot.
+  3. Validate character chips (`@Character`) and visual strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+  4. Test single-shot re-rendering (`./videogen render <sb> <shot_id>`) for direct feedback iterations prior to full pipeline execution.
 
 ---
 
@@ -183,6 +199,16 @@ For educational explainers (like Ink Explainer / hand-drawn minimalist style):
     ```text
     An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
     ```
+- **Flexible 3-Tier Contextual Pacing Matrix (Stickman Explainer 16:9):**
+  Pacing avoids rigid uniform timing (which is exhausting), adapting dynamically to information density (0.8s to 3.5s). Fast ~1.0s cuts dominate the majority of the production (~70%), especially across the opening seconds (0–4s):
+  1. **Tier 1 — High-Tempo / Gag / Micro-phrases / Opening Hook (~0.8s–1.2s, avg ~1.0s, ~70% of cuts):** Rapid visual velocity. Mandatory across the opening seconds (0–4s) to capture viewer attention instantly from second 0. E.g. across a 4-second opening hook, 4 sequential images (~1.0s each) pop up:
+     * `0.0s – 1.0s`: Stickman enters frame with puzzled posture.
+     * `1.0s – 2.0s`: Extreme close-up of unblinking cartoon insomnia eyes.
+     * `2.0s – 3.0s`: Trembling panic reaction with exaggerated blue sweat drops.
+     * `3.0s – 4.0s`: Giant visual metaphor or chalkboard anatomy diagram pops up.
+  2. **Tier 2 — Standard Narrative Flow (~1.5s–2.0s):** Conversational visual progression matching standard explanatory sentences.
+  3. **Tier 3 — Complex Infographics / Anatomy / Deep Diagrams / Punchlines (~2.5s–3.5s, ~15–20% of cuts):** Deliberate, purposeful minority providing cognitive breathing room to absorb detailed anatomical cross-sections, formulas, and comedic punchlines.
+  - **100% Static Hard Cuts:** Pure static cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with **zero pan/zoom or Ken Burns latency**, keeping pacing razor-sharp.
 - **CLI Workflow for Minimalist Explainers:**
   ```bash
   # 1. Generate storyboard from transcript with 1-to-1 visual clauses

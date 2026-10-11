@@ -35,7 +35,7 @@ VideoGen supports three high-performance voice generation engines:
 
 ### 1.3. Post-Production, Motion Stills & Audio Mixing (FFmpeg)
 - Stitches all scenes sequentially into a master video (`engine/compositor.js`).
-- **2D Static Hard Cuts (Pure Ink Explainer Aesthetic):** For educational explainer animations, the engine assembles static illustrations using crisp hard cuts (0 Ken Burns pan/zoom) via FFmpeg `ffconcat version 1.0` demuxer, matching exact voiceover clip durations. (Ken Burns motion remains available as an opt-in flag for documentary still photo sequences).
+- **2D Static Hard Cuts (Pure Ink Explainer Aesthetic):** For educational explainer animations, the engine assembles static illustrations using crisp hard cuts (0 Ken Burns pan/zoom or latency) via FFmpeg `ffconcat version 1.0` demuxer, matching dynamic ~1.0s image pacing. Multi-image semantic clause mapping allows a single voice clause (2.5s–4.5s) to be paired with 2–4 sequential static images describing each micro-phrase ("Voice reading to where the image pops up"). (Ken Burns motion remains available as an opt-in flag for documentary still photo sequences).
 - Dynamically scales voiceover speed (`atempo`) or aligns voice onset delay (`adelay`).
 - Balances audio levels: Voiceover at 100% volume, background ambient SFX at 20–25% volume, background music (BGM) at 12–15% volume.
 - **Strictly No BGM Rule (Minimalist Explainer Series):** For hand-drawn explainer animations (Ink Explainer style), set `"bgm_volume": 0` or `"bgm": "none"`. The BGM track is completely omitted, leaving a pure, intimate monologue with punchy SFX.
@@ -53,6 +53,17 @@ VideoGen supports three high-performance voice generation engines:
 ## 2. Environment Setup & Browser Bridge
 
 To bypass Cloudflare / Google bot protections, the system attaches to the user's authentic Windows Chrome browser via remote debugging.
+
+### 2.0. Prerequisites & Tooling Requirements
+- **Runtime:** Node.js v20+ (Node.js v24 recommended) & FFmpeg with `libass` and `freetype` support.
+- **Recommended Visual Studio Tools (`lavish-axi` & `quota-axi`):**
+  Install the official productivity toolchain globally via npm:
+  ```bash
+  npm install -g lavish-axi quota-axi
+  ```
+  - `lavish-axi`: Visual Web UI studio for interactive storyboard reviews, prompt inspection, and shot-by-shot debugging.
+  - `quota-axi`: API quota preflight telemetry for ElevenLabs and AI platforms.
+  - *Standalone Fallback:* Users without `lavish-axi` can seamlessly view and interact with the review board via the standalone browser fallback (`file://.../.lavish/director_board.html`).
 
 ### 2.1. Port Architecture
 - **Windows Chrome:** Launched with `--remote-debugging-port=9222` and profile at `C:\Users\<YourUser>\AppData\Local\Google\Chrome\AutomationProfile`.
@@ -176,34 +187,125 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 
 ---
 
-## 6. End-to-End Production Checklist (v2.0)
+## 6. End-to-End Production Workflow & Operational Phases (v2.0)
 
-1. **Prepare Storyboard (Director):** Author `storyboards/<project>.json` following the SSOT schema above or generate via `./videogen explainer`.
-2. **Review Storyboard Visually (Director's Board):**
-   Generate and inspect the interactive visual board to verify shot breakdown, narration density (wps), prompt accuracy, and render status:
-   ```bash
-   ./videogen board storyboards/<project>.json
-   # Or launch with Lavish Editor for collaborative human-in-the-loop inspection:
-   lavish-axi .lavish/board_<project>.html
-   ```
-3. **Select Resolution Mode:** Agent asks user for 1080p or 720p preference (see Section 3 above).
-4. **Execute Automated Production (Worker):**
-   - Single command (full pipeline):
-     ```bash
-     ./videogen run storyboards/<project>.json           # 1080p (default)
-     ./videogen run storyboards/<project>.json --720p    # 720p draft mode
-     ```
-   - Or step-by-step for fine control:
-     ```bash
-     ./videogen bridge
-     ./videogen render storyboards/<project>.json [--720p]
-     ./videogen voice storyboards/<project>.json
-     ./videogen subs storyboards/<project>.json
-     ./videogen assemble storyboards/<project>.json
-     ./videogen verify output/<project>/<master>.mp4
-     ./videogen archive storyboards/<project>.json
-     ./videogen upload storyboards/<project>.json
-     ```
+VideoGen structures production into distinct, standardized operational phases. The central human-in-the-loop review milestone occurs immediately after storyboard creation:
+
+### Phase 1: Storyboard Authoring & Semantic Segmentation (SSOT)
+- **Authoring:** Create `storyboards/<project>.json` following the declarative schema (or copy `examples/storyboards/universal_template.json`).
+- **Automated Clause Segmentation:** For explainers, run `./videogen explainer <transcript.txt>` to automatically segment narration into 1.5s–2.5s semantic visual clauses with cognitive strategy tags (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+- Defines all 6 dimensions of the parameter matrix (geometry, timeline, voice, visuals, subtitles, audio mix).
+
+---
+
+### Phase 2: The Visual UI Layer & Human-in-the-Loop Gate (Lavish Director's Board)
+Before rendering entire sequences or consuming batch compute/credits, the Director or Agent inspects the production plan through **Lavish Director's Board**:
+
+#### (a) Launching the Review Board
+```bash
+# Generate the Director's Board and automatically open in Lavish Visual Studio:
+./videogen board storyboards/<project>.json --open
+
+# Or generate the HTML artifact without auto-launching:
+./videogen board storyboards/<project>.json
+```
+The engine compiles a responsive, cinema-grade dashboard in `.lavish/board_<project>.html` and mirrors it to the canonical `.lavish/director_board.html`.
+
+#### (b) Storyboard Inspection Criteria
+The Director evaluates 5 vital quality indicators across the interactive card grid:
+1. **WPS (Words-Per-Second) Pacing & Speech Density:**
+   - Each card displays its calculated word count and real-time WPS badge.
+   - *Documentary Shorts (9:16):* Calibrated to **36–39 words per 10s shot** (~3.8 wps). Shots > 4.2 wps risk hurried narration; shots < 2.5 wps indicate dead air.
+   - *Minimalist Stickman Explainers (16:9):* Calibrated to the **flexible 3-tier contextual pacing matrix (0.8s to 3.5s)**:
+     * **70% Fast ~1.0s Dominance:** Rapid ~0.8s–1.2s cuts dominate the majority of shots (~70%), **especially in the opening seconds (0–4s)** where high visual velocity is mandatory to hook viewers from second 0. E.g. a 4-second opening segment is dynamically paired with 4 sequential images (~1.0s each): `0–1s` stickman enters puzzled -> `1–2s` insomnia eyes -> `2–3s` sweating reaction -> `3–4s` giant visual metaphor/diagram pops up.
+     * **Purposeful Slower Tiers:** Standard narrative runs at **~1.5s–2.0s**, while complex diagrams, anatomical cross-sections, and comedic punchlines use **~2.5s–3.5s** (~15–20% of cuts) to give viewers time to absorb intricate details.
+     * **Multi-Image Clause Mapping:** Each spoken voice clause/sentence (2.5s–4.5s) is paired with 2–4 sequential static images illustrating each micro-phrase in real time (*"Voice reading to where the image pops up"*).
+2. **Prompt Hygiene & Cleanliness Guardrails:**
+   - Verify camera dynamics, lighting, and environmental context.
+   - Confirm mandatory negative constraints are present: `AUDIO: SFX ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. CLEAN FOOTAGE ONLY. STRICTLY NO ON-SCREEN TEXT. NO SUBTITLES. NO CAPTIONS.`
+3. **Character Chips (`@Character`):**
+   - Confirm character asset chips are accurately attached.
+   - Verify the **Zero Physical Descriptors Rule**: when `@Character` is attached, the prompt text must not repeat hair/eye/clothing descriptors.
+4. **Color Palettes & Visual Strategies:**
+   - Verify visual strategy badges (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`).
+   - Check contextual background wash tags (`dark_vignette`, `clean_diagram`, `prehistoric`, `ice_age`, `interior_cozy`, `clean_card`) for color harmony.
+5. **Video & Image Previews:**
+   - Completed clips display direct thumbnail and video previews directly inside each shot card (`renders/<project>/<shot_id>.mp4` or `.png`).
+   - Clicking any card opens a full-screen lightbox for in-depth inspection and one-click prompt copying.
+
+#### (c) Targeted Single-Shot Re-rendering & Direct Iteration
+If a shot requires aesthetic iteration or prompt adjustment, re-render only the affected shot without regenerating the entire timeline:
+```bash
+# 1. Edit the prompt in storyboards/<project>.json
+# 2. Re-render only the specific shot:
+./videogen render storyboards/<project>.json shot_03
+
+# Or re-render multiple target shots:
+./videogen render storyboards/<project>.json shot_01 shot_04
+
+# 3. Refresh the Director's Board to verify updated visuals:
+./videogen board storyboards/<project>.json
+```
+
+#### (d) Standalone Browser Fallback (Zero-Dependency Mode)
+Users or headless environments without `lavish-axi` installed can seamlessly use the review board:
+- Open `.lavish/director_board.html` directly in any web browser (`file:///absolute/path/to/.lavish/director_board.html`).
+- Built with CDN-backed Tailwind CSS v4 and DaisyUI v5 (Luxury theme), the board requires **zero local build tools, web servers, or dependencies**.
+- If `--open` is passed and `lavish-axi` is not found, `./videogen board` automatically prints the clickable `file://` URI, attempts to launch your default system browser (`google-chrome` or `xdg-open`), and provides a friendly installation tip (`npm install -g lavish-axi`).
+
+---
+
+### Phase 3: Visual Generation & AI Rendering (Google Flow / Nano Banana Pro)
+- **Resolution Mode:** Agent prompts user to choose **1080p Cloud Super-Resolution** (highest fidelity) or **720p Direct CDN** (high-speed draft).
+- **Google Flow Automation:** Configures aspect ratio, attaches `@Character` chips, runs TypeSafe Jev policy pre-flight, and pulls Full HD media into `renders/`.
+- **Minimalist Explainer Stills:** Generates 🍌 Nano Banana Pro 16:9 images with in-browser Base64 extraction and MD5 deduplication (0 credits consumed).
+
+---
+
+### Phase 4: Studio Voiceover Synthesis & Calibration (VieNeu-TTS / F5-TTS / ElevenLabs)
+- **Vietnamese Voice (Mode A):** VieNeu-TTS v3 Turbo 48 kHz (temp 0.4, watermark off, phonetic loanword transliteration).
+- **English Voice (Mode B):** F5-TTS Zero-Shot Studio Clone at 0.90x speed with 2-tier dead-silence trimming (80ms intra-clause, 220ms sentence-end). Measures exact durations via `ffprobe` for frame-accurate video synchronization.
+- **Global Acting (Mode C):** ElevenLabs CDP slider calibration and synthesis with quota preflight via `quota-axi`.
+
+---
+
+### Phase 5: Subtitles & Cinema Typography (Dual-Zone ASS / Dynamic Shorts)
+- **Cinema Dual-Zone ASS:** Tier A dialogue (bottom 34px Arial) + Tier B tech HUD (top 28px Consolas cyan).
+- **Dynamic Shorts ASS:** Animated yellow-neon micro-chunks (2–3 words/chunk) synchronized to speech cadence.
+
+---
+
+### Phase 6: Master Assembly, Audio Mixing & Compositing (FFmpeg)
+- **Video Concatenation:** Standardized FFmpeg concat filter re-indexes timestamps to prevent frame freezes across divergent timebases.
+- **Audio Mixing Bus:** 3-channel mix (Voice 100%, SFX 20–25%, BGM 12–15%). For Minimalist Explainers, BGM is strictly muted (`bgm_volume: 0`).
+- **Integrity Assertion:** Mandatory MD5 hash check prevents duplicate shots or repeated voice files.
+- **Verification QA:** Extracts high-resolution verification keyframes for visual review (`./videogen verify`).
+
+---
+
+### Phase 7: Multi-Platform Publishing & Archival
+- **Publishing Order:** YouTube Studio (Unlisted / Scheduled) -> Meta Business Suite (Facebook Reels) -> TikTok Studio.
+- **Dialog & Navigation Hygiene:** Auto-bypasses `ytcp-prechecks-warning-dialog` and handles `beforeunload` events.
+- **Archival:** `./videogen archive` migrates masters and assets to external drives (`DEST_ORIGINAL`, `DEST_FINAL`) and purges temp directories.
+
+---
+
+### Quick Production Execution Reference
+- **Single Command Autonomous Run (A→Z):**
+  ```bash
+  ./videogen run storyboards/<project>.json           # 1080p (default)
+  ./videogen run storyboards/<project>.json --720p    # 720p draft mode
+  ```
+- **Step-by-Step Interactive Workflow:**
+  ```bash
+  ./videogen bridge                                  # 1. Connect browser bridge
+  ./videogen board storyboards/<project>.json --open # 2. Review Director's Board (Lavish)
+  ./videogen render storyboards/<project>.json       # 3. Render visuals
+  ./videogen voice storyboards/<project>.json        # 4. Synthesize voiceover
+  ./videogen subs storyboards/<project>.json         # 5. Generate subtitles
+  ./videogen assemble storyboards/<project>.json     # 6. Stitch & mix master
+  ./videogen upload storyboards/<project>.json       # 7. Publish / schedule
+  ```
 
 ---
 
@@ -237,7 +339,7 @@ VideoGen is a **zero-hardcoding, parameter-driven video production engine**. Rat
 - `provider`: `"vieneu"` (local 48 kHz neural TTS, Vietnamese), `"f5-tts"` (local zero-shot studio clone, English), or `"elevenlabs"` (browser CDP).
 - `target_density_wps`: Words-per-second speech density:
   - **Documentary Narrative Pacing:** ~3.8–4.0 wps. For a 10s shot, write exactly **36–39 words** (~8.5s–9.5s audio duration) to naturally fill the cut without dead air.
-  - **Hand-Drawn Explainer Pacing (Ink Explainer):** ~2.6–3.0 wps. Rapid-fire narration with micro-pauses (0.12–0.18s) matching micro-shots of **1.5s – 2.5s**.
+  - **Stickman Explainer Pacing (16:9 Ink Explainer):** Flexible 3-tier contextual matrix (0.8s to 3.5s) where fast ~1.0s cuts dominate the majority of the production (~70%), especially in the opening seconds (0–4s) to capture viewer retention. Standard narrative progresses at ~1.5s–2.0s, while complex infographics and punchlines use ~2.5s–3.5s. A single voice clause/sentence (2.5s–4.5s) is dynamically paired with **2–4 sequential static images** matching spoken micro-phrases (*"Voice reading to where the image pops up"*). E.g., across a 4s opening clip, 4 rapid images pop up sequentially (~1.0s each) to hook viewer attention from second 0.
   - **Rapid Social Explainer Pacing:** ~2.75–3.0 wps. Approximately 80–85 words per 30 seconds.
 - `settings`:
   - `temperature`: `0.4`–`0.5` (prevents slurring and consonant lisping in VieNeu).
@@ -297,9 +399,14 @@ VideoGen powers multiple independent production channels running in parallel:
 
 ### 8.4. Recipe 3: Minimalist Hand-Drawn Explainer (16:9 Static Micro-Shot Cuts)
 - **Geometry:** `16:9` widescreen, 1920×1080 Full HD.
-- **Timeline:** Dynamic micro-shots of **1.0s – 2.8s** (average ~2.5s per cut, clause-locked semantic timing, ~110–220 cuts for a 5-minute video) tightly synchronized with voiceover punchlines, lists, and dialogue beats.
+- **Timeline & Flexible 3-Tier Contextual Pacing (0.8s to 3.5s):**
+  * **~70% High-Tempo Velocity (~0.8s–1.2s, avg ~1.0s):** Fast ~1.0s cuts dominate the majority of cuts (~70%), **especially across opening seconds (0–4s)** to hook audience attention from second 0.
+  * **Concrete Opening Hook Blueprint:** Instead of holding 1 static image across a 4-second opening voice clip (which causes boredom and viewer drop-off), that 4-second segment is dynamically paired with 4 sequential images (~1.0s each): e.g., `0–1s`: stickman enters puzzled -> `1–2s`: close-up insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up.
+  * **Standard Narrative Flow (~1.5s–2.0s):** Conversational visual progression matching standard sentences.
+  * **Complex Infographics & Punchlines (~2.5s–3.5s):** Deliberate minority (~15–20% of cuts) allowing viewers time to absorb complex anatomical cutaways or let a punchline breathe.
+- **Multi-Image Semantic Clause Mapping:** A single voice clause/sentence (**2.5s – 4.5s**) is dynamically paired with **2–4 sequential static images** describing each micro-phrase in the spoken sentence (*"Voice reading to where the image pops up"*).
 - **Visuals:** Google Flow Image Mode with 🍌 **Nano Banana Pro in 16:9** (0 credits consumed, 100% free, unlimited batch capacity). In-browser Base64 fetch via Chrome CDP, MD5 deduplication guard against Flow duplicate image generation, and Tesseract OCR screening to ensure 0% watermark/channel text leaks. Authentic Ink Explainer aesthetic: pure white round cartoon head (`#ffffff`), bold clean black ink contours, expressive meme eyes, and contextual color palettes (dark olive/charcoal for night & danger, pale ice-blue for cold, clean cream parchment for everyday diagrams, warm indoors for modern scenes).
-- **Motion:** Pure Static Hard Cuts (0 Ken Burns camera motion) for maximum visual punch and authentic comic-book pacing.
+- **Motion & Assembly:** **100% Pure Static Hard Cuts (Strictly 0 pan/zoom or Ken Burns latency)** via FFmpeg concat demuxer (`ffconcat version 1.0`) in ~0.5s for maximum visual punch and authentic comic-book pacing.
 - **Voice & Rhythm Standardization (Snappy Explainer Pacing):** Provider `f5-tts` (or `f5`), voice `f5-tts-latest`, speed `1.0`.
   * **Mandatory Dead-Silence Trimming:** Engine strictly strips dead silence with 2-tier micro-pauses.
   * **2-Tier Micro-Pauses:** 
@@ -326,7 +433,7 @@ VideoGen powers multiple independent production channels running in parallel:
 ### 8.6. Recipe 5: Minimalist Explainer Production Workflow (Authentic Ink Explainer / Before Civilization Style)
 - **Geometry:** `16:9` widescreen (1920×1080).
 - **Engine:** Google Flow 🍌 **Nano Banana Pro** (Image mode, 0 Flow credits, 100% free).
-- **Pacing:** `static_cuts` (Strictly 0 Ken Burns motion, 1-pass FFmpeg demuxer assembly in ~0.5s).
+- **Pacing:** Flexible 3-tier contextual pacing matrix (0.8s to 3.5s) where fast ~1.0s cuts dominate ~70% of the video (especially opening hooks 0–4s), standard narrative flows at ~1.5s–2.0s, and complex diagrams/punchlines use ~2.5s–3.5s. 100% static hard cuts via FFmpeg concat demuxer (`ffconcat version 1.0`) with strictly 0 pan/zoom or Ken Burns latency in ~0.5s.
 - **Audio Mix:** Voice 100%, Strictly NO BGM (`bgm_volume: 0`).
 - **Voice:** Local F5-TTS (English, `f5-tts-latest`, speed `0.90x`, micro-pauses ~0.15s).
 - **Core Visual DNA (Learned directly from Before Civilization Reference & @Inkexplainer96 Benchmark):**
@@ -354,7 +461,7 @@ VideoGen powers multiple independent production channels running in parallel:
      An authentic Ink Explainer style 2D comic illustration. SCENE: [SCENE_DESCRIPTION]. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: [SELECTED_PALETTE_BG]. STYLE: High-contrast educational graphic novel explainer, bold black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. NO 3D, NO CGI, NO PHOTOREALISM, NO REALISTIC TEXTURES, NO GRADIENT MESH, NO WATERMARK, NO LOGO, NO BLURRY ARTIFACTS, NO STOCK PHOTO.
      ```
 - **Clause-Locked Semantic Workflow (`./videogen explainer`):**
-  1. **Segment Transcript:** Splits voiceover into semantic visual clauses (1.5s–2.5s / 4–8 words).
+  1. **Segment Transcript & Multi-Image Semantic Clause Mapping:** Splits voiceover into clauses/sentences (2.5s–4.5s), and dynamically pairs each clause with 2–4 sequential static images (~1.0s average duration) illustrating spoken micro-phrases (*"Voice reading to where the image pops up"*). E.g., across a 4s opening clip, 4 rapid images are mapped (`0–1s`: stickman enters puzzled -> `1–2s`: insomnia eyes -> `2–3s`: sweating reaction -> `3–4s`: giant visual metaphor/diagram pops up).
   2. **Classify Visual Strategy:** Assigns each clause one of 4 pure visual strategies (no text injection):
      - `LITERAL`: Direct physical depiction (alarm clock at night, sweating in bed, clutching churning stomach, trembling fingers).
      - `METAPHOR`: Meme / symbolic visual gag (stickman lifting giant cartoon minivan, floating in mid-air with sunglasses and golden halo, brain control room with panic button).
@@ -411,7 +518,7 @@ To build any format, copy `examples/storyboards/universal_template.json` into yo
 An ultra-fast, zero-API-cost format for educational and narrative explainer videos (Casually Explained / Kurzgesagt style).
 - **Configuration:** Authored via `examples/storyboards/universal_template.json` with `aspect_ratio: "16:9"`, `engine: "nano_banana_pro"`, `pacing: "static_cuts"`, `tts_provider: "f5-tts"`, and `bgm_volume: 0`.
 - **Visual Engine:** Google Flow Nano Banana Pro in 16:9 (`1376x768` native upscaled to `1080p`).
-- **Pacing & Editing:** 100% Static Cuts (hard cut per clause/sentence). No artificial Ken Burns motion. Assembled in single-pass via `ffconcat version 1.0` demuxer mapped to narrator audio duration.
+- **Pacing & Editing:** 100% Static Cuts with flexible 3-tier contextual pacing (0.8s to 3.5s). Fast ~1.0s cuts dominate ~70% (mandatory for opening hooks), standard narrative flows at ~1.5s–2.0s, and complex diagrams/punchlines breathe at ~2.5s–3.5s (2–4 images per 2.5s–4.5s clause). Strictly 0 artificial Ken Burns or pan/zoom latency. Assembled in single-pass in ~0.5s via `ffconcat version 1.0` demuxer mapped to narrator audio duration.
 - **Audio Hygiene (Strictly No BGM):** Set `bgm_volume: 0`. The entire audio spectrum remains pristine for local F5-TTS studio narration at `0.90x` speed with natural micro-pauses.
 - **Scene Prompt Hygiene (Zero-Banner Rule):**
   * Do NOT include the words `"Ink Explainer"` or `"Minimalist Stick Figure"` in the positive prompt, as image generators mistake them for titles and render huge header banners.

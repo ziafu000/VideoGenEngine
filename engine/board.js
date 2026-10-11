@@ -1,7 +1,83 @@
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { spawnSync, spawn } = require('child_process');
 const config = require('./config');
+
+/**
+ * Safely convert a file path to a valid file:// URL
+ * @param {string} filePath
+ * @returns {string}
+ */
+function toFileUrl(filePath) {
+  if (typeof filePath === 'string' && filePath.startsWith('file://')) {
+    return filePath;
+  }
+  return pathToFileURL(path.resolve(filePath)).href;
+}
+
+/**
+ * Check if lavish-axi CLI is installed and accessible
+ * @returns {boolean}
+ */
+function isLavishInstalled() {
+  try {
+    const res = spawnSync('lavish-axi', ['--version'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000
+    });
+    return res.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open a local file or file URL in the default system browser
+ * @param {string} filePath - Local file path or file:// URL
+ * @returns {boolean} - True if an opener process was spawned successfully
+ */
+function openInSystemBrowser(filePath) {
+  if (!filePath || typeof filePath !== 'string') return false;
+
+  const resolvedPath = path.resolve(filePath);
+  const fileUrl = toFileUrl(resolvedPath);
+
+  const platform = process.platform;
+  const openers = [];
+
+  if (platform === 'darwin') {
+    openers.push({ cmd: 'open', args: [fileUrl] });
+  } else if (platform === 'win32') {
+    openers.push({ cmd: 'explorer.exe', args: [resolvedPath] });
+    openers.push({ cmd: 'cmd.exe', args: ['/c', 'start', '""', fileUrl] });
+  } else {
+    // Linux / WSL default: xdg-open first, then browsers
+    openers.push({ cmd: 'xdg-open', args: [fileUrl] });
+    openers.push({ cmd: 'google-chrome', args: [fileUrl] });
+    openers.push({ cmd: 'google-chrome-stable', args: [fileUrl] });
+    if (config.WIN_HOST || process.env.WSL_DISTRO_NAME) {
+      const winTarget = config.toWinPath ? config.toWinPath(resolvedPath) : resolvedPath;
+      openers.push({ cmd: 'explorer.exe', args: [winTarget] });
+    }
+  }
+
+  for (const opener of openers) {
+    try {
+      const check = spawnSync('which', [opener.cmd], { stdio: 'ignore' });
+      if (check.status === 0) {
+        const child = spawn(opener.cmd, opener.args, {
+          stdio: 'ignore',
+          detached: true
+        });
+        child.unref();
+        return true;
+      }
+    } catch {}
+  }
+  return false;
+}
 
 /**
  * Format seconds into MM:SS.ms or MM:SS
@@ -791,6 +867,10 @@ function generateBoard(storyboardData, options = {}) {
     fs.writeFileSync(canonicalPath, html, 'utf8');
   } catch {}
 
+  const hasLavish = isLavishInstalled();
+  const relCanonical = path.relative(config.PROJECT_DIR, canonicalPath);
+  const fileUrl = toFileUrl(canonicalPath);
+
   console.log(`\n============================================================`);
   console.log(`  VIDEOGEN DIRECTOR'S VISUAL REVIEW BOARD GENERATED!`);
   console.log(`============================================================`);
@@ -799,21 +879,45 @@ function generateBoard(storyboardData, options = {}) {
   console.log(`  [✓] Shots:      ${totalShots} cuts (${renderedCount} rendered, ${pendingCount} pending)`);
   console.log(`  [✓] Est. Time:  ${totalDurationFormatted} (${totalDurationSec}s)`);
   console.log(`------------------------------------------------------------`);
-  console.log(`  👉 Xem trực tiếp bằng Lavish Editor:`);
-  console.log(`     lavish-axi ${path.relative(config.PROJECT_DIR, outPath)}`);
+  if (hasLavish) {
+    console.log(`  👉 Xem trực tiếp bằng Lavish Editor:`);
+    console.log(`     lavish-axi ${relCanonical}`);
+    console.log(`     (hoặc mở standalone: ${fileUrl})`);
+  } else {
+    console.log(`  👉 Mở trực tiếp trên trình duyệt (Standalone HTML Fallback):`);
+    console.log(`     ${fileUrl}`);
+    console.log(`  💡 Khuyến nghị cài đặt Lavish Visual Studio: npm install -g lavish-axi`);
+  }
   console.log(`============================================================\n`);
 
-  // If --open flag is set, try launching lavish-axi
+  // If --open flag is set, launch lavish-axi or fallback to system browser
   if (options.open) {
-    try {
-      console.log(`[-] Đang khởi chạy Lavish Editor cho ${path.basename(outPath)}...`);
-      const child = spawn('lavish-axi', [outPath], {
-        stdio: 'inherit',
-        detached: true
-      });
-      child.unref();
-    } catch (err) {
-      console.warn(`[!] Không thể tự động mở lavish-axi: ${err.message}`);
+    if (hasLavish) {
+      try {
+        console.log(`[-] Đang khởi chạy Lavish Editor cho ${relCanonical}...`);
+        const child = spawn('lavish-axi', [relCanonical], {
+          cwd: config.PROJECT_DIR,
+          stdio: 'inherit',
+          detached: true
+        });
+        child.on('error', (err) => {
+          console.warn(`[!] Không thể khởi chạy lavish-axi (${err.message}). Mở bằng trình duyệt hệ thống...`);
+          openInSystemBrowser(canonicalPath);
+        });
+        child.unref();
+      } catch (err) {
+        console.warn(`[!] Không thể khởi chạy lavish-axi: ${err.message}. Mở bằng trình duyệt hệ thống...`);
+        openInSystemBrowser(canonicalPath);
+      }
+    } else {
+      console.log(`[-] Không tìm thấy lavish-axi. Mở bằng trình duyệt hệ thống (Standalone HTML Fallback)...`);
+      const opened = openInSystemBrowser(canonicalPath);
+      if (opened) {
+        console.log(`  [✓] Đã mở ${fileUrl} trên trình duyệt hệ thống.`);
+      } else {
+        console.log(`  👉 Vui lòng mở đường dẫn sau trong trình duyệt:\n     ${fileUrl}`);
+      }
+      console.log(`  💡 Khuyến nghị cài đặt Lavish Visual Studio: npm install -g lavish-axi\n`);
     }
   }
 
@@ -824,5 +928,8 @@ module.exports = {
   generateBoard,
   formatTime,
   getStrategyBadgeClass,
-  findRenderFile
+  findRenderFile,
+  isLavishInstalled,
+  openInSystemBrowser,
+  toFileUrl
 };
