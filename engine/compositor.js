@@ -362,10 +362,190 @@ function assembleStaticCuts({
   return outputPath;
 }
 
+/**
+ * High-level orchestration to assemble an entire storyboard (Static cuts demuxer or Video clip concat).
+ */
+async function assembleStoryboard(sb, options = {}) {
+  const {
+    noSubs = false,
+    sbPath = ''
+  } = options;
+
+  const shots = sb.shots || [];
+  const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
+  const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  let epRenderDir = path.join(config.RENDERS_DIR, episodeName);
+  let audioDir = path.join(config.AUDIO_DIR, episodeName);
+  if (!fs.existsSync(audioDir) && fs.existsSync(path.join(config.AUDIO_DIR, baseName))) {
+    audioDir = path.join(config.AUDIO_DIR, baseName);
+  }
+
+  const isShorts = (sb.aspect_ratio === '9:16') ||
+                   (sb.geometry && sb.geometry.aspect_ratio === '9:16') ||
+                   (sb.format === 'shorts_40s') ||
+                   (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
+  const noHardsub = noSubs || sb.hardsub === false || (sb.subtitles && sb.subtitles.hardsub === false) || (sb.project && sb.project.hardsub === false);
+
+  // 1. Static Cuts Demuxer mode (Minimalist Explainer / Static Hard Cuts)
+  const isStaticCuts = (sb.pacing === 'static_cuts' || sb.pacing === 'hard_cuts' || sb.format === 'minimalist_explainer' || sb.motion === 'none');
+  if (isStaticCuts) {
+    console.log(`\n=== CHẾ ĐỘ DỰNG TĨNH SIÊU TỐC (STATIC HARD CUTS / 1-PASS DEMUXER) ===`);
+    const staticShots = [];
+    for (let i = 0; i < shots.length; i++) {
+      const s = shots[i];
+      const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      const possibleImgs = [
+        path.join(epRenderDir, `${shotId}.png`),
+        path.join(epRenderDir, `${shotId}.jpg`),
+        path.join(config.RENDERS_DIR, `${shotId}.png`),
+        path.join(config.RENDERS_DIR, `${shotId}.jpg`),
+        (s.image ? path.resolve(config.PROJECT_DIR, s.image) : null)
+      ].filter(Boolean);
+      const foundImg = possibleImgs.find(p => fs.existsSync(p));
+      if (!foundImg) {
+        throw new Error(`[!] Không tìm thấy ảnh cho shot ${shotId} trong ${epRenderDir}`);
+      }
+      const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+      const audioDur = fs.existsSync(aFile) ? getDuration(aFile) : 0;
+      const shotDur = s.duration || s.duration_seconds || (audioDur > 0 ? audioDur : 2.5);
+      staticShots.push({ imagePath: foundImg, duration: shotDur });
+    }
+
+    let masterAudio = path.join(audioDir, 'master_voice_tight.wav');
+    if (!fs.existsSync(masterAudio)) {
+      masterAudio = path.join(audioDir, 'master_voice.wav');
+    }
+    if (!fs.existsSync(masterAudio)) {
+      masterAudio = path.join(audioDir, 'master_voice_clauses.wav');
+    }
+
+    const outVideoName = (sb.project && sb.project.id ? `${sb.project.id}_Master_1080p.mp4` : `${episodeName}_Master_1080p.mp4`);
+    const masterOutPath = path.join(config.OUTPUT_DIR, outVideoName);
+    return assembleStaticCuts({
+      shots: staticShots,
+      audioMasterPath: masterAudio,
+      outputPath: masterOutPath,
+      aspectRatio: sb.aspect_ratio || '16:9'
+    });
+  }
+
+  // 2. Video Clips Concat mode
+  const videoFiles = [];
+  const audioFiles = [];
+  const timelines = [];
+  const delays = [];
+  let count11LabsVoice = 0;
+  let countMissingVoice = 0;
+
+  for (let i = 0; i < shots.length; i++) {
+    const s = shots[i];
+    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+    let vFile = path.join(epRenderDir, `${shotId}.mp4`);
+    if (!fs.existsSync(vFile)) {
+      vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+    }
+    const aFile = path.join(audioDir, `voice_${shotId}.mp3`);
+
+    if (!fs.existsSync(vFile)) {
+      const possibleImgs = [
+        path.join(epRenderDir, `${shotId}.png`),
+        path.join(epRenderDir, `${shotId}.jpg`),
+        path.join(config.RENDERS_DIR, `${shotId}.png`),
+        path.join(config.RENDERS_DIR, `${shotId}.jpg`),
+        (s.image ? path.resolve(config.PROJECT_DIR, s.image) : null)
+      ].filter(Boolean);
+      const foundImg = possibleImgs.find(p => fs.existsSync(p));
+      if (foundImg) {
+        const audioDur = fs.existsSync(aFile) ? getDuration(aFile) : 0;
+        const shotDur = audioDur > 0 ? (audioDur + 0.3) : (s.duration || 2.5);
+        const motionEffects = ['zoom_in', 'pan_left', 'zoom_out', 'pan_right'];
+        const effect = s.motion_effect || motionEffects[i % motionEffects.length];
+        console.log(`    [-] [Motion Stills] Chuyển đổi ảnh tĩnh ${path.basename(foundImg)} sang clip Ken Burns ${shotDur.toFixed(2)}s (${effect})...`);
+        renderMotionStill({
+          imagePath: foundImg,
+          duration: shotDur,
+          outputPath: vFile,
+          effect,
+          width: isShorts ? 1080 : 1920,
+          height: isShorts ? 1920 : 1080
+        });
+      }
+    }
+
+    if (fs.existsSync(vFile)) {
+      videoFiles.push(vFile);
+
+      const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || s.text || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
+      const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
+
+      if (hasAudioFile) {
+        count11LabsVoice++;
+        audioFiles.push(aFile);
+      } else {
+        if (hasSubOrVo) {
+          countMissingVoice++;
+          console.warn(`    [!] CẢNH BÁO: ${shotId} có phụ đề/lời thoại nhưng chưa có file voice tại ${aFile}!`);
+        }
+        audioFiles.push(null);
+      }
+
+      const delaySec = (s.voice && typeof s.voice.voice_delay_sec === 'number') 
+        ? s.voice.voice_delay_sec 
+        : ((s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.0);
+      delays.push(delaySec);
+
+      timelines.push({
+        shotId,
+        duration: getDuration(vFile),
+        audioDuration: hasAudioFile ? getDuration(aFile) : 0,
+        voiceDelaySec: delaySec
+      });
+    }
+  }
+
+  if (videoFiles.length === 0) {
+    throw new Error(`Không tìm thấy file video/clip nào trong ${epRenderDir} hoặc renders/! Vui lòng chạy ./videogen render trước.`);
+  }
+
+  console.log(`[-] Tìm thấy ${videoFiles.length} video clips (${count11LabsVoice} shots có file voiceover).`);
+  let assPath = path.join(epRenderDir, 'subtitles.ass');
+  if (!fs.existsSync(epRenderDir)) assPath = path.join(config.RENDERS_DIR, 'subtitles.ass');
+
+  if (!noHardsub) {
+    const subtitlesModule = require('./subtitles');
+    subtitlesModule.generateSubtitles(sb, timelines, assPath);
+  }
+
+  const safeTitle = ((sb.project && sb.project.title) || sb.title || episodeName).replace(/\s+/g, '_');
+  const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
+
+  const audioMix = sb.audio_mix || {};
+  const ambientVol = typeof audioMix.ambient_volume === 'number' ? audioMix.ambient_volume : 0.25;
+  const voiceVol = typeof audioMix.voice_volume === 'number' ? audioMix.voice_volume : 1.0;
+  const bgmVol = typeof audioMix.bgm_volume === 'number' ? audioMix.bgm_volume : (typeof sb.bgm_volume === 'number' ? sb.bgm_volume : 0.15);
+  const bgmPath = audioMix.bgm_path || sb.bgm || null;
+
+  return compositeVideo({
+    videoFiles,
+    audioFiles,
+    assSubtitlePath: noHardsub ? null : assPath,
+    subtitles_path: noHardsub ? null : assPath,
+    outputVideoPath: masterOutput,
+    ambientVolume: ambientVol,
+    voiceVolume: voiceVol,
+    bgmVolume: bgmVol,
+    bgmPath: bgmPath,
+    delays,
+    aspectRatio: isShorts ? '9:16' : '16:9',
+    burnSubtitles: !noHardsub
+  });
+}
+
 module.exports = {
   getDuration,
   compositeVideo,
   assembleStaticCuts,
+  assembleStoryboard,
   renderMotionStill,
   extractVerificationFrames,
   verifyRenderedShots
