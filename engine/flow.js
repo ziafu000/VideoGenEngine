@@ -659,12 +659,19 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
 }
 
 // 8. Generate image via Google Flow (Nano Banana Pro) with in-browser Base64 fetch & Zero-Dupe Guard
-async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 50, retries = 3 }) {
+async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 80, retries = 3 }) {
   await ensureFlowSettings({ mode: 'image', ratio: '16:9', model: 'Nano Banana Pro' });
   const cdp = await getClientForPage('flow.google.com');
   const crypto = require('crypto');
   try {
     for (let attempt = 1; attempt <= retries; attempt++) {
+      // Wait for any pre-existing pending tile from previous shot to complete
+      for (let w0 = 0; w0 < 45; w0++) {
+        const stillPending = await cdp.evaluate('!!document.querySelector("flow-pending-tile")');
+        if (!stillPending) break;
+        await sleep(1000);
+      }
+
       const initialUrls = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).map(i => i.src).filter(Boolean))()`);
       const initialSet = new Set(initialUrls || []);
 
@@ -688,7 +695,15 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
 
       // Insert prompt
       await cdp.send('Input.insertText', { text: prompt });
-      await sleep(250);
+      await cdp.evaluate(`(() => {
+        const pm = document.querySelector('.ProseMirror');
+        if (pm) {
+          pm.dispatchEvent(new Event('input', { bubbles: true }));
+          pm.dispatchEvent(new Event('change', { bubbles: true }));
+          pm.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+        }
+      })()`);
+      await sleep(350);
 
       // Wait for Angular to enable the generate button and click it via CDP native mouse event
       let btnRect = null;
