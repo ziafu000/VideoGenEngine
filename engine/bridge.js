@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -78,7 +78,7 @@ async function ensureBridge() {
 
     const psExec = config.getPowerShellCmd();
     try {
-      execSync(`${psExec} -NoProfile -Command '${psCmd.replace(/'/g, "''")}'`, { stdio: 'inherit' });
+      execFileSync(psExec, ['-NoProfile', '-Command', psCmd], { stdio: 'inherit' });
     } catch (err) {
       console.warn('    [!] Lỗi khi chạy powershell khởi động Chrome:', err.message);
     }

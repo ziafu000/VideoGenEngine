@@ -1,7 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // Load .env from project root (gitignored — contains user-specific paths)
 const envPath = path.resolve(__dirname, '..', '.env');
@@ -24,7 +24,7 @@ function getPowerShellCmd() {
   ];
   for (const c of candidates) {
     try {
-      execSync(`which ${c}`, { stdio: 'ignore', timeout: 500 });
+      execFileSync('which', [c], { stdio: 'ignore', timeout: 500 });
       return c;
     } catch {}
   }
@@ -36,7 +36,7 @@ function getWinUser() {
   if (process.env.WIN_USERNAME) return process.env.WIN_USERNAME;
   const ps = getPowerShellCmd();
   try {
-    const who = execSync(`${ps} -NoProfile -Command "[System.Environment]::UserName"`, {
+    const who = execFileSync(ps, ['-NoProfile', '-Command', '[System.Environment]::UserName'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 2000
@@ -50,12 +50,16 @@ function getWinUser() {
 function getWinHost() {
   if (process.env.WIN_HOST) return process.env.WIN_HOST;
   try {
-    const route = execSync("ip route | awk '/default/ {print $3}'", {
+    const routeOut = execFileSync('ip', ['route'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 1000
-    }).trim();
-    if (route) return route;
+    });
+    const defaultLine = routeOut.split(/\r?\n/).find(line => line.startsWith('default '));
+    if (defaultLine) {
+      const parts = defaultLine.trim().split(/\s+/);
+      if (parts[2]) return parts[2];
+    }
   } catch {}
   return '127.0.0.1';
 }

@@ -1,31 +1,78 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 const jev = require('./jev');
 
-async function getFlowClient() {
+async function getFlowClient(existingCdp = null) {
+  if (existingCdp && typeof existingCdp.isOpen === 'function' && existingCdp.isOpen()) {
+    existingCdp.retain();
+    return existingCdp;
+  }
   const client = await getClientForPage('flow.google.com');
   const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
-  try {
-    await client.send('Page.setDownloadBehavior', {
-      behavior: 'allow',
-      downloadPath: winDownloads
-    });
-    await client.send('Browser.setDownloadBehavior', {
-      behavior: 'allow',
-      downloadPath: winDownloads,
-      eventsEnabled: true
-    });
-  } catch {}
+  if (client._downloadBehaviorDir !== winDownloads) {
+    try {
+      await client.send('Page.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: winDownloads
+      });
+      await client.send('Browser.setDownloadBehavior', {
+        behavior: 'allow',
+        downloadPath: winDownloads,
+        eventsEnabled: true
+      });
+      client._downloadBehaviorDir = winDownloads;
+    } catch {}
+  }
   return client;
 }
 
+/**
+ * Prune stale offscreen DOM tiles, unload background media elements, and release V8 RemoteObject handles
+ * to prevent DOM/Base64 memory bloat during multi-hundred-shot batch runs.
+ */
+async function pruneFlowDomMemory(cdp, maxTiles = 12) {
+  if (!cdp || (typeof cdp.isOpen === 'function' && !cdp.isOpen())) return;
+  try {
+    await cdp.evaluate(`((limit) => {
+      const videoTiles = Array.from(document.querySelectorAll('flow-video-tile'));
+      for (let i = limit; i < videoTiles.length; i++) {
+        const tile = videoTiles[i];
+        const vids = tile.querySelectorAll('video');
+        vids.forEach(v => {
+          try {
+            v.pause();
+            v.removeAttribute('src');
+            v.load();
+          } catch {}
+        });
+        const imgs = tile.querySelectorAll('img');
+        imgs.forEach(img => {
+          try { img.removeAttribute('src'); } catch {}
+        });
+      }
+      const imageTiles = Array.from(document.querySelectorAll('flow-image-tile, flow-media-tile'));
+      for (let i = limit; i < imageTiles.length; i++) {
+        const tile = imageTiles[i];
+        const imgs = tile.querySelectorAll('img');
+        imgs.forEach(img => {
+          try { img.removeAttribute('src'); } catch {}
+        });
+      }
+      return true;
+    })(${Number(maxTiles) || 12})`);
+  } catch {}
+  if (typeof cdp.releaseMemory === 'function') {
+    await cdp.releaseMemory();
+  }
+}
+
 // 1. Get status of Google Flow UI
-async function getStatus() {
-  const cdp = await getFlowClient();
+async function getStatus(options = {}) {
+  const cdp = await getFlowClient(options.cdp);
   try {
     return await cdp.evaluate(`(() => {
       const pm = document.querySelector('.ProseMirror');
@@ -51,8 +98,8 @@ async function getStatus() {
 }
 
 // 2. Clear attached characters, prompt text, and dismiss any stale error cards/toasts
-async function clearCharacters() {
-  const cdp = await getFlowClient();
+async function clearCharacters(options = {}) {
+  const cdp = await getFlowClient(options.cdp);
   try {
     return await cdp.evaluate(`(() => {
       // Dismiss any failed generation cards
@@ -85,8 +132,8 @@ async function clearCharacters() {
 }
 
 // 3. Add character ingredient chip (@Character)
-async function addCharacter(charName) {
-  const cdp = await getFlowClient();
+async function addCharacter(charName, options = {}) {
+  const cdp = await getFlowClient(options.cdp);
   try {
     const res = await cdp.evaluate(`(async () => {
       const pm = document.querySelector('.ProseMirror');
@@ -124,7 +171,7 @@ async function addCharacter(charName) {
 }
 
 // 4. Submit prompt with Zero Physical Descriptors check & chip preservation
-async function submitPrompt(promptText) {
+async function submitPrompt(promptText, options = {}) {
   // Pre-flight prompt screening with TypeSafe Jev if available
   try {
     const parsed = jev.screenPrompt(promptText);
@@ -139,7 +186,7 @@ async function submitPrompt(promptText) {
     console.warn(`[!] [SOP TIMELINE PROMPTING] Lưu ý: Prompt video chưa chứa mốc thời gian (ví dụ: [0.0s - 3.0s]). Đảm bảo áp dụng Timeline Prompting theo WORKFLOW.md §8.10 để tối ưu camera choreography.`);
   }
 
-  const cdp = await getFlowClient();
+  const cdp = await getFlowClient(options.cdp);
   try {
     const inputRes = await cdp.evaluate(`(() => {
       const pm = document.querySelector('.ProseMirror');
@@ -216,8 +263,8 @@ function classifyPromptRefusal(text) {
 }
 
 // 5. Wait for render to complete (pending tile appears then disappears)
-async function waitForRender(timeoutSec = 240) {
-  const cdp = await getFlowClient();
+async function waitForRender(timeoutSec = 240, options = {}) {
+  const cdp = await getFlowClient(options.cdp);
   try {
     let hasSeenPending = false;
     const start = Date.now();
@@ -249,7 +296,7 @@ async function waitForRender(timeoutSec = 240) {
           isReady: isReady,
           pct: m ? m[0] : null,
           error: err ? err.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null,
-          refusal: refusal ? refusal.innerText.trim().replace(/[\\r\\n]+/g, ' ') : null
+          refusal: refusal ? refusal.trim().replace(/[\\r\\n]+/g, ' ') : null
         };
       })()`);
 
@@ -307,11 +354,11 @@ function hasActiveCrdownload() {
 }
 
 // 6a. Direct signed CDN download (fast 720p source)
-async function downloadLatestDirect(targetFile) {
+async function downloadLatestDirect(targetFile, options = {}) {
   const dir = path.dirname(targetFile);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-  const cdp = await getFlowClient();
+  const cdp = await getFlowClient(options.cdp);
   try {
     let videoSrc = null;
     for (let i = 0; i < 10; i++) {
@@ -336,15 +383,18 @@ async function downloadLatestDirect(targetFile) {
     }
 
     console.log(`    [-] Tải nhanh qua Direct CDN (720p): ${videoSrc.slice(0, 60)}...`);
-    
+
     // Lấy cookie xác thực từ Chrome session nếu cần (chỉ cho flow.google.com, không áp dụng cho signed CDN flow-content.google)
-    let cookieHeader = '';
+    let cookieArgs = [];
     if (!videoSrc.includes('flow-content.google')) {
       try {
         const cookieRes = await cdp.send('Network.getCookies', { urls: ['https://flow.google.com'] });
         if (cookieRes && cookieRes.cookies && cookieRes.cookies.length > 0) {
           const cookieStr = cookieRes.cookies.map(c => `${c.name}=${c.value}`).join('; ');
-          cookieHeader = `-H "Cookie: ${cookieStr}" -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"`;
+          cookieArgs = [
+            '-H', `Cookie: ${cookieStr}`,
+            '-H', 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+          ];
         }
       } catch {}
     }
@@ -356,11 +406,11 @@ async function downloadLatestDirect(targetFile) {
     } catch {}
 
     try {
-      execSync(`curl -s -f -L ${cookieHeader} ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+      execFileSync('curl', ['-s', '-f', '-L', ...cookieArgs, videoSrc, '-o', targetFile]);
     } catch (curlErr) {
-      if (cookieHeader) {
+      if (cookieArgs.length > 0) {
         // Fallback tải trực tiếp không kèm cookie
-        execSync(`curl -s -f -L ${JSON.stringify(videoSrc)} -o ${JSON.stringify(targetFile)}`);
+        execFileSync('curl', ['-s', '-f', '-L', videoSrc, '-o', targetFile]);
       } else {
         throw curlErr;
       }
@@ -403,7 +453,7 @@ function classifyUpscaleToast(text) {
 }
 
 // 6b. Cloud AI Super-Resolution (1080p Full HD upscale & download)
-async function downloadCloud1080p(targetFile, timeoutSec = 240) {
+async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
   const dir = path.dirname(targetFile);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -411,12 +461,7 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240) {
   const beforeMtime = beforeFile ? beforeFile.mtime : 0;
 
   console.log('    [-] Kích hoạt Cloud 1080p Super-Resolution trên Google Flow...');
-  const cdp = await getFlowClient();
-  const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
-  try {
-    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads });
-    await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: winDownloads, eventsEnabled: true });
-  } catch {}
+  const cdp = await getFlowClient(options.cdp);
 
   try {
     // 1. Close overlays
@@ -574,20 +619,21 @@ async function downloadLatest(targetFile, options = {}) {
 
   if (resolution === '1080p') {
     try {
-      return await downloadCloud1080p(targetFile, timeoutSec);
+      return await downloadCloud1080p(targetFile, timeoutSec, options);
     } catch (err) {
       console.warn(`    [!] Cảnh báo khi tải 1080p Cloud: ${err.message}`);
       console.warn('    [-] Tự động chuyển sang tải bản 720p gốc làm fallback an toàn...');
-      return await downloadLatestDirect(targetFile);
+      return await downloadLatestDirect(targetFile, options);
     }
   }
 
-  return await downloadLatestDirect(targetFile);
+  return await downloadLatestDirect(targetFile, options);
 }
 
 // 7. Ensure Flow Settings (Model, Mode, Aspect Ratio)
-async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nano Banana Pro' } = {}) {
-  const cdp = await getClientForPage('flow.google.com');
+async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nano Banana Pro', cdp: existingCdp = null } = {}) {
+  const cdp = await getFlowClient(existingCdp);
+  const settingsKey = `${mode}:${ratio}:${model}`;
   try {
     const curSettings = await cdp.evaluate(`(() => {
       const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
@@ -599,6 +645,7 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
     const hasPro = model === 'Nano Banana Pro' ? curSettings.includes('Pro') : true;
 
     if (hasBanana && hasRatio && hasPro) {
+      cdp._verifiedFlowSettings = settingsKey;
       return true;
     }
 
@@ -651,6 +698,7 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
       const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
       return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
     })()`);
+    cdp._verifiedFlowSettings = settingsKey;
     console.log(`    [✓] [Flow Preflight] Đã kích hoạt cấu hình Flow chuẩn: "${verified}"`);
     return true;
   } finally {
@@ -659,11 +707,10 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
 }
 
 // 8. Generate image via Google Flow (Nano Banana Pro) with in-browser Base64 fetch & Zero-Dupe Guard
-async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 80, retries = 3 }) {
-  await ensureFlowSettings({ mode: 'image', ratio: '16:9', model: 'Nano Banana Pro' });
-  const cdp = await getClientForPage('flow.google.com');
-  const crypto = require('crypto');
+async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec = 80, retries = 3, cdp: existingCdp = null }) {
+  const cdp = await getFlowClient(existingCdp);
   try {
+    await ensureFlowSettings({ mode: 'image', ratio: '16:9', model: 'Nano Banana Pro', cdp });
     for (let attempt = 1; attempt <= retries; attempt++) {
       // Wait for any pre-existing pending tile from previous shot to complete
       for (let w0 = 0; w0 < 45; w0++) {
@@ -672,7 +719,7 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
         await sleep(1000);
       }
 
-      const initialUrls = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).map(i => i.src).filter(Boolean))()`);
+      const initialUrls = await cdp.evaluate(`(() => Array.from(document.querySelectorAll('flow-image-tile img, flow-media-tile img')).slice(0, 12).map(i => i.src).filter(Boolean))()`);
       const initialSet = new Set(initialUrls || []);
 
       // Focus and clear ProseMirror
@@ -764,8 +811,10 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
           console.warn(`    └─ [!] Phát hiện cảnh báo giãn cách Google Flow ("${errText.replace(/\\n/g, ' ').slice(0, 50)}..."), tạm dừng 10s và tải lại trang...`);
           await sleep(10000);
           try {
+            cdp._verifiedFlowSettings = null;
             await cdp.send('Page.reload');
             await sleep(5000);
+            await ensureFlowSettings({ mode: 'image', ratio: '16:9', model: 'Nano Banana Pro', cdp });
           } catch {}
           break;
         }
@@ -797,25 +846,38 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
         continue;
       }
 
-      // Fetch base64 directly inside Chrome session
-      const b64 = await cdp.evaluate(`(async (url) => {
+      // Fetch base64 directly inside Chrome session without split() array duplication
+      let b64 = await cdp.evaluate(`(async (url) => {
         try {
           const resp = await fetch(url);
           const blob = await resp.blob();
-          return new Promise((resolve) => {
+          return await new Promise((resolve) => {
             const r = new FileReader();
-            r.onloadend = () => resolve(r.result.split(',')[1]);
+            r.onloadend = () => {
+              const res = typeof r.result === 'string' ? r.result : '';
+              const commaIdx = res.indexOf(',');
+              r.onloadend = null;
+              r.onerror = null;
+              resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
+            };
+            r.onerror = () => {
+              r.onloadend = null;
+              r.onerror = null;
+              resolve(null);
+            };
             r.readAsDataURL(blob);
           });
         } catch { return null; }
-      })("${freshUrl}")`);
+      })(${JSON.stringify(freshUrl)})`);
 
       if (!b64 || b64.length < 5000) {
+        b64 = null;
         console.warn(`    └─ [!] Dữ liệu base64 ảnh không hợp lệ (lần thử ${attempt}/${retries})...`);
         continue;
       }
 
       const buf = Buffer.from(b64, 'base64');
+      b64 = null; // Free Base64 string reference immediately to prevent heap bloat
       const hash = crypto.createHash('md5').update(buf).digest('hex');
 
       if (seenHashes && seenHashes.has(hash)) {
@@ -827,9 +889,11 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
       const outDir = path.dirname(outputPath);
       if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
       fs.writeFileSync(outputPath, buf);
+      const byteSize = buf.length;
       if (seenHashes) seenHashes.add(hash);
-      console.log(`    [✓] Đã lưu ảnh Nano Banana Pro: ${outputPath} (${(buf.length / 1024).toFixed(1)} KB, MD5: ${hash.slice(0, 8)})`);
-      return { path: outputPath, hash, size: buf.length };
+      await pruneFlowDomMemory(cdp);
+      console.log(`    [✓] Đã lưu ảnh Nano Banana Pro: ${outputPath} (${(byteSize / 1024).toFixed(1)} KB, MD5: ${hash.slice(0, 8)})`);
+      return { path: outputPath, hash, size: byteSize };
     }
     throw new Error(`Thất bại khi sinh ảnh sau ${retries} lần thử!`);
   } finally {
@@ -838,7 +902,7 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
 }
 
 /**
- * Batch render all shots of a storyboard with cache checks and MD5 duplicate guards.
+ * Batch render all shots of a storyboard with cache checks, MD5 duplicate guards, and shared CDP session reuse.
  */
 async function renderStoryboard(sb, options = {}) {
   const {
@@ -869,53 +933,69 @@ async function renderStoryboard(sb, options = {}) {
 
   const shots = sb.shots || [];
   console.log(`=== BẮT ĐẦU RENDER GOOGLE FLOW CHO: ${(sb.project && sb.project.title) || sb.title || episodeName} [${isImageMode ? 'NANO BANANA PRO (IMAGE)' : resolution.toUpperCase()}] ===`);
-  for (let i = 0; i < shots.length; i++) {
-    const s = shots[i];
-    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
-    if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
 
-    const isShotImage = isImageMode || s.type === 'image' || (!s.flow_prompt && s.image_prompt);
-    const ext = isShotImage ? '.png' : '.mp4';
-    const outFile = path.join(epRenderDir, `${shotId}${ext}`);
-    if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
-      console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
-      continue;
-    }
+  let sharedCdp = null;
+  try {
+    for (let i = 0; i < shots.length; i++) {
+      const s = shots[i];
+      const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
 
-    console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
-    try {
-      const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
-      if (isShotImage) {
-        console.log(`    [-] [Nano Banana Pro] Gửi câu lệnh vẽ ảnh: "${promptText.slice(0, 60)}..."`);
-        await generateImage({
-          prompt: promptText,
-          outputPath: outFile,
-          seenHashes
-        });
-        await sleep(3500);
-      } else {
-        await clearCharacters();
-        const chars = s.characters || [];
-        for (const c of chars) {
-          console.log(`    [-] Gắn nhân vật: @${c}`);
-          await addCharacter(c);
-        }
-        console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
-        await submitPrompt(promptText);
-        await waitForRender(240);
-        await downloadLatest(outFile, { resolution });
-        try {
-          fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
-        } catch {}
+      const isShotImage = isImageMode || s.type === 'image' || (!s.flow_prompt && s.image_prompt);
+      const ext = isShotImage ? '.png' : '.mp4';
+      const outFile = path.join(epRenderDir, `${shotId}${ext}`);
+      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
+        console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
+        continue;
       }
-    } catch (err) {
-      console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
+
+      if (!sharedCdp || !sharedCdp.isOpen()) {
+        sharedCdp = await getFlowClient();
+      }
+
+      console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
+      try {
+        const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
+        if (isShotImage) {
+          console.log(`    [-] [Nano Banana Pro] Gửi câu lệnh vẽ ảnh: "${promptText.slice(0, 60)}..."`);
+          await generateImage({
+            prompt: promptText,
+            outputPath: outFile,
+            seenHashes,
+            cdp: sharedCdp
+          });
+          await sleep(3500);
+        } else {
+          await clearCharacters({ cdp: sharedCdp });
+          const chars = s.characters || [];
+          for (const c of chars) {
+            console.log(`    [-] Gắn nhân vật: @${c}`);
+            await addCharacter(c, { cdp: sharedCdp });
+          }
+          console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
+          await submitPrompt(promptText, { cdp: sharedCdp });
+          await waitForRender(240, { cdp: sharedCdp });
+          await downloadLatest(outFile, { resolution, cdp: sharedCdp });
+          await pruneFlowDomMemory(sharedCdp);
+          try {
+            fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
+          } catch {}
+        }
+      } catch (err) {
+        console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
+      }
+    }
+  } finally {
+    if (sharedCdp) {
+      sharedCdp.close(true);
     }
   }
   console.log('\n✓ Hoàn tất lượt render Google Flow!');
 }
 
 module.exports = {
+  getFlowClient,
+  pruneFlowDomMemory,
   getStatus,
   clearCharacters,
   addCharacter,

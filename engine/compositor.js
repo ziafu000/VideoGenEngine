@@ -1,25 +1,48 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const config = require('./config');
 
 function getDuration(filePath) {
   try {
     const winPath = config.toWinPath(filePath);
-    const out = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${JSON.stringify(winPath)}`, { encoding: 'utf8' }).trim();
-    return parseFloat(out);
+    const out = execFileSync('ffprobe', [
+      '-v', 'error',
+      '-show_entries', 'format=duration',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      winPath
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const val = parseFloat(out);
+    return isNaN(val) ? 0.0 : val;
   } catch {
     return 0.0;
   }
 }
 
+function hasAudioStream(filePath) {
+  try {
+    const winPath = config.toWinPath(filePath);
+    const out = execFileSync('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'a',
+      '-show_entries', 'stream=index',
+      '-of', 'csv=p=0',
+      winPath
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return out.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Composite entire project: Video clips concat + Voiceover padding/concat + Ambient mixing + Subtitle burn
+ * Composite entire project in a single H.264 encoding pass:
+ * Video clips concat + Voiceover padding/concat + Ambient mixing + Subtitle burn + Deterministic scratch cleanup
  */
 async function compositeVideo({
   videoFiles,
-  audioFiles,
+  audioFiles = [],
   assSubtitlePath,
   subtitles_path,
   outputVideoPath,
@@ -34,161 +57,258 @@ async function compositeVideo({
   const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
-  // 0. MD5 duplicate check across audio files (Voice Doubling Prevention)
-  const seenAudioHashes = new Map();
-  for (let i = 0; i < audioFiles.length; i++) {
-    const aFile = audioFiles[i];
-    if (aFile && fs.existsSync(aFile)) {
-      const hash = crypto.createHash('md5').update(fs.readFileSync(aFile)).digest('hex');
-      if (seenAudioHashes.has(hash)) {
-        const prevIdx = seenAudioHashes.get(hash);
-        throw new Error(`PHÁT HIỆN LỖI LẶP VOICE (Voice Doubling): Phân cảnh ${i + 1} (${path.basename(aFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${hash}. Dừng quy trình xuất master.`);
-      }
-      seenAudioHashes.set(hash, i);
-    }
-  }
-
-  // 0b. MD5 duplicate check across video files (Video Doubling Prevention)
-  const seenVideoHashes = new Map();
-  for (let i = 0; i < videoFiles.length; i++) {
-    const vFile = videoFiles[i];
-    if (vFile && fs.existsSync(vFile)) {
-      const vHash = crypto.createHash('md5').update(fs.readFileSync(vFile)).digest('hex');
-      if (seenVideoHashes.has(vHash)) {
-        const prevIdx = seenVideoHashes.get(vHash);
-        throw new Error(`PHÁT HIỆN LỖI LẶP VIDEO (Video Doubling): Phân cảnh ${i + 1} (${path.basename(vFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${vHash}. Dừng quy trình xuất master.`);
-      }
-      seenVideoHashes.set(vHash, i);
-    }
-  }
-
-  const activeSubPath = subtitles_path !== undefined ? subtitles_path : assSubtitlePath;
-  const effectiveBurnSubtitles = Boolean(burnSubtitles && activeSubPath && fs.existsSync(activeSubPath));
-
-  console.log(`=== BẮT ĐẦU QUÁ TRÌNH GHÉP NỐI & HẬU KỲ (COMPOSITOR) ===`);
-  console.log(`Số phân cảnh video: ${videoFiles.length}`);
-  console.log(`Số file voiceover: ${audioFiles.length}`);
-  console.log(`Tỷ lệ khung hình: ${aspectRatio} | Hardsub: ${effectiveBurnSubtitles ? 'BẬT' : 'TẮT (Clean Footage)'}`);
-
-  // 1. Measure video durations & prepare audio padding
-  const paddedAudioList = path.join(tempDir, 'audio_concat.txt');
-  let audioConcatContent = '';
-  const timelines = [];
-
-  for (let i = 0; i < videoFiles.length; i++) {
-    const vFile = videoFiles[i];
-    const vDur = getDuration(vFile);
-    const aFile = audioFiles[i];
-    const paddedAudio = path.join(tempDir, `padded_${String(i + 1).padStart(2, '0')}.wav`);
-
-    let aDur = 0;
-    const delaySec = (delays && delays[i] !== undefined) ? delays[i] : 0.3;
-    const delayMs = Math.round(delaySec * 1000);
-
-    if (aFile && fs.existsSync(aFile)) {
-      aDur = getDuration(aFile);
-      const winAFile = config.toWinPath(aFile);
-      const winPaddedAudio = config.toWinPath(paddedAudio);
-      execFileSync('ffmpeg', ['-y', '-i', winAFile, '-af', `adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}`, '-ar', '44100', '-ac', '2', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
-    } else {
-      const winPaddedAudio = config.toWinPath(paddedAudio);
-      execFileSync('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', String(vDur), winPaddedAudio], { stdio: 'ignore' });
-    }
-
-    audioConcatContent += `file '${config.toWinPath(paddedAudio).replace(/\\/g, '/')}'\n`;
-    timelines.push({
-      shotIndex: i + 1,
-      videoFile: vFile,
-      duration: vDur,
-      audioDuration: aDur
-    });
-  }
-
-  fs.writeFileSync(paddedAudioList, audioConcatContent, 'utf8');
-
-  // 2. Concatenate audio into master_voiceover.wav
-  const masterVoice = path.join(tempDir, 'master_voice.wav');
-  const winPaddedAudioList = config.toWinPath(paddedAudioList);
-  const winMasterVoice = config.toWinPath(masterVoice);
-  execSync(`ffmpeg -y -f concat -safe 0 -i ${JSON.stringify(winPaddedAudioList)} -c:a pcm_s16le ${JSON.stringify(winMasterVoice)} 2>/dev/null`);
-  console.log(`[✓] Đã tạo master voice track: ${getDuration(masterVoice).toFixed(2)}s`);
-
-  // 3. Concatenate video clips into raw_master.mp4 using robust concat filter to prevent timebase mismatch freezes
-  const rawMaster = path.join(tempDir, 'raw_master.mp4');
-  const winRawMaster = config.toWinPath(rawMaster);
-  console.log(`[-] Đang nối các clip video (chuẩn hóa filter concat chống đơ lệch timebase)...`);
-  const inputs = videoFiles.map(vf => `-i ${JSON.stringify(config.toWinPath(vf))}`).join(' ');
-  const filterInputs = videoFiles.map((_, idx) => `[${idx}:v][${idx}:a]`).join('');
-  const concatFilter = `${filterInputs}concat=n=${videoFiles.length}:v=1:a=1[v][a]`;
-  execSync(`ffmpeg -y ${inputs} -filter_complex "${concatFilter}" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -crf 17 -c:a aac ${JSON.stringify(winRawMaster)}`);
-  console.log(`[✓] Đã nối xong raw master video: ${getDuration(rawMaster).toFixed(2)}s`);
-
-  // 4. Final Compositing: Audio mix (voice + ambient) + 1080p Lanczos upscale + Optional Subtitle burn
-  console.log(`[-] Đang hòa âm đa tầng, upscale 1080p Full HD${burnSubtitles ? ' và burn phụ đề ASS' : ''}...`);
-  const outDir = path.dirname(outputVideoPath);
-  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-
-  const hasVoiceTrack = audioFiles && audioFiles.some(f => f && fs.existsSync(f));
-  const shouldBurnSubtitles = effectiveBurnSubtitles;
-  const winAssSubtitlePath = shouldBurnSubtitles ? config.toWinPath(activeSubPath).replace(/\\/g, '/').replace(/:/g, '\\\\:') : '';
-  const winOutputVideoPath = config.toWinPath(outputVideoPath);
-
-  const isVertical = aspectRatio === '9:16';
-  const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
-  const subFilter = shouldBurnSubtitles ? `,subtitles='${winAssSubtitlePath}'` : '';
-  const videoFilter = `${scaleFilter}${subFilter}`;
-
-  // Resolve BGM (Background Music)
-  const defaultBgm = path.join(config.PROJECT_DIR, 'assets', 'bgm.mp3');
-  const isBgmDisabled = bgmPath === 'none' || bgmVolume <= 0;
-  const effectiveBgm = isBgmDisabled ? null : ((bgmPath && fs.existsSync(bgmPath)) ? bgmPath : (fs.existsSync(defaultBgm) ? defaultBgm : null));
-  const winBgm = effectiveBgm ? config.toWinPath(effectiveBgm) : null;
-  const rawDur = getDuration(rawMaster);
-  const fadeOutStart = Math.max(0, rawDur - 2.0).toFixed(2);
-
-  let filterStr = '';
-  let cmd = '';
-
-  if (hasVoiceTrack && effectiveBgm) {
-    console.log(`    [-] Hòa âm đa tầng 3 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover ElevenLabs (${(voiceVolume * 100).toFixed(0)}% Lời thoại) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền bí ẩn)...`);
-    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${voiceVolume}[a_voice];[2:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm];[a_sfx][a_voice][a_bgm]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -ss 8.5 -stream_loop -1 -i ${JSON.stringify(winBgm)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
-  } else if (hasVoiceTrack && !effectiveBgm) {
-    console.log(`    [-] Hòa âm đa tầng 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover ElevenLabs (${(voiceVolume * 100).toFixed(0)}% Lời thoại)...`);
-    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${voiceVolume}[a_voice];[a_sfx][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -i ${JSON.stringify(winMasterVoice)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
-  } else if (!hasVoiceTrack && effectiveBgm) {
-    console.log(`    [-] Hòa âm 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
-    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=${ambientVolume}[a_sfx];[1:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm];[a_sfx][a_bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -ss 8.5 -stream_loop -1 -i ${JSON.stringify(winBgm)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
-  } else {
-    // 100% pure Flow SFX audio (No dialogue track, no BGM)
-    console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
-    filterStr = `[0:v]${videoFilter}[v];[0:a]volume=1.0[a]`;
-    cmd = `ffmpeg -y -i ${JSON.stringify(winRawMaster)} -filter_complex "${filterStr}" -map "[v]" -map "[a]" -c:v libx264 -preset fast -crf 17 -c:a aac -b:a 192k ${JSON.stringify(winOutputVideoPath)}`;
-  }
-
   try {
-    execSync(cmd, { stdio: ['ignore', 'pipe', 'pipe'] });
-  } catch (err) {
-    console.error(`[!] Lỗi ffmpeg xuất master:`, err.stderr ? err.stderr.toString() : err.message);
-    throw err;
+    // 0. MD5 duplicate check across audio files (Voice Doubling Prevention)
+    const seenAudioHashes = new Map();
+    for (let i = 0; i < audioFiles.length; i++) {
+      const aFile = audioFiles[i];
+      if (aFile && fs.existsSync(aFile)) {
+        const hash = crypto.createHash('md5').update(fs.readFileSync(aFile)).digest('hex');
+        if (seenAudioHashes.has(hash)) {
+          const prevIdx = seenAudioHashes.get(hash);
+          throw new Error(`PHÁT HIỆN LỖI LẶP VOICE (Voice Doubling): Phân cảnh ${i + 1} (${path.basename(aFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${hash}. Dừng quy trình xuất master.`);
+        }
+        seenAudioHashes.set(hash, i);
+      }
+    }
+
+    // 0b. MD5 duplicate check across video files (Video Doubling Prevention)
+    const seenVideoHashes = new Map();
+    for (let i = 0; i < videoFiles.length; i++) {
+      const vFile = videoFiles[i];
+      if (vFile && fs.existsSync(vFile)) {
+        const vHash = crypto.createHash('md5').update(fs.readFileSync(vFile)).digest('hex');
+        if (seenVideoHashes.has(vHash)) {
+          const prevIdx = seenVideoHashes.get(vHash);
+          throw new Error(`PHÁT HIỆN LỖI LẶP VIDEO (Video Doubling): Phân cảnh ${i + 1} (${path.basename(vFile)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${vHash}. Dừng quy trình xuất master.`);
+        }
+        seenVideoHashes.set(vHash, i);
+      }
+    }
+
+    const activeSubPath = subtitles_path !== undefined ? subtitles_path : assSubtitlePath;
+    const effectiveBurnSubtitles = Boolean(burnSubtitles && activeSubPath && fs.existsSync(activeSubPath));
+    const hasVoiceTrack = Boolean(audioFiles && audioFiles.some(f => f && fs.existsSync(f)));
+
+    console.log(`=== BẮT ĐẦU QUÁ TRÌNH GHÉP NỐI & HẬU KỲ (COMPOSITOR) ===`);
+    console.log(`Số phân cảnh video: ${videoFiles.length}`);
+    console.log(`Số file voiceover: ${audioFiles.length}`);
+    console.log(`Tỷ lệ khung hình: ${aspectRatio} | Hardsub: ${effectiveBurnSubtitles ? 'BẬT' : 'TẮT (Clean Footage)'}`);
+
+    // 1. Measure video durations & prepare audio padding if voice track is present
+    const paddedAudioList = path.join(tempDir, 'audio_concat.txt');
+    let audioConcatContent = '';
+    const timelines = [];
+
+    for (let i = 0; i < videoFiles.length; i++) {
+      const vFile = videoFiles[i];
+      const vDur = getDuration(vFile);
+      const aFile = audioFiles[i];
+      const paddedAudio = path.join(tempDir, `padded_${String(i + 1).padStart(2, '0')}.wav`);
+
+      let aDur = 0;
+      const delaySec = (delays && delays[i] !== undefined) ? delays[i] : 0.3;
+      const delayMs = Math.round(delaySec * 1000);
+
+      if (hasVoiceTrack) {
+        if (aFile && fs.existsSync(aFile)) {
+          aDur = getDuration(aFile);
+          const winAFile = config.toWinPath(aFile);
+          const winPaddedAudio = config.toWinPath(paddedAudio);
+          execFileSync('ffmpeg', [
+            '-nostdin',
+            '-y',
+            '-i', winAFile,
+            '-af', `adelay=${delayMs}|${delayMs},apad=whole_dur=${vDur}`,
+            '-ar', '44100',
+            '-ac', '2',
+            '-t', String(vDur),
+            winPaddedAudio
+          ], { stdio: 'ignore' });
+        } else {
+          const winPaddedAudio = config.toWinPath(paddedAudio);
+          execFileSync('ffmpeg', [
+            '-nostdin',
+            '-y',
+            '-f', 'lavfi',
+            '-i', 'anullsrc=r=44100:cl=stereo',
+            '-t', String(vDur),
+            winPaddedAudio
+          ], { stdio: 'ignore' });
+        }
+        audioConcatContent += `file '${config.toWinPath(paddedAudio).replace(/\\/g, '/')}'\n`;
+      }
+
+      timelines.push({
+        shotIndex: i + 1,
+        videoFile: vFile,
+        duration: vDur,
+        audioDuration: aDur,
+        hasAudio: hasAudioStream(vFile)
+      });
+    }
+
+    // 2. Concatenate padded voiceover into master_voice.wav (only when voice track exists)
+    const masterVoice = path.join(tempDir, 'master_voice.wav');
+    const winMasterVoice = config.toWinPath(masterVoice);
+    if (hasVoiceTrack) {
+      fs.writeFileSync(paddedAudioList, audioConcatContent, 'utf8');
+      const winPaddedAudioList = config.toWinPath(paddedAudioList);
+      execFileSync('ffmpeg', [
+        '-nostdin',
+        '-y',
+        '-f', 'concat',
+        '-safe', '0',
+        '-i', winPaddedAudioList,
+        '-c:a', 'pcm_s16le',
+        winMasterVoice
+      ], { stdio: ['ignore', 'pipe', 'ignore'] });
+      console.log(`[✓] Đã tạo master voice track: ${getDuration(masterVoice).toFixed(2)}s`);
+    }
+
+    // 3. Single-Pass Final Compositing: Video concat + 1080p Lanczos upscale + Optional Subtitle burn + Multi-bus Audio Mix
+    // Eliminates redundant two-pass H.264 re-encoding bottleneck during clip assembly
+    console.log(`[-] Đang nối clip, hòa âm đa tầng, upscale 1080p Full HD${effectiveBurnSubtitles ? ' và burn phụ đề ASS' : ''} (1-Pass H.264)...`);
+    const outDir = path.dirname(outputVideoPath);
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+
+    const shouldBurnSubtitles = effectiveBurnSubtitles;
+    const winAssSubtitlePath = shouldBurnSubtitles ? config.toWinPath(activeSubPath).replace(/\\/g, '/').replace(/:/g, '\\\\:') : '';
+    const winOutputVideoPath = config.toWinPath(outputVideoPath);
+
+    const isVertical = aspectRatio === '9:16';
+    const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
+    const subFilter = shouldBurnSubtitles ? `,subtitles='${winAssSubtitlePath}'` : '';
+
+    // Resolve BGM (Background Music)
+    const defaultBgm = path.join(config.PROJECT_DIR, 'assets', 'bgm.mp3');
+    const isBgmDisabled = bgmPath === 'none' || bgmVolume <= 0;
+    const effectiveBgm = isBgmDisabled ? null : ((bgmPath && fs.existsSync(bgmPath)) ? bgmPath : (fs.existsSync(defaultBgm) ? defaultBgm : null));
+    const winBgm = effectiveBgm ? config.toWinPath(effectiveBgm) : null;
+    const rawDur = timelines.reduce((sum, item) => sum + (item.duration || 0), 0);
+    const fadeOutStart = Math.max(0, rawDur - 2.0).toFixed(2);
+
+    const ffmpegArgs = ['-nostdin', '-y'];
+    for (const vf of videoFiles) {
+      ffmpegArgs.push('-i', config.toWinPath(vf));
+    }
+
+    let nextInputIdx = videoFiles.length;
+    let voiceInputIdx = -1;
+    if (hasVoiceTrack) {
+      voiceInputIdx = nextInputIdx++;
+      ffmpegArgs.push('-i', winMasterVoice);
+    }
+
+    let bgmInputIdx = -1;
+    if (effectiveBgm) {
+      bgmInputIdx = nextInputIdx++;
+      ffmpegArgs.push('-ss', '8.5', '-stream_loop', '-1', '-i', winBgm);
+    }
+
+    // Build video & ambient SFX chain in 1 pass
+    const filterParts = [];
+    let sfxSourceLabel = '';
+
+    if (videoFiles.length === 1) {
+      filterParts.push(`[0:v]${scaleFilter},setsar=1${subFilter}[v]`);
+      if (timelines[0].hasAudio) {
+        sfxSourceLabel = '[0:a]';
+      } else {
+        const dur0 = Math.max(0.1, timelines[0].duration || 1.0);
+        filterParts.push(`anullsrc=r=44100:cl=stereo:d=${dur0}[a_null_0]`);
+        sfxSourceLabel = '[a_null_0]';
+      }
+    } else {
+      const concatPairs = [];
+      for (let idx = 0; idx < videoFiles.length; idx++) {
+        filterParts.push(`[${idx}:v]${scaleFilter},setsar=1[v${idx}]`);
+        if (timelines[idx].hasAudio) {
+          concatPairs.push(`[v${idx}][${idx}:a]`);
+        } else {
+          const durIdx = Math.max(0.1, timelines[idx].duration || 1.0);
+          filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durIdx}[a_null_${idx}]`);
+          concatPairs.push(`[v${idx}][a_null_${idx}]`);
+        }
+      }
+      if (shouldBurnSubtitles) {
+        filterParts.push(`${concatPairs.join('')}concat=n=${videoFiles.length}:v=1:a=1[v_cat][a_cat]`);
+        filterParts.push(`[v_cat]subtitles='${winAssSubtitlePath}'[v]`);
+      } else {
+        filterParts.push(`${concatPairs.join('')}concat=n=${videoFiles.length}:v=1:a=1[v][a_cat]`);
+      }
+      sfxSourceLabel = '[a_cat]';
+    }
+
+    if (hasVoiceTrack && effectiveBgm) {
+      console.log(`    [-] Hòa âm đa tầng 3 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
+      filterParts.push(
+        `${sfxSourceLabel}volume=${ambientVolume}[a_sfx]`,
+        `[${voiceInputIdx}:a]volume=${voiceVolume}[a_voice]`,
+        `[${bgmInputIdx}:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm]`,
+        `[a_sfx][a_voice][a_bgm]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]`
+      );
+    } else if (hasVoiceTrack && !effectiveBgm) {
+      console.log(`    [-] Hòa âm đa tầng 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại)...`);
+      filterParts.push(
+        `${sfxSourceLabel}volume=${ambientVolume}[a_sfx]`,
+        `[${voiceInputIdx}:a]volume=${voiceVolume}[a_voice]`,
+        `[a_sfx][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`
+      );
+    } else if (!hasVoiceTrack && effectiveBgm) {
+      console.log(`    [-] Hòa âm 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
+      filterParts.push(
+        `${sfxSourceLabel}volume=${ambientVolume}[a_sfx]`,
+        `[${bgmInputIdx}:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm]`,
+        `[a_sfx][a_bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`
+      );
+    } else {
+      console.log(`    [-] Sử dụng toàn bộ dải âm thanh SFX gốc từ Google Flow (Phim thuần SFX, không có thoại)...`);
+      filterParts.push(`${sfxSourceLabel}volume=1.0[a]`);
+    }
+
+    const filterStr = filterParts.join(';');
+    ffmpegArgs.push(
+      '-filter_complex', filterStr,
+      '-map', '[v]',
+      '-map', '[a]',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '17',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      winOutputVideoPath
+    );
+
+    try {
+      execFileSync('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      console.error(`[!] Lỗi ffmpeg xuất master:`, err.stderr ? err.stderr.toString() : err.message);
+      throw err;
+    }
+
+    const finalDur = getDuration(outputVideoPath);
+    const finalSize = (fs.statSync(outputVideoPath).size / 1024 / 1024).toFixed(2);
+    console.log(`\n============================================================`);
+    console.log(`✓ XUẤT THÀNH PHẨM MASTER THÀNH CÔNG:`);
+    console.log(`  File: ${outputVideoPath}`);
+    console.log(`  Thời lượng: ${finalDur.toFixed(2)}s | Dung lượng: ${finalSize} MB`);
+    console.log(`============================================================`);
+
+    return {
+      outputVideoPath,
+      duration: finalDur,
+      sizeMB: finalSize,
+      timelines
+    };
+  } finally {
+    // Deterministic cleanup of temporary audio/video scratch files
+    try {
+      if (fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch {}
   }
-
-  const finalDur = getDuration(outputVideoPath);
-  const finalSize = (fs.statSync(outputVideoPath).size / 1024 / 1024).toFixed(2);
-  console.log(`\n============================================================`);
-  console.log(`✓ XUẤT THÀNH PHẨM MASTER THÀNH CÔNG:`);
-  console.log(`  File: ${outputVideoPath}`);
-  console.log(`  Thời lượng: ${finalDur.toFixed(2)}s | Dung lượng: ${finalSize} MB`);
-  console.log(`============================================================`);
-
-  return {
-    outputVideoPath,
-    duration: finalDur,
-    sizeMB: finalSize,
-    timelines
-  };
 }
 
 /**
@@ -200,11 +320,19 @@ function extractVerificationFrames(videoPath, timestamps, outputDir) {
   const winVideoPath = config.toWinPath(videoPath);
 
   for (const t of timestamps) {
-    const cleanT = t.replace(/:/g, '_');
+    const cleanT = String(t).replace(/:/g, '_');
     const outFile = path.join(outputDir, `frame_${cleanT}.jpg`);
     const winOutFile = config.toWinPath(outFile);
     try {
-      execSync(`ffmpeg -y -ss ${t} -i ${JSON.stringify(winVideoPath)} -update 1 -frames:v 1 ${JSON.stringify(winOutFile)} 2>/dev/null`);
+      execFileSync('ffmpeg', [
+        '-nostdin',
+        '-y',
+        '-ss', String(t),
+        '-i', winVideoPath,
+        '-update', '1',
+        '-frames:v', '1',
+        winOutFile
+      ], { stdio: ['ignore', 'pipe', 'ignore'] });
       if (fs.existsSync(outFile)) {
         frames.push({ timestamp: t, path: outFile });
       }
@@ -235,7 +363,15 @@ function verifyRenderedShots(rendersDir = config.RENDERS_DIR, qaDir = null) {
     if (size > 50000) {
       if (!fs.existsSync(snapPath)) {
         try {
-          execSync(`ffmpeg -y -ss 00:00:04 -i ${JSON.stringify(mp4Path)} -frames:v 1 -q:v 2 ${JSON.stringify(snapPath)} 2>/dev/null`);
+          execFileSync('ffmpeg', [
+            '-nostdin',
+            '-y',
+            '-ss', '00:00:04',
+            '-i', config.toWinPath(mp4Path),
+            '-frames:v', '1',
+            '-q:v', '2',
+            config.toWinPath(snapPath)
+          ], { stdio: ['ignore', 'pipe', 'ignore'] });
         } catch {}
       }
       const ok = fs.existsSync(snapPath) && fs.statSync(snapPath).size > 10000;
@@ -284,8 +420,19 @@ function renderMotionStill({
   const outDir = path.dirname(outputPath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const cmd = `ffmpeg -y -loop 1 -i ${JSON.stringify(winImagePath)} -vf "${filter},format=yuv420p" -t ${duration.toFixed(3)} -c:v libx264 -preset fast -crf 18 -pix_fmt yuv420p ${JSON.stringify(winOutputPath)}`;
-  execSync(cmd, { stdio: ['ignore', 'pipe', 'pipe'] });
+  execFileSync('ffmpeg', [
+    '-nostdin',
+    '-y',
+    '-loop', '1',
+    '-i', winImagePath,
+    '-vf', `${filter},format=yuv420p`,
+    '-t', duration.toFixed(3),
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '18',
+    '-pix_fmt', 'yuv420p',
+    winOutputPath
+  ], { stdio: ['ignore', 'pipe', 'pipe'] });
   return outputPath;
 }
 
@@ -342,22 +489,28 @@ function assembleStaticCuts({
     : 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,format=yuv420p';
 
   console.log(`[-] Running 1-pass FFmpeg Concat Demuxer for ${shots.length} static cuts...`);
-  execFileSync('ffmpeg', [
-    '-nostdin',
-    '-y',
-    '-f', 'concat',
-    '-safe', '0',
-    '-i', config.toWinPath(concatFile),
-    '-i', config.toWinPath(audioMasterPath),
-    '-vf', scaleFilter,
-    '-c:v', 'libx264',
-    '-preset', 'fast',
-    '-crf', '18',
-    '-c:a', 'aac',
-    '-b:a', '192k',
-    '-shortest',
-    config.toWinPath(outputPath)
-  ], { stdio: ['ignore', 'inherit', 'inherit'] });
+  try {
+    execFileSync('ffmpeg', [
+      '-nostdin',
+      '-y',
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', config.toWinPath(concatFile),
+      '-i', config.toWinPath(audioMasterPath),
+      '-vf', scaleFilter,
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '18',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-shortest',
+      config.toWinPath(outputPath)
+    ], { stdio: ['ignore', 'inherit', 'inherit'] });
+  } finally {
+    try {
+      if (fs.existsSync(concatFile)) fs.unlinkSync(concatFile);
+    } catch {}
+  }
 
   console.log(`[✓] Master video created: ${outputPath} (${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB)`);
   return outputPath;
@@ -555,6 +708,7 @@ async function assembleStoryboard(sb, options = {}) {
 
 module.exports = {
   getDuration,
+  hasAudioStream,
   compositeVideo,
   assembleStaticCuts,
   assembleStoryboard,

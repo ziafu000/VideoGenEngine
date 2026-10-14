@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const config = require('./config');
 
 /**
@@ -63,50 +63,72 @@ async function renderShort({
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
   const shortId = path.basename(outputVideoPath, '.mp4');
-  const tempCut = path.join(tempDir, `raw_${shortId}.mp4`);
   const tempAss = path.join(tempDir, `overlay_${shortId}.ass`);
 
   console.log(`\n>>> Đang xử lý Short: ${shortId}`);
   console.log(`    - Cắt từ: ${startTime} (Thời lượng: ${duration}s)`);
 
-  // 1. Cut segment from master video
-  execSync(`ffmpeg -y -ss ${startTime} -i ${JSON.stringify(masterVideoPath)} -t ${duration} -c:v libx264 -c:a aac ${JSON.stringify(tempCut)} 2>/dev/null`);
+  try {
+    // 1. Generate ASS overlay
+    generateShortsOverlayASS({
+      badge,
+      hookMain,
+      hookAccent,
+      ctaButton,
+      ctaSub,
+      outAssPath: tempAss
+    });
 
-  // 2. Generate ASS overlay
-  generateShortsOverlayASS({
-    badge,
-    hookMain,
-    hookAccent,
-    ctaButton,
-    ctaSub,
-    outAssPath: tempAss
-  });
+    // 2. Render 9:16 layout in a single FFmpeg pass directly from masterVideoPath
+    const winAss = config.toWinPath(tempAss).replace(/\\/g, '/').replace(/:/g, '\\\\:');
+    const filterComplex = (
+      `[0:v]fps=30,split=2[bg_in][fg_in];` +
+      `[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=luma_radius=35:luma_power=3,eq=brightness=-0.18:contrast=1.15[bg];` +
+      `[fg_in]scale=1080:608:flags=lanczos[fg];` +
+      `[bg][fg]overlay=0:656[comp];` +
+      `[comp]drawbox=y=654:color=0x00FFFF@0.7:width=1080:height=2:t=fill,` +
+      `drawbox=y=1264:color=0x00FFFF@0.7:width=1080:height=2:t=fill,` +
+      `subtitles='${winAss}'[v]`
+    );
 
-  // 3. Render 9:16 layout with FFmpeg filter_complex
-  const filterComplex = (
-    `[0:v]fps=30,split=2[bg_in][fg_in];` +
-    `[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=luma_radius=35:luma_power=3,eq=brightness=-0.18:contrast=1.15[bg];` +
-    `[fg_in]scale=1080:608:flags=lanczos[fg];` +
-    `[bg][fg]overlay=0:656[comp];` +
-    `[comp]drawbox=y=654:color=0x00FFFF@0.7:width=1080:height=2:t=fill,` +
-    `drawbox=y=1264:color=0x00FFFF@0.7:width=1080:height=2:t=fill,` +
-    `subtitles='${tempAss}'[v]`
-  );
+    const outDir = path.dirname(outputVideoPath);
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  const outDir = path.dirname(outputVideoPath);
-  if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    console.log(`    - Đang tổng hợp 9:16 Cinematic Blur Overlay (1-Pass)...`);
+    execFileSync('ffmpeg', [
+      '-nostdin',
+      '-y',
+      '-ss', String(startTime),
+      '-i', config.toWinPath(masterVideoPath),
+      '-t', String(duration),
+      '-filter_complex', filterComplex,
+      '-map', '[v]',
+      '-map', '0:a',
+      '-r', '30',
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '18',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      config.toWinPath(outputVideoPath)
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
 
-  console.log(`    - Đang tổng hợp 9:16 Cinematic Blur Overlay...`);
-  execSync(`ffmpeg -y -i ${JSON.stringify(tempCut)} -filter_complex "${filterComplex}" -map "[v]" -map 0:a -r 30 -c:v libx264 -preset fast -crf 18 -c:a aac -b:a 192k ${JSON.stringify(outputVideoPath)} 2>/dev/null`);
+    const stat = fs.statSync(outputVideoPath);
+    const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
+    console.log(`    [✓] Hoàn thành: ${outputVideoPath} (${sizeMB} MB)`);
 
-  const stat = fs.statSync(outputVideoPath);
-  const sizeMB = (stat.size / 1024 / 1024).toFixed(2);
-  console.log(`    [✓] Hoàn thành: ${outputVideoPath} (${sizeMB} MB)`);
-
-  return {
-    outputVideoPath,
-    sizeMB
-  };
+    return {
+      outputVideoPath,
+      sizeMB
+    };
+  } finally {
+    try {
+      if (fs.existsSync(tempAss)) fs.unlinkSync(tempAss);
+      if (fs.existsSync(tempDir) && fs.readdirSync(tempDir).length === 0) {
+        fs.rmdirSync(tempDir);
+      }
+    } catch {}
+  }
 }
 
 /**
