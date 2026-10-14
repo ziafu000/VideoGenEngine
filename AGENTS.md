@@ -84,8 +84,8 @@ Before any browser automation, ensure the CDP bridge is alive:
 ```bash
 ./videogen bridge [status]
 ```
-- Windows Chrome runs on remote debugging port `9222`.
-- Proxy forwards port `9222` to `0.0.0.0:9223`.
+- Windows Chrome runs on remote debugging port `127.0.0.1:9222`.
+- Proxy forwards port `9222` to port `9223` restricted to loopback (`127.0.0.1`, `::1`) and WSL (`172.16.0.0/12`).
 - In WSL/Linux environments, ensure Chrome shortcut on Windows Desktop or `CHROME_SHORTCUT_PATH` is configured.
 
 ### 3.2. Scriptwriting & Storyboard Standards

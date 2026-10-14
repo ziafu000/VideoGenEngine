@@ -176,7 +176,8 @@ async function main() {
       case 'doctor':
       case 'check': {
         const doctor = require('./engine/doctor');
-        await doctor.runDoctor();
+        const ok = await doctor.runDoctor();
+        if (!ok) process.exit(1);
         break;
       }
 

@@ -256,6 +256,20 @@ function applyMultiImagePacing(rawShots) {
 
   for (let i = 0; i < rawShots.length; i++) {
     const orig = rawShots[i];
+    const clauseId = orig.clause_id || (orig.audio && orig.audio.clause_id) || `clause_${String(i + 1).padStart(3, '0')}`;
+    const origAudio = orig.audio || { voiceover: orig.clause, file: null };
+    const primaryAudio = {
+      ...origAudio,
+      clause_id: clauseId,
+      voiceover: origAudio.voiceover !== undefined ? origAudio.voiceover : orig.clause
+    };
+    const continuationAudio = {
+      clause_id: clauseId,
+      shared_from: clauseId,
+      voiceover: null,
+      file: origAudio.file || null
+    };
+
     let dur = orig.duration;
     if (isNaN(dur) || dur <= 0) {
       const words = (orig.clause || '').trim().split(/\s+/).length;
@@ -287,13 +301,17 @@ function applyMultiImagePacing(rawShots) {
 
           pacedShots.push({
             id: '',
+            clause_id: clauseId,
+            is_clause_start: c === 0,
+            sub_cut_index: c + 1,
+            sub_cut_total: numCuts,
             clause: orig.clause,
             sub_clause: `Hook Cut ${c + 1}/${numCuts}`,
             duration: actualSubDur,
             strategy: 'HOOK',
             palette: orig.palette,
             image_prompt: subPrompt,
-            audio: orig.audio
+            audio: c === 0 ? primaryAudio : { ...continuationAudio }
           });
           cumulativeTime += actualSubDur;
         }
@@ -305,12 +323,16 @@ function applyMultiImagePacing(rawShots) {
     if (dur <= 1.8 || orig.strategy === 'TITLE_CARD') {
       pacedShots.push({
         id: '',
+        clause_id: clauseId,
+        is_clause_start: true,
+        sub_cut_index: 1,
+        sub_cut_total: 1,
         clause: orig.clause,
         duration: dur,
         strategy: orig.strategy,
         palette: orig.palette,
         image_prompt: orig.image_prompt,
-        audio: orig.audio
+        audio: primaryAudio
       });
       cumulativeTime += dur;
       continue;
@@ -323,26 +345,34 @@ function applyMultiImagePacing(rawShots) {
 
       pacedShots.push({
         id: '',
+        clause_id: clauseId,
+        is_clause_start: true,
+        sub_cut_index: 1,
+        sub_cut_total: 2,
         clause: orig.clause,
         sub_clause: 'Action / Focal Setup',
         duration: dur1,
         strategy: orig.strategy,
         palette: orig.palette,
         image_prompt: orig.image_prompt,
-        audio: orig.audio
+        audio: primaryAudio
       });
 
       const reactionPrompt = `2D comic illustration of Dynamic comic close-up and exaggerated reaction to ${basePromptCore}, with expressive cartoon meme eyes and comic motion lines.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
       pacedShots.push({
         id: '',
+        clause_id: clauseId,
+        is_clause_start: false,
+        sub_cut_index: 2,
+        sub_cut_total: 2,
         clause: orig.clause,
         sub_clause: 'Reaction / Punchline',
         duration: dur2,
         strategy: 'POSE_CHURN',
         palette: orig.palette,
         image_prompt: reactionPrompt,
-        audio: orig.audio
+        audio: { ...continuationAudio }
       });
 
       cumulativeTime += dur;
@@ -356,39 +386,51 @@ function applyMultiImagePacing(rawShots) {
 
     pacedShots.push({
       id: '',
+      clause_id: clauseId,
+      is_clause_start: true,
+      sub_cut_index: 1,
+      sub_cut_total: 3,
       clause: orig.clause,
       sub_clause: 'Setup Context',
       duration: dur1,
       strategy: orig.strategy,
       palette: orig.palette,
       image_prompt: orig.image_prompt,
-      audio: orig.audio
+      audio: primaryAudio
     });
 
     const actionPrompt = `2D comic illustration of Exaggerated comic focal angle of ${basePromptCore}, bold visual metaphor and dynamic motion trails.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
     pacedShots.push({
       id: '',
+      clause_id: clauseId,
+      is_clause_start: false,
+      sub_cut_index: 2,
+      sub_cut_total: 3,
       clause: orig.clause,
       sub_clause: 'Key Action / Metaphor',
       duration: dur2,
       strategy: 'METAPHOR',
       palette: orig.palette,
       image_prompt: actionPrompt,
-      audio: orig.audio
+      audio: { ...continuationAudio }
     });
 
     const outcomePrompt = `2D comic illustration of Aftermath and meme reaction to ${basePromptCore}, character with funny derp face and educational indicator arrows.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
     pacedShots.push({
       id: '',
+      clause_id: clauseId,
+      is_clause_start: false,
+      sub_cut_index: 3,
+      sub_cut_total: 3,
       clause: orig.clause,
       sub_clause: 'Consequence / Meme Reaction',
       duration: dur3,
       strategy: 'POSE_CHURN',
       palette: orig.palette,
       image_prompt: outcomePrompt,
-      audio: orig.audio
+      audio: { ...continuationAudio }
     });
 
     cumulativeTime += dur;
@@ -427,24 +469,29 @@ function createExplainerStoryboard({
   const shots = clauses.map((clause, idx) => {
     const shotNum = idx + 1;
     const shotId = `shot_${String(shotNum).padStart(3, '0')}`;
+    const clauseId = `clause_${String(shotNum).padStart(3, '0')}`;
     const strategy = classifyStrategy(clause, idx, prevStrategy);
     const { prompt, palette } = buildPrompt({ clause, strategy, index: idx, customScenes });
     prevStrategy = strategy;
 
-    // Check for exact audio file duration
-    const audioFileName = `voice_shot_${String(shotNum).padStart(3, '0')}.mp3`;
-    const audioFilePath = path.join(audioDir, audioFileName);
+    // Check for exact clause audio file duration (prefer clause-indexed file, fallback to legacy shot file)
+    const clauseAudioPath = path.join(audioDir, `voice_${clauseId}.mp3`);
+    const legacyAudioPath = path.join(audioDir, `voice_shot_${String(shotNum).padStart(3, '0')}.mp3`);
+    const audioFilePath = fs.existsSync(clauseAudioPath) ? clauseAudioPath : legacyAudioPath;
     const measuredDuration = getAudioDuration(audioFilePath);
     const duration = measuredDuration || 2.2;
 
     return {
       id: shotId,
+      clause_id: clauseId,
+      clause_index: shotNum,
       clause: clause,
       duration: duration,
       strategy: strategy,
       palette: palette,
       image_prompt: prompt,
       audio: {
+        clause_id: clauseId,
         voiceover: clause,
         file: fs.existsSync(audioFilePath) ? audioFilePath : null
       }
@@ -479,6 +526,8 @@ function createExplainerStoryboard({
       speed: 0.90
     },
     voice_profile: 'f5-tts-latest',
+    audio_master: path.join(audioDir, 'master_voice_clauses.wav'),
+    clauses_count: clauses.length,
     bgm_volume: 0,
     hardsub: false,
     shots: finalShots
@@ -500,5 +549,7 @@ module.exports = {
   segmentTranscript,
   classifyStrategy,
   buildPrompt,
+  applyMultiImagePacing,
   createExplainerStoryboard
 };
+

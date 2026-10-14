@@ -1,21 +1,108 @@
-// Proxy bridging Windows localhost Chrome DevTools (127.0.0.1:9222) to 0.0.0.0:9223 for WSL access
+// Proxy bridging Windows localhost Chrome DevTools (127.0.0.1:9222) to port 9223 for WSL access
+// SEC-01 Hardened: Restricts access strictly to loopback (127.0.0.1, ::1) and WSL subnet (172.16.0.0/12).
 const net = require('net');
+const os = require('os');
 
-const server = net.createServer((clientSocket) => {
-  const chromeSocket = net.connect(9222, '127.0.0.1');
-  
-  clientSocket.pipe(chromeSocket).pipe(clientSocket);
-  
-  chromeSocket.on('error', (err) => {
-    // Nếu Chrome chưa bật hoặc bị tắt, ngắt kết nối ngay thay vì treo client
-    clientSocket.destroy();
-  });
-  
-  clientSocket.on('error', (err) => {
-    chromeSocket.destroy();
-  });
-});
+const TARGET_HOST = '127.0.0.1';
+const TARGET_PORT = parseInt(process.env.CDP_TARGET_PORT || '9222', 10);
+const LISTEN_PORT = parseInt(process.env.CDP_PORT || '9223', 10);
 
-server.listen(9223, '0.0.0.0', () => {
-  console.log('[CDP Proxy] Listening on 0.0.0.0:9223 -> 127.0.0.1:9222');
-});
+/**
+ * Validate whether a remote client IP is allowed to access the CDP proxy.
+ * Only loopback (127.0.0.1, ::1) and WSL2 vEthernet subnet (172.16.0.0/12) are permitted.
+ * @param {string} remoteAddress
+ * @returns {boolean}
+ */
+function isAllowedClientIp(remoteAddress) {
+  if (!remoteAddress || typeof remoteAddress !== 'string') return false;
+  const clean = remoteAddress.replace(/^::ffff:/i, '').trim();
+
+  if (clean === '127.0.0.1' || clean === '::1') {
+    return true;
+  }
+
+  // WSL subnet 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+  const match = clean.match(/^172\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (match) {
+    const o2 = parseInt(match[1], 10);
+    const o3 = parseInt(match[2], 10);
+    const o4 = parseInt(match[3], 10);
+    if (o2 >= 16 && o2 <= 31 && o3 >= 0 && o3 <= 255 && o4 >= 0 && o4 <= 255) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Discover allowed local bind addresses (127.0.0.1 and WSL vEthernet 172.16.0.0/12 interfaces).
+ * Never binds to LAN interfaces (e.g. 192.168.x.x or 10.x.x.x).
+ * @returns {string[]}
+ */
+function getBindAddresses() {
+  if (process.env.CDP_PROXY_BIND) {
+    const custom = process.env.CDP_PROXY_BIND.trim();
+    if (isAllowedClientIp(custom)) return [custom];
+  }
+
+  const hosts = new Set(['127.0.0.1']);
+  try {
+    const ifaces = os.networkInterfaces() || {};
+    for (const entries of Object.values(ifaces)) {
+      for (const info of (entries || [])) {
+        if (info && (info.family === 'IPv4' || info.family === 4) && isAllowedClientIp(info.address)) {
+          hosts.add(info.address);
+        }
+      }
+    }
+  } catch {}
+  return Array.from(hosts);
+}
+
+/**
+ * Create a hardened TCP proxy server instance with immediate connection destruction for disallowed IPs.
+ */
+function createProxyServer() {
+  return net.createServer((clientSocket) => {
+    const remoteIp = clientSocket.remoteAddress || '';
+    if (!isAllowedClientIp(remoteIp)) {
+      console.warn(`[CDP Proxy] Rejected unauthorized connection from ${remoteIp || 'unknown'}`);
+      clientSocket.destroy();
+      return;
+    }
+
+    const chromeSocket = net.connect(TARGET_PORT, TARGET_HOST);
+
+    clientSocket.pipe(chromeSocket).pipe(clientSocket);
+
+    chromeSocket.on('error', () => {
+      // Nếu Chrome chưa bật hoặc bị tắt, ngắt kết nối ngay thay vì treo client
+      clientSocket.destroy();
+    });
+
+    clientSocket.on('error', () => {
+      chromeSocket.destroy();
+    });
+  });
+}
+
+if (require.main === module) {
+  const bindHosts = getBindAddresses();
+  for (const host of bindHosts) {
+    const srv = createProxyServer();
+    srv.on('error', (err) => {
+      console.error(`[CDP Proxy] Failed to bind ${host}:${LISTEN_PORT}: ${err.message}`);
+    });
+    srv.listen(LISTEN_PORT, host, () => {
+      console.log(`[CDP Proxy] Listening on ${host}:${LISTEN_PORT} -> ${TARGET_HOST}:${TARGET_PORT} (WSL/Loopback ACL active)`);
+    });
+  }
+}
+
+module.exports = {
+  isAllowedClientIp,
+  getBindAddresses,
+  createProxyServer
+};
+

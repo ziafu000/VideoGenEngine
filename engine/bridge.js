@@ -13,48 +13,64 @@ async function isBridgeRunning() {
   }
 }
 
+function syncHardenedProxyScript() {
+  const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
+  const winUser = String(config.WIN_USER || '').replace(/[^a-zA-Z0-9._ -]/g, '');
+  const winProxyPath = `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
+  if (winUser && fs.existsSync(proxyScriptSrc)) {
+    try {
+      const destDir = path.dirname(winProxyPath);
+      if (fs.existsSync('/mnt/c/Users')) {
+        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(proxyScriptSrc, winProxyPath);
+      }
+    } catch (e) {
+      console.warn('    [!] Không thể copy cdp_proxy.js sang Windows AppData:', e.message);
+    }
+  }
+  return { winUser, winProxyPath };
+}
+
 async function ensureBridge() {
   console.log(`[-] [1/3] Kiểm tra kết nối tới CDP bridge (${config.CDP_URL})...`);
+  const { winUser } = syncHardenedProxyScript();
   const running = await isBridgeRunning();
   if (running) {
     console.log(`    [✓] CDP bridge đã sẵn sàng tại ${config.CDP_URL}`);
   } else {
     console.log('    [-] CDP bridge chưa chạy, đang tự động khởi động Chrome và proxy trên Windows...');
 
-    // Copy proxy script to Windows AppData if accessible
-    const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
-    const winUser = config.WIN_USER;
-    const winProxyPath = `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
-    if (fs.existsSync(proxyScriptSrc)) {
-      try {
-        const destDir = path.dirname(winProxyPath);
-        if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
-        fs.copyFileSync(proxyScriptSrc, winProxyPath);
-      } catch (e) {
-        console.warn('    [!] Không thể copy cdp_proxy.js sang Windows AppData:', e.message);
-      }
-    }
-
-    const chromeUserData = process.env.CHROME_USER_DATA_DIR;
-    const chromeProfile = process.env.CHROME_PROFILE_DIR;
-    let extraChromeArgs = '';
-    if (chromeUserData) extraChromeArgs += `, '--user-data-dir=\"${chromeUserData}\"'`;
-    if (chromeProfile) extraChromeArgs += `, '--profile-directory=\"${chromeProfile}\"'`;
+    const safeQuote = (val) => String(val || '').replace(/["'`$;|&<>]/g, '');
+    const chromeUserData = safeQuote(process.env.CHROME_USER_DATA_DIR);
+    const chromeProfile = safeQuote(process.env.CHROME_PROFILE_DIR);
+    const chromeFlags = ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1'];
+    if (chromeUserData) chromeFlags.push(`--user-data-dir="${chromeUserData}"`);
+    if (chromeProfile) chromeFlags.push(`--profile-directory="${chromeProfile}"`);
+    const psChromeArgList = chromeFlags.map(f => `'${f}'`).join(', ');
 
     const psCmd = `
-      $listening = Get-NetTCPConnection -LocalPort 9222 -ErrorAction SilentlyContinue
+      $listening = Get-NetTCPConnection -LocalPort 9222 -State Listen -ErrorAction SilentlyContinue
       if (-not $listening) {
           $chromeLnk = if ($env:CHROME_SHORTCUT_PATH -and (Test-Path $env:CHROME_SHORTCUT_PATH)) { $env:CHROME_SHORTCUT_PATH } else { (Get-ChildItem -Path "C:\\Users\\${winUser}\\Desktop\\*Chrome*.lnk" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
           if ($chromeLnk -and (Test-Path $chromeLnk)) {
               $sh = New-Object -ComObject WScript.Shell
               $target = $sh.CreateShortcut($chromeLnk)
-              Start-Process $target.TargetPath -ArgumentList $target.Arguments
+              $lnkArgs = $target.Arguments
+              if ($lnkArgs -notmatch '--remote-debugging-port=') { $lnkArgs += ' --remote-debugging-port=9222' }
+              if ($lnkArgs -notmatch '--remote-debugging-address=') { $lnkArgs += ' --remote-debugging-address=127.0.0.1' }
+              Start-Process $target.TargetPath -ArgumentList $lnkArgs.Trim()
           } else {
-              Start-Process 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -ArgumentList '--remote-debugging-port=9222'${extraChromeArgs}
+              Start-Process 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' -ArgumentList @(${psChromeArgList})
           }
           Start-Sleep -Seconds 3
       }
-      $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue
+      $proxyConns = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
+      foreach ($conn in $proxyConns) {
+          if ($conn.LocalAddress -eq '0.0.0.0' -or $conn.LocalAddress -eq '::') {
+              Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+          }
+      }
+      $proxyListening = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
       if (-not $proxyListening) {
           Start-Process node -ArgumentList "C:\\Users\\${winUser}\\AppData\\Local\\Google\\Chrome\\cdp_proxy.js" -WindowStyle Hidden
       }
