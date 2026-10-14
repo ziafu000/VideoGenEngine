@@ -79,12 +79,16 @@ function openInSystemBrowser(filePath) {
 }
 
 /**
- * Format seconds into MM:SS
+ * Format seconds into MM:SS (or MM:SS.s with tenths)
  */
-function formatTime(seconds) {
+function formatTime(seconds, includeTenths = false) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  if (!includeTenths) {
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+  const tenths = Math.floor((seconds % 1) * 10);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${tenths}`;
 }
 
 /**
@@ -182,7 +186,54 @@ function ensureLavishWorkspace() {
     }
   }
 
+  const lavishAudio = path.join(lavishDir, 'audio');
+  if (!fs.existsSync(lavishAudio)) {
+    try {
+      fs.symlinkSync('../audio', lavishAudio, 'junction');
+    } catch {
+      try {
+        fs.symlinkSync(config.AUDIO_DIR, lavishAudio);
+      } catch {}
+    }
+  }
+
   return lavishDir;
+}
+
+/**
+ * Locate audio voiceover file for a given shot
+ */
+function findAudioFile(projectName, baseName, shotId, s) {
+  if (s && s.audio && s.audio.file && fs.existsSync(s.audio.file)) {
+    const relPath = path.isAbsolute(s.audio.file)
+      ? path.relative(config.PROJECT_DIR, s.audio.file).replace(/\\/g, '/')
+      : s.audio.file.replace(/\\/g, '/');
+    return {
+      fullPath: s.audio.file,
+      relPath: relPath,
+      size: fs.statSync(s.audio.file).size
+    };
+  }
+
+  const candidates = [
+    path.join(config.AUDIO_DIR, projectName, `voice_${shotId}.mp3`),
+    path.join(config.AUDIO_DIR, baseName, `voice_${shotId}.mp3`),
+    path.join(config.AUDIO_DIR, projectName, `${shotId}.mp3`),
+    path.join(config.AUDIO_DIR, baseName, `${shotId}.mp3`)
+  ];
+
+  for (const c of candidates) {
+    if (fs.existsSync(c) && fs.statSync(c).size > 100) {
+      const relPath = path.relative(config.PROJECT_DIR, c).replace(/\\/g, '/');
+      return {
+        fullPath: c,
+        relPath: relPath,
+        size: fs.statSync(c).size
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -268,6 +319,7 @@ function generateBoard(storyboardData, options = {}) {
   const rawShots = sb.shots || [];
   let cumulativeTime = 0;
   let renderedCount = 0;
+  let audioReadyCount = 0;
 
   const shots = rawShots.map((s, index) => {
     const shotNum = index + 1;
@@ -311,13 +363,20 @@ function generateBoard(storyboardData, options = {}) {
     const render = findRenderFile(projectName, baseName, shotId);
     if (render) renderedCount++;
 
+    const audio = findAudioFile(projectName, baseName, shotId, s);
+    if (audio) audioReadyCount++;
+
+    const audioStart = (s.audio && typeof s.audio.audio_start === 'number')
+      ? s.audio.audio_start
+      : (typeof s.audio_start === 'number' ? s.audio_start : 0);
+
     return {
       shotNum,
       shotId,
       duration,
       startSec,
       endSec,
-      timeRange: `${formatTime(startSec)} - ${formatTime(endSec)}`,
+      timeRange: `${formatTime(startSec, true)} - ${formatTime(endSec, true)}`,
       narration,
       subClause,
       prompt,
@@ -326,7 +385,10 @@ function generateBoard(storyboardData, options = {}) {
       palette,
       wordCount,
       wps,
-      render
+      render,
+      audio,
+      audioSrc: audio ? audio.relPath : '',
+      audioStart
     };
   });
 
@@ -384,7 +446,7 @@ function generateBoard(storyboardData, options = {}) {
 
   const totalShots = shots.length;
   const totalDurationSec = Math.round(cumulativeTime);
-  const totalDurationFormatted = formatTime(totalDurationSec);
+  const totalDurationFormatted = formatTime(totalDurationSec, false);
   const progressPercent = totalShots > 0 ? Math.round((renderedCount / totalShots) * 100) : 0;
   const pendingCount = Math.max(0, totalShots - renderedCount);
 
@@ -408,7 +470,9 @@ function generateBoard(storyboardData, options = {}) {
       strategy: s.strategy,
       strategyStyle: s.strategyStyle,
       palette: s.palette,
-      relPath: s.render ? s.render.relPath : `renders/${projectName}/${s.shotId}.png`
+      relPath: s.render ? s.render.relPath : `renders/${projectName}/${s.shotId}.png`,
+      audioSrc: s.audioSrc || '',
+      audioStart: s.audioStart || 0
     };
   }
 
@@ -452,6 +516,19 @@ function generateBoard(storyboardData, options = {}) {
       border-color: #f59e0b !important;
     }
   </style>
+
+  <script>
+    // Universal Media Path Resolver for both .lavish/ and Windows Desktop
+    window.addEventListener('error', function(e) {
+      if (e.target && e.target.tagName === 'IMG' && !e.target.dataset.triedFallback) {
+        e.target.dataset.triedFallback = 'true';
+        var src = e.target.src || '';
+        if (src.indexOf('/.lavish/renders/') !== -1) {
+          e.target.src = src.replace('/.lavish/renders/', '/renders/');
+        }
+      }
+    }, true);
+  </script>
 </head>
 <body class="min-h-screen pb-16 selection:bg-amber-600 selection:text-white">
 
@@ -479,6 +556,7 @@ function generateBoard(storyboardData, options = {}) {
             <span class="text-[#fffbeb] font-bold">${totalShots} cuts (${totalDurationFormatted})</span>
             <span>•</span>
             <span class="text-emerald-300 font-semibold">${escapeHtml(voiceProvider)} @ ${voiceSpeed}</span>
+            ${audioReadyCount > 0 ? `<span>•</span><span class="text-cyan-300 font-semibold font-mono">🔊 Voice: ${audioReadyCount}/${totalShots} ready</span>` : ''}
           </div>
         </div>
       </div>
@@ -603,6 +681,7 @@ function generateBoard(storyboardData, options = {}) {
             ` : `
               <img
                 src="${escapeHtml(mediaSrc)}"
+                onerror="if(!this.dataset.triedFallback){this.dataset.triedFallback='true';if(this.src.indexOf('/.lavish/renders/')!==-1)this.src=this.src.replace('/.lavish/renders/','/renders/');}"
                 alt="${escapeHtml(s.shotId)}"
                 data-shot-id="${escapeHtml(s.shotId)}"
                 loading="lazy"
@@ -646,7 +725,28 @@ function generateBoard(storyboardData, options = {}) {
                   <span>Spoken Clause</span>
                   ${s.isMultiCut ? `<span class="px-1.5 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px] font-bold font-mono">Part ${s.multiCutIndex}/${s.multiCutTotal}${s.subClause ? ' · ' + escapeHtml(s.subClause.replace(/Hook Cut \d\/\d/, 'Hook')) : ''}</span>` : ''}
                 </span>
-                <span class="text-amber-200/70 font-semibold">${s.duration}s (${s.cutWordCount}w • ${s.wps} wps)</span>
+                <span class="text-amber-200/70 font-semibold flex items-center gap-1.5">
+                  ${s.audioSrc ? `
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all cursor-pointer bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 audio-play-btn"
+                      data-audio-src="${escapeHtml(s.audioSrc)}"
+                      data-audio-start="${s.audioStart || 0}"
+                      data-audio-dur="${s.duration}"
+                      onclick="toggleShotAudio(this)"
+                      title="Play Voiceover (${s.duration}s)"
+                    >
+                      <svg class="w-3 h-3 play-icon inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" />
+                      </svg>
+                      <svg class="w-3 h-3 pause-icon hidden animate-pulse text-emerald-400 inline" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                      </svg>
+                      <span>${s.duration}s</span>
+                    </button>
+                  ` : `<span>${s.duration}s</span>`}
+                  <span>(${s.cutWordCount}w • ${s.wps} wps)</span>
+                </span>
               </div>
               <p class="text-[16.5px] font-semibold text-[#fffbeb] leading-relaxed line-clamp-2 min-h-[2.8rem]">
                 "${escapeHtml(s.spokenPhrase || '[No Spoken Text — SFX / Ambience Only]')}"
@@ -712,10 +812,26 @@ function generateBoard(storyboardData, options = {}) {
               <td class="p-3 font-bold text-[#fffbeb] text-sm">${s.shotNum}</td>
               <td class="p-3 text-amber-200/90">${escapeHtml(s.shotId)}</td>
               <td class="p-3 text-amber-200/90">${escapeHtml(s.timeRange)}</td>
-              <td class="p-3 text-amber-200/90">${s.duration}s</td>
+              <td class="p-3 text-amber-200/90">
+                ${s.audioSrc ? `
+                  <button
+                    type="button"
+                    class="audio-play-btn inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-mono font-bold bg-amber-500/15 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 cursor-pointer"
+                    data-audio-src="${escapeHtml(s.audioSrc)}"
+                    data-audio-start="${s.audioStart || 0}"
+                    data-audio-dur="${s.duration}"
+                    onclick="toggleShotAudio(this)"
+                    title="Play voiceover (${s.duration}s)"
+                  >
+                    <span class="play-icon">▶</span>
+                    <span class="pause-icon hidden text-emerald-400 animate-pulse">⏸</span>
+                    <span>${s.duration}s</span>
+                  </button>
+                ` : `${s.duration}s`}
+              </td>
               <td class="p-3 table-media-cell">
                 ${isRendered ? `
-                  <img src="${escapeHtml(mediaSrc)}" alt="${escapeHtml(s.shotId)}" data-shot-id="${escapeHtml(s.shotId)}" class="w-20 h-11 object-cover rounded-md cursor-pointer border border-[#44403c] hover:border-amber-400 transition-colors" onclick="openLightboxFor(this.dataset.shotId)">
+                  <img src="${escapeHtml(mediaSrc)}" onerror="if(!this.dataset.triedFallback){this.dataset.triedFallback='true';if(this.src.indexOf('/.lavish/renders/')!==-1)this.src=this.src.replace('/.lavish/renders/','/renders/');}" alt="${escapeHtml(s.shotId)}" data-shot-id="${escapeHtml(s.shotId)}" class="w-20 h-11 object-cover rounded-md cursor-pointer border border-[#44403c] hover:border-amber-400 transition-colors" onclick="openLightboxFor(this.dataset.shotId)">
                 ` : `
                   <div class="w-20 h-11 bg-[#1c1917] border border-dashed border-[#44403c] rounded-md flex items-center justify-center text-[10px] text-amber-400 font-bold font-mono">Queued</div>
                 `}
@@ -770,6 +886,10 @@ function generateBoard(storyboardData, options = {}) {
             <span id="lightbox_strategy" class="text-amber-400 font-bold uppercase text-xs px-2.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30"></span>
           </div>
           <div class="flex items-center gap-2">
+            <button id="lightbox_audio_btn" class="audio-play-btn px-3 py-1.5 bg-[#2d241e] hover:bg-[#3d3128] text-amber-300 border border-amber-500/40 rounded-lg font-mono text-xs font-semibold cursor-pointer transition-all inline-flex items-center gap-1.5 hidden" onclick="toggleLightboxAudio()">
+              <span class="play-icon">▶ Play Voice</span>
+              <span class="pause-icon hidden text-emerald-400">⏸ Pause</span>
+            </button>
             <button class="px-3.5 py-1.5 bg-[#2d241e] hover:bg-[#3d3128] text-amber-200 border border-[#4a3c30] rounded-lg font-mono text-xs font-semibold cursor-pointer transition-all" onclick="navigateLightbox(-1)">← Prev</button>
             <button class="px-3.5 py-1.5 bg-[#2d241e] hover:bg-[#3d3128] text-amber-200 border border-[#4a3c30] rounded-lg font-mono text-xs font-semibold cursor-pointer transition-all" onclick="navigateLightbox(1)">Next →</button>
             <button class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-mono text-xs font-bold cursor-pointer transition-all shadow" onclick="copyLightboxPrompt()">Copy Prompt</button>
@@ -948,6 +1068,20 @@ function generateBoard(storyboardData, options = {}) {
       }
 
       document.getElementById('lightbox_prompt').innerText = s.prompt || '[No prompt]';
+
+      const audioBtn = document.getElementById('lightbox_audio_btn');
+      if (audioBtn) {
+        if (s.audioSrc) {
+          audioBtn.setAttribute('data-audio-src', s.audioSrc);
+          audioBtn.setAttribute('data-audio-start', s.audioStart || 0);
+          audioBtn.setAttribute('data-audio-dur', s.duration || 0);
+          audioBtn.classList.remove('hidden');
+          const player = document.getElementById('global_audio_player');
+          setBtnAudioState(audioBtn, currentAudioSrc === s.audioSrc && player && !player.paused);
+        } else {
+          audioBtn.classList.add('hidden');
+        }
+      }
       
       const modal = document.getElementById('lightbox_modal');
       modal.classList.remove('hidden');
@@ -990,6 +1124,102 @@ function generateBoard(storyboardData, options = {}) {
     function copyCommand(cmd) {
       copyText(cmd);
     }
+
+    // Audio Preview Player Core
+    let currentAudioSrc = null;
+    let currentActiveBtn = null;
+    let audioSnippetTimeout = null;
+
+    function toggleShotAudio(btn) {
+      const rawAudioSrc = btn ? btn.getAttribute('data-audio-src') : null;
+      if (!rawAudioSrc) return;
+      const player = document.getElementById('global_audio_player');
+      if (!player) return;
+
+      const isLavish = window.location.pathname.indexOf('.lavish') !== -1;
+      const audioSrc = (isLavish && !rawAudioSrc.startsWith('../')) ? ('../' + rawAudioSrc) : rawAudioSrc;
+      const audioStart = parseFloat(btn.getAttribute('data-audio-start') || 0);
+      const audioDur = parseFloat(btn.getAttribute('data-audio-dur') || 0);
+
+      if (audioSnippetTimeout) {
+        clearTimeout(audioSnippetTimeout);
+        audioSnippetTimeout = null;
+      }
+
+      if (currentAudioSrc === audioSrc && currentActiveBtn === btn && !player.paused) {
+        player.pause();
+        setBtnAudioState(btn, false);
+        return;
+      }
+
+      if (currentActiveBtn && currentActiveBtn !== btn) {
+        setBtnAudioState(currentActiveBtn, false);
+      }
+
+      currentAudioSrc = audioSrc;
+      currentActiveBtn = btn;
+      setBtnAudioState(btn, true);
+
+      function applySnippetPlay() {
+        if (!isNaN(audioStart) && audioStart >= 0) {
+          player.currentTime = audioStart;
+        }
+        player.play().then(() => {
+          if (audioDur > 0) {
+            audioSnippetTimeout = setTimeout(() => {
+              if (currentActiveBtn === btn && !player.paused) {
+                player.pause();
+                setBtnAudioState(btn, false);
+              }
+            }, (audioDur + 0.15) * 1000);
+          }
+        }).catch(err => {
+          console.warn('[!] Audio play failed:', err.message);
+          setBtnAudioState(btn, false);
+        });
+      }
+
+      if (player.src !== audioSrc && !player.src.endsWith(audioSrc)) {
+        player.src = audioSrc;
+        player.onloadedmetadata = () => {
+          applySnippetPlay();
+        };
+      } else {
+        applySnippetPlay();
+      }
+    }
+
+    function toggleLightboxAudio() {
+      const btn = document.getElementById('lightbox_audio_btn');
+      if (btn) toggleShotAudio(btn);
+    }
+
+    function setBtnAudioState(btn, isPlaying) {
+      if (!btn) return;
+      const playIcon = btn.querySelector('.play-icon');
+      const pauseIcon = btn.querySelector('.pause-icon');
+      if (playIcon) playIcon.classList.toggle('hidden', isPlaying);
+      if (pauseIcon) pauseIcon.classList.toggle('hidden', !isPlaying);
+      btn.classList.toggle('border-emerald-400', isPlaying);
+      btn.classList.toggle('bg-emerald-500/25', isPlaying);
+      btn.classList.toggle('text-emerald-300', isPlaying);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const player = document.getElementById('global_audio_player');
+      if (player) {
+        player.onended = () => {
+          if (currentActiveBtn) setBtnAudioState(currentActiveBtn, false);
+          const lbBtn = document.getElementById('lightbox_audio_btn');
+          if (lbBtn) setBtnAudioState(lbBtn, false);
+        };
+        player.onpause = () => {
+          if (currentActiveBtn) setBtnAudioState(currentActiveBtn, false);
+          const lbBtn = document.getElementById('lightbox_audio_btn');
+          if (lbBtn) setBtnAudioState(lbBtn, false);
+        };
+      }
+    });
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
@@ -1071,6 +1301,17 @@ function generateBoard(storyboardData, options = {}) {
       '<span id="pill_text" class="text-amber-200/90 font-semibold">Live Sync: <span id="pill_ready_count" class="font-extrabold text-[#fffbeb]">' + totalReady + '</span>/' + totalCount + '</span>';
     document.body.appendChild(statusPill);
 
+    // Automatic broken image fallback for WSL / Desktop path resolution
+    window.addEventListener('error', (e) => {
+      if (e.target && e.target.tagName === 'IMG' && !e.target.dataset.triedFallback) {
+        e.target.dataset.triedFallback = 'true';
+        const src = e.target.src || '';
+        if (src.indexOf('/.lavish/renders/') !== -1) {
+          e.target.src = src.replace('/.lavish/renders/', '/renders/');
+        }
+      }
+    }, true);
+
     async function pollPendingShots() {
       if (!isPollingActive || isCheckingPending) return;
       isCheckingPending = true;
@@ -1082,56 +1323,77 @@ function generateBoard(storyboardData, options = {}) {
         return;
       }
 
-      // Check next 15 pending shots in parallel
-      const batch = pendingItems.slice(0, 15);
+      const isLavish = window.location.pathname.indexOf('.lavish') !== -1;
+      const prefix = isLavish ? '../' : '';
+
+      // Check next 20 pending shots in parallel
+      const batch = pendingItems.slice(0, 20);
       const checks = batch.map(item => {
-        return new Promise(resolve => {
+        return new Promise(async resolve => {
           const shotId = item.getAttribute('data-shot-id');
           const s = SHOTS_MAP[shotId] || {};
           const strat = s.strategyStyle || { badge: 'border border-amber-500/40 text-amber-200' };
-          const imgUrl = s.relPath || ('renders/' + EPISODE_PROJECT + '/' + shotId + '.png');
-          const testImg = new Image();
-          testImg.onload = () => {
-            // 1. Update Card in Grid View
-            const mediaBox = item.querySelector('.media-preview-box');
-            if (mediaBox) {
-              mediaBox.innerHTML =
-                '<img src="' + imgUrl + '" alt="' + shotId + '" data-shot-id="' + shotId + '" loading="lazy" class="w-full h-full object-cover cursor-pointer" onclick="openLightboxFor(this.dataset.shotId)">' +
-                '<div class="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex items-center justify-between text-xs font-mono pointer-events-none">' +
-                  '<div class="flex items-center gap-1.5 text-amber-100">' +
-                    '<span class="font-bold text-amber-300 text-sm">#' + (s.shotNum || '') + '</span>' +
-                    '<span class="text-amber-500/60">·</span>' +
-                    '<span class="text-amber-200/90 text-xs">' + (s.timeRange || '') + '</span>' +
-                  '</div>' +
-                  '<div class="flex items-center gap-2">' +
-                    '<span class="px-2 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase ' + (strat.badge || '') + '">' + (s.strategy || '') + '</span>' +
-                    '<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)] inline-block" title="Ready"></span>' +
-                  '</div>' +
-                '</div>';
+          const baseRel = s.relPath || ('renders/' + EPISODE_PROJECT + '/' + shotId + '.png');
+          
+          const candidates = Array.from(new Set([
+            prefix + baseRel,
+            baseRel,
+            '../' + baseRel
+          ]));
+
+          let workingUrl = null;
+          for (const cand of candidates) {
+            const ok = await new Promise(r => {
+              const testImg = new Image();
+              testImg.onload = () => r(true);
+              testImg.onerror = () => r(false);
+              testImg.src = cand;
+            });
+            if (ok) {
+              workingUrl = cand;
+              break;
             }
+          }
 
-            item.setAttribute('data-rendered', 'true');
+          if (!workingUrl) {
+            return resolve(false);
+          }
 
-            // 2. Update Table View row
-            const tableRow = document.querySelector('tr[data-shot-id="' + shotId + '"]');
-            if (tableRow) {
-              tableRow.setAttribute('data-rendered', 'true');
-              const tMedia = tableRow.querySelector('.table-media-cell');
-              if (tMedia) {
-                tMedia.innerHTML = '<img src="' + imgUrl + '" alt="' + shotId + '" data-shot-id="' + shotId + '" class="w-20 h-11 object-cover rounded-md cursor-pointer border border-[#44403c] hover:border-amber-400 transition-colors" onclick="openLightboxFor(this.dataset.shotId)">';
-              }
-              const tStatus = tableRow.querySelector('.table-status-cell');
-              if (tStatus) {
-                tStatus.innerHTML = '<span class="text-emerald-400 font-extrabold text-xs">Ready</span>';
-              }
+          // 1. Update Card in Grid View
+          const mediaBox = item.querySelector('.media-preview-box');
+          if (mediaBox) {
+            mediaBox.innerHTML =
+              '<img src="' + workingUrl + '" alt="' + shotId + '" data-shot-id="' + shotId + '" loading="lazy" class="w-full h-full object-cover cursor-pointer" onclick="openLightboxFor(this.dataset.shotId)">' +
+              '<div class="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-gradient-to-t from-black/95 via-black/70 to-transparent flex items-center justify-between text-xs font-mono pointer-events-none">' +
+                '<div class="flex items-center gap-1.5 text-amber-100">' +
+                  '<span class="font-bold text-amber-300 text-sm">#' + (s.shotNum || '') + '</span>' +
+                  '<span class="text-amber-500/60">·</span>' +
+                  '<span class="text-amber-200/90 text-xs">' + (s.timeRange || '') + '</span>' +
+                '</div>' +
+                '<div class="flex items-center gap-2">' +
+                  '<span class="px-2 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase ' + (strat.badge || '') + '">' + (s.strategy || '') + '</span>' +
+                  '<span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)] inline-block" title="Ready"></span>' +
+                '</div>' +
+              '</div>';
+          }
+
+          item.setAttribute('data-rendered', 'true');
+
+          // 2. Update Table View row
+          const tableRow = document.querySelector('tr[data-shot-id="' + shotId + '"]');
+          if (tableRow) {
+            tableRow.setAttribute('data-rendered', 'true');
+            const tMedia = tableRow.querySelector('.table-media-cell');
+            if (tMedia) {
+              tMedia.innerHTML = '<img src="' + workingUrl + '" alt="' + shotId + '" data-shot-id="' + shotId + '" class="w-20 h-11 object-cover rounded-md cursor-pointer border border-[#44403c] hover:border-amber-400 transition-colors" onclick="openLightboxFor(this.dataset.shotId)">';
             }
+            const tStatus = tableRow.querySelector('.table-status-cell');
+            if (tStatus) {
+              tStatus.innerHTML = '<span class="text-emerald-400 font-extrabold text-xs">Ready</span>';
+            }
+          }
 
-            resolve(true);
-          };
-          testImg.onerror = () => {
-            resolve(false);
-          };
-          testImg.src = imgUrl + '?t=' + Date.now();
+          resolve(true);
         });
       });
 
@@ -1154,6 +1416,8 @@ function generateBoard(storyboardData, options = {}) {
     // Poll every 2.5 seconds
     setInterval(pollPendingShots, 2500);
   </script>
+  <!-- Hidden Global Audio Engine (Zero Preload, Ultra-Lightweight) -->
+  <audio id="global_audio_player" preload="none" class="hidden"></audio>
 </body>
 </html>`;
 

@@ -456,14 +456,17 @@ function createExplainerStoryboard({
   outputStoryboardPath = null,
   scenesPath = null
 }) {
-  const clauses = segmentTranscript(transcriptText);
+  const customScenes = loadCustomScenes(scenesPath, seriesId, episodeId);
+  const rawLines = transcriptText.split('\n').map(l => l.trim()).filter(Boolean);
+  const use1to1 = customScenes && Array.isArray(customScenes) && customScenes.length === rawLines.length;
+
+  const clauses = use1to1 ? rawLines : segmentTranscript(transcriptText);
   if (clauses.length === 0) {
     throw new Error('createExplainerStoryboard: Transcript rỗng hoặc không có mệnh đề hợp lệ!');
   }
 
   const projectId = `${seriesId}_${episodeId}`;
   const audioDir = config.AUDIO_DIR ? path.join(config.AUDIO_DIR, projectId) : path.join(__dirname, '..', 'audio', projectId);
-  const customScenes = loadCustomScenes(scenesPath, seriesId, episodeId);
 
   let prevStrategy = 'LITERAL';
   const shots = clauses.map((clause, idx) => {
