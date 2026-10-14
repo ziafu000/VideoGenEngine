@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 /**
  * TypeSafe Jev (System One AI) Centralized Helper for VideoGen Engine
@@ -14,7 +14,7 @@ class JevHelper {
     if (!promptText || typeof promptText !== 'string') return { safe: true, risk_score: 0 };
     try {
       const cleanPrompt = promptText.replace(/[\r\n\t]+/g, ' ').slice(0, 1000);
-      const out = execSync(`browser-jev screen-prompt ${JSON.stringify(cleanPrompt)}`, {
+      const out = execFileSync('browser-jev', ['screen-prompt', cleanPrompt], {
         encoding: 'utf8',
         timeout: 6000,
         stdio: ['pipe', 'pipe', 'ignore']
@@ -39,7 +39,7 @@ class JevHelper {
     try {
       const cleanText = text.replace(/[\r\n\t]+/g, ' ').slice(0, 800);
       const statesJson = JSON.stringify(statesMap);
-      const out = execSync(`browser-jev classify --text ${JSON.stringify(cleanText)} --states ${JSON.stringify(statesJson)}`, {
+      const out = execFileSync('browser-jev', ['classify', '--text', cleanText, '--states', statesJson], {
         encoding: 'utf8',
         timeout: 6000,
         stdio: ['pipe', 'pipe', 'ignore']
@@ -59,7 +59,7 @@ class JevHelper {
     if (!text || typeof text !== 'string') return { has_obstacle: false };
     try {
       const cleanText = text.replace(/[\r\n\t]+/g, ' ').slice(0, 800);
-      const out = execSync(`browser-jev obstacle --text ${JSON.stringify(cleanText)}`, {
+      const out = execFileSync('browser-jev', ['obstacle', '--text', cleanText], {
         encoding: 'utf8',
         timeout: 6000,
         stdio: ['pipe', 'pipe', 'ignore']
@@ -80,7 +80,7 @@ class JevHelper {
     if (!text) return { verified: false, confidence: 0 };
     try {
       const cleanText = text.replace(/[\r\n\t]+/g, ' ').slice(0, 800);
-      const out = execSync(`browser-jev verify --text ${JSON.stringify(cleanText)} --expected ${JSON.stringify(expected)}`, {
+      const out = execFileSync('browser-jev', ['verify', '--text', cleanText, '--expected', String(expected)], {
         encoding: 'utf8',
         timeout: 6000,
         stdio: ['pipe', 'pipe', 'ignore']
@@ -100,7 +100,7 @@ class JevHelper {
     if (!elements || !elements.length) return null;
     try {
       const elJson = JSON.stringify(elements.slice(0, 20));
-      const out = execSync(`browser-jev select --elements ${JSON.stringify(elJson)} --intent ${JSON.stringify(intent)}`, {
+      const out = execFileSync('browser-jev', ['select', '--elements', elJson, '--intent', String(intent)], {
         encoding: 'utf8',
         timeout: 6000,
         stdio: ['pipe', 'pipe', 'ignore']

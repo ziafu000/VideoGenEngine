@@ -9,7 +9,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const config = require('./config');
 
 // Helper to optionally load bespoke episode scenes from storyboards/ or custom path
@@ -234,7 +234,13 @@ function buildPrompt({ clause, strategy, index = 0, customScenes = null }) {
 function getAudioDuration(filePath) {
   try {
     if (fs.existsSync(filePath)) {
-      const out = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      const winPath = config.toWinPath(filePath);
+      const out = execFileSync('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'default=noprint_wrappers=1:nokey=1',
+        winPath
+      ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
       const val = parseFloat(out);
       if (!isNaN(val) && val > 0) return Math.round(val * 100) / 100;
     }
@@ -552,6 +558,7 @@ module.exports = {
   segmentTranscript,
   classifyStrategy,
   buildPrompt,
+  getAudioDuration,
   applyMultiImagePacing,
   createExplainerStoryboard
 };

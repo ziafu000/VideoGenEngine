@@ -5,17 +5,29 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const config = require('./config');
 
+const clientPool = new Map();
+const DEFAULT_IDLE_TTL_MS = 1500;
+const EVAL_OBJECT_GROUP = 'videogen-eval';
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 class CDPClient extends EventEmitter {
-  constructor(wsUrl) {
+  constructor(wsUrl, options = {}) {
     super();
     this.wsUrl = wsUrl;
     this.ws = new WebSocket(wsUrl);
     this.msgId = 1;
     this.pending = new Map();
+    this._closed = false;
+    this._pooled = Boolean(options.pooled);
+    this._poolKeys = new Set();
+    this._refCount = 0;
+    this._idleTimer = null;
+    this._idleTtlMs = typeof options.idleTtlMs === 'number' ? options.idleTtlMs : DEFAULT_IDLE_TTL_MS;
+    this._dialogEnabled = false;
+    this._evalCount = 0;
 
     this.ready = new Promise((resolve, reject) => {
       this.ws.onopen = async () => {
@@ -25,19 +37,22 @@ class CDPClient extends EventEmitter {
         resolve();
       };
       this.ws.onerror = (err) => {
-        for (const [id, p] of this.pending.entries()) {
+        this._cleanupPoolEntry();
+        for (const [, p] of this.pending.entries()) {
           p.reject(new Error(`WebSocket error: ${err.message || err}`));
         }
         this.pending.clear();
         reject(err);
       };
       this.ws.onclose = () => {
-        for (const [id, p] of this.pending.entries()) {
+        this._cleanupPoolEntry();
+        for (const [, p] of this.pending.entries()) {
           p.reject(new Error('WebSocket closed'));
         }
         this.pending.clear();
       };
     });
+    this.ready.catch(() => {});
 
     this.ws.onmessage = (evt) => {
       try {
@@ -61,6 +76,65 @@ class CDPClient extends EventEmitter {
         console.error('[CDP Parse Error]', err);
       }
     };
+  }
+
+  _cleanupPoolEntry() {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
+    this._closed = true;
+    this._refCount = 0;
+    for (const k of this._poolKeys) {
+      if (clientPool.get(k) === this) {
+        clientPool.delete(k);
+      }
+    }
+    this._poolKeys.clear();
+  }
+
+  isOpen() {
+    return Boolean(!this._closed && this.ws && this.ws.readyState === 1);
+  }
+
+  retain() {
+    if (this._idleTimer) {
+      clearTimeout(this._idleTimer);
+      this._idleTimer = null;
+    }
+    this._refCount++;
+    return this;
+  }
+
+  release(force = false) {
+    if (force || !this._pooled || this._closed) {
+      this.forceClose();
+      return;
+    }
+    this._refCount = Math.max(0, this._refCount - 1);
+    if (this._refCount === 0) {
+      if (this._idleTimer) clearTimeout(this._idleTimer);
+      this._idleTimer = setTimeout(() => {
+        this._idleTimer = null;
+        if (this._refCount === 0) {
+          this.forceClose();
+        }
+      }, this._idleTtlMs);
+      if (this._idleTimer && typeof this._idleTimer.unref === 'function') {
+        this._idleTimer.unref();
+      }
+    }
+  }
+
+  forceClose() {
+    this._cleanupPoolEntry();
+    try {
+      this.ws.close();
+    } catch {}
+    for (const [, p] of this.pending.entries()) {
+      p.reject(new Error('CDPClient closed manually'));
+    }
+    this.pending.clear();
   }
 
   send(method, params = {}, timeoutMs = 30000) {
@@ -98,9 +172,16 @@ class CDPClient extends EventEmitter {
   async evaluate(expr, returnByValue = true) {
     const res = await this.send('Runtime.evaluate', {
       expression: expr,
+      objectGroup: EVAL_OBJECT_GROUP,
       returnByValue,
       awaitPromise: true
     });
+    this._evalCount++;
+    if (!returnByValue && res?.result?.objectId) {
+      this.send('Runtime.releaseObject', { objectId: res.result.objectId }, 3000).catch(() => {});
+    } else if (this._evalCount % 25 === 0) {
+      this.releaseMemory().catch(() => {});
+    }
     if (res && res.exceptionDetails) {
       throw new Error(res.exceptionDetails.exception?.description || 'Runtime.evaluate exception');
     }
@@ -111,19 +192,32 @@ class CDPClient extends EventEmitter {
     return this.evaluate(expr, returnByValue);
   }
 
+  async releaseMemory() {
+    if (!this.isOpen()) return;
+    try {
+      await this.send('Runtime.releaseObjectGroup', { objectGroup: EVAL_OBJECT_GROUP }, 5000).catch(() => {});
+      await this.send('Runtime.discardConsoleEntries', {}, 5000).catch(() => {});
+    } catch {}
+  }
+
   async enableDialogHandling() {
+    if (this._dialogEnabled) return;
     try {
       await this.send('Page.enable');
       await this.evaluate('window.onbeforeunload = null;');
+      this._dialogEnabled = true;
     } catch {}
   }
 
   async captureScreenshot(filePath = null) {
     try {
-      await this.send('Page.enable').catch(() => {});
+      if (!this._dialogEnabled) {
+        await this.send('Page.enable').catch(() => {});
+      }
       const res = await this.send('Page.captureScreenshot', { format: 'png' });
       if (res && res.data) {
         const buf = Buffer.from(res.data, 'base64');
+        res.data = null;
         if (filePath) {
           const dir = path.dirname(filePath);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -184,16 +278,31 @@ class CDPClient extends EventEmitter {
     await sleep(60);
   }
 
-  close() {
-    try {
-      this.ws.close();
-    } catch {}
-    for (const [id, p] of this.pending.entries()) {
-      p.reject(new Error('CDPClient closed manually'));
-    }
-    this.pending.clear();
+  close(force = false) {
+    this.release(force);
   }
 }
+
+function closeAllClients() {
+  for (const client of new Set(clientPool.values())) {
+    try {
+      client.forceClose();
+    } catch {}
+  }
+  clientPool.clear();
+}
+
+function getPoolStats() {
+  const unique = new Set(clientPool.values());
+  return {
+    keys: clientPool.size,
+    activeClients: Array.from(unique).filter(c => c.isOpen()).length
+  };
+}
+
+process.once('exit', () => {
+  closeAllClients();
+});
 
 async function listPages() {
   const jsonUrl = `${config.CDP_URL}/json/list`;
@@ -204,7 +313,19 @@ async function listPages() {
   return await res.json();
 }
 
-async function getClientForPage(urlPattern) {
+async function getClientForPage(urlPattern, options = {}) {
+  const reuse = options.reuse !== false;
+  const patternKey = typeof urlPattern === 'string' ? `pattern:${urlPattern}` : `regex:${String(urlPattern)}`;
+
+  if (reuse && clientPool.has(patternKey)) {
+    const cached = clientPool.get(patternKey);
+    if (cached && cached.isOpen()) {
+      cached.retain();
+      return cached;
+    }
+    clientPool.delete(patternKey);
+  }
+
   const pages = await listPages();
   const page = pages.find(p => p.type === 'page' && p.url && (
     typeof urlPattern === 'string'
@@ -217,8 +338,32 @@ async function getClientForPage(urlPattern) {
   if (!page.webSocketDebuggerUrl) {
     throw new Error(`Page found but missing webSocketDebuggerUrl: ${page.url}`);
   }
-  const client = new CDPClient(page.webSocketDebuggerUrl);
+
+  const wsKey = `ws:${page.webSocketDebuggerUrl}`;
+  if (reuse && clientPool.has(wsKey)) {
+    const cachedByWs = clientPool.get(wsKey);
+    if (cachedByWs && cachedByWs.isOpen()) {
+      cachedByWs._poolKeys.add(patternKey);
+      clientPool.set(patternKey, cachedByWs);
+      cachedByWs.retain();
+      return cachedByWs;
+    }
+    clientPool.delete(wsKey);
+  }
+
+  const client = new CDPClient(page.webSocketDebuggerUrl, {
+    pooled: reuse,
+    idleTtlMs: options.idleTtlMs
+  });
   await client.ready;
+
+  if (reuse) {
+    client._poolKeys.add(patternKey);
+    client._poolKeys.add(wsKey);
+    clientPool.set(patternKey, client);
+    clientPool.set(wsKey, client);
+    client.retain();
+  }
   return client;
 }
 
@@ -248,7 +393,9 @@ async function captureDiagnosticScreenshot(filename = null, dir = null, clientIn
       await clientInstance.send('Page.enable').catch(() => {});
       const res = await clientInstance.send('Page.captureScreenshot', { format: 'png' });
       if (res && res.data) {
-        fs.writeFileSync(targetFile, Buffer.from(res.data, 'base64'));
+        const buf = Buffer.from(res.data, 'base64');
+        res.data = null;
+        fs.writeFileSync(targetFile, buf);
         console.log(`[CDP Diagnostic] Đã lưu ảnh chẩn đoán: ${targetFile}`);
         return targetFile;
       }
@@ -284,6 +431,8 @@ module.exports = {
   CDPClient,
   listPages,
   getClientForPage,
+  closeAllClients,
+  getPoolStats,
   captureDiagnosticScreenshot,
   sleep
 };

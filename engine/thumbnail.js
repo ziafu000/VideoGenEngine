@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 const jev = require('./jev');
@@ -183,32 +184,48 @@ async function generateThumbnails({ prompt, storyboard, projectId, isVertical = 
 
     const savedFiles = [];
 
-    for (let i = 0; i < newUrls.length; i++) {
-      const url = newUrls[i];
-      const optNum = i + 1;
-      const rawJpg = path.join('/tmp', `raw_thumb_${pid}_${optNum}.jpg`);
-      execSync(`curl -s ${JSON.stringify(url)} -o ${JSON.stringify(rawJpg)}`);
+    const tempThumbDir = path.join(config.RENDERS_DIR, 'temp_thumbs');
+    if (!fs.existsSync(tempThumbDir)) fs.mkdirSync(tempThumbDir, { recursive: true });
 
-      const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
-      const resSuffix = isVertical ? '1080x1920' : '1080p';
-      const fileNameFhd = `${pid}_thumb_opt${optNum}_${resSuffix}.jpg`;
-      const localFhd = path.join(outDirLocal, fileNameFhd);
-      const winFhd = outDirWin ? path.join(outDirWin, fileNameFhd) : null;
-      const dlFhd = path.join(outDirDownloads, fileNameFhd);
+    try {
+      for (let i = 0; i < newUrls.length; i++) {
+        const url = newUrls[i];
+        const optNum = i + 1;
+        const rawJpg = path.join(tempThumbDir, `raw_thumb_${pid}_${optNum}.jpg`);
+        execFileSync('curl', ['-s', '-L', url, '-o', rawJpg]);
 
-      // Scale to Full HD
-      execSync(`ffmpeg -y -i ${JSON.stringify(rawJpg)} -vf ${JSON.stringify(scaleFilter)} -q:v 1 ${JSON.stringify(localFhd)} 2>/dev/null`);
-      if (winFhd) fs.copyFileSync(localFhd, winFhd);
-      fs.copyFileSync(localFhd, dlFhd);
+        const scaleFilter = isVertical ? 'scale=1080:1920:flags=lanczos' : 'scale=1920:1080:flags=lanczos';
+        const resSuffix = isVertical ? '1080x1920' : '1080p';
+        const fileNameFhd = `${pid}_thumb_opt${optNum}_${resSuffix}.jpg`;
+        const localFhd = path.join(outDirLocal, fileNameFhd);
+        const winFhd = outDirWin ? path.join(outDirWin, fileNameFhd) : null;
+        const dlFhd = path.join(outDirDownloads, fileNameFhd);
 
-      savedFiles.push({
-        option: optNum,
-        local: localFhd,
-        win: winFhd || '(DEST_FINAL not configured)',
-        downloads: dlFhd
-      });
+        // Scale to Full HD
+        execFileSync('ffmpeg', [
+          '-nostdin',
+          '-y',
+          '-i', config.toWinPath(rawJpg),
+          '-vf', scaleFilter,
+          '-q:v', '1',
+          config.toWinPath(localFhd)
+        ], { stdio: ['ignore', 'pipe', 'ignore'] });
+        if (winFhd) fs.copyFileSync(localFhd, winFhd);
+        fs.copyFileSync(localFhd, dlFhd);
 
-      console.log(`[✓] Thumbnail ${optNum} (${isVertical ? '1080x1920' : '1920x1080'}): ${localFhd}`);
+        savedFiles.push({
+          option: optNum,
+          local: localFhd,
+          win: winFhd || '(DEST_FINAL not configured)',
+          downloads: dlFhd
+        });
+
+        console.log(`[✓] Thumbnail ${optNum} (${isVertical ? '1080x1920' : '1920x1080'}): ${localFhd}`);
+      }
+    } finally {
+      try {
+        if (fs.existsSync(tempThumbDir)) fs.rmSync(tempThumbDir, { recursive: true, force: true });
+      } catch {}
     }
 
     return savedFiles;

@@ -1,15 +1,16 @@
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const config = require('../engine/config');
+const cdp = require('../engine/cdp');
 const cdpProxy = require('../engine/cdp_proxy');
 const doctor = require('../engine/doctor');
 const explainer = require('../engine/explainer');
 const tts = require('../engine/tts');
 const compositor = require('../engine/compositor');
 
-console.log('=== RUNNING SECURITY (SEC-01..03) & EXPLAINER PACING (PERF-01) TEST SUITE ===\n');
+console.log('=== RUNNING SECURITY (SEC-01..04) & PERFORMANCE (PERF-01..03) TEST SUITE ===\n');
 
 // 1. SEC-01: CDP Proxy IP Filtering & Bind Hardening
 console.log('Test 1 (SEC-01): CDP Proxy client IP allowlist & interface binding...');
@@ -21,7 +22,7 @@ assert.strictEqual(cdpProxy.isAllowedClientIp('172.24.112.1'), true, 'WSL subnet
 assert.strictEqual(cdpProxy.isAllowedClientIp('::ffff:172.31.255.254'), true, 'WSL subnet end 172.31.255.254 must be allowed');
 
 assert.strictEqual(cdpProxy.isAllowedClientIp('172.15.255.255'), false, '172.15.x.x outside /12 must be rejected');
-assert.strictEqual(cdpProxy.isAllowedClientIp('172.32.0.1'), false, '172.32.x.x outside /12 must be rejected');
+assert.strictEqual(cdpProxy.isAllowedClientIp('172.32.0.1'), false, '172.32.0.1 outside /12 must be rejected');
 assert.strictEqual(cdpProxy.isAllowedClientIp('192.168.1.100'), false, 'LAN 192.168.x.x must be rejected');
 assert.strictEqual(cdpProxy.isAllowedClientIp('10.0.0.15'), false, 'LAN 10.x.x.x must be rejected');
 assert.strictEqual(cdpProxy.isAllowedClientIp('8.8.8.8'), false, 'Public IP must be rejected');
@@ -74,8 +75,32 @@ assert.ok(patterns.some(p => p.regex.test(sampleLowerChannelId)), 'Must detect l
 assert.ok(patterns.some(p => p.regex.test(' Owned by SECRET_TEST_CHANNEL_XYZ ')), 'Must detect custom .env blocklist token case-insensitively');
 console.log('  [PASS] SEC-02 & SEC-03 Zero-Leak patterns and POSIX pre-commit guard verified.\n');
 
-// 3. PERF-01: Explainer Multi-Image Pacing Decoupled Voice Synthesis & Master Audio Assembly
-console.log('Test 3 (PERF-01): Explainer multi-image pacing voice deduplication & static cuts assembly...');
+// 3. SEC-04: Command Injection Hygiene Across Engine Modules
+console.log('Test 3 (SEC-04): Command injection hygiene (execFileSync argument arrays across engine/)...');
+const engineDir = path.join(config.PROJECT_DIR, 'engine');
+const engineFiles = fs.readdirSync(engineDir).filter(f => f.endsWith('.js'));
+for (const file of engineFiles) {
+  const src = fs.readFileSync(path.join(engineDir, file), 'utf8');
+  assert.ok(!/\bexecSync\s*\(/.test(src), `engine/${file} must not use shell-interpolated execSync()`);
+}
+for (const requiredTarget of ['flow.js', 'compositor.js', 'bridge.js', 'explainer.js']) {
+  const src = fs.readFileSync(path.join(engineDir, requiredTarget), 'utf8');
+  assert.ok(/\bexecFileSync\s*\(/.test(src), `engine/${requiredTarget} must use execFileSync()`);
+}
+
+// Verify shell metacharacters in file paths cannot execute arbitrary commands
+const injectionMarker = path.join(config.OUTPUT_DIR, 'sec04_injected_marker.txt');
+if (fs.existsSync(injectionMarker)) fs.unlinkSync(injectionMarker);
+const maliciousPath = path.join(config.OUTPUT_DIR, `bad"; touch "${injectionMarker}"; echo "`);
+const durResult = compositor.getDuration(maliciousPath);
+const expDurResult = explainer.getAudioDuration(maliciousPath);
+assert.strictEqual(durResult, 0, 'compositor.getDuration on nonexistent metacharacter path must safely return 0');
+assert.strictEqual(expDurResult, null, 'explainer.getAudioDuration on nonexistent metacharacter path must safely return null');
+assert.strictEqual(fs.existsSync(injectionMarker), false, 'Shell metacharacters in path must never execute injected commands');
+console.log('  [PASS] SEC-04 Command injection immunity verified across all engine modules.\n');
+
+// 4. PERF-01 & PERF-02: Explainer Multi-Image Pacing + Single-Pass FFmpeg & Deterministic Scratch Cleanup
+console.log('Test 4 (PERF-01 & PERF-02): Explainer pacing, single-pass FFmpeg composite, and scratch cleanup...');
 
 async function testExplainerPacingAndAssembly() {
   const testSeries = 'test_perf01';
@@ -125,7 +150,10 @@ async function testExplainerPacingAndAssembly() {
       const targetShot = synthesisTargets[i];
       const freq = 300 + i * 80;
       const mp3Path = path.join(epAudioDir, `voice_${targetShot.id}.mp3`);
-      execSync(`ffmpeg -nostdin -y -f lavfi -i sine=f=${freq}:d=0.6 -c:a libmp3lame ${JSON.stringify(config.toWinPath(mp3Path))} 2>/dev/null`);
+      execFileSync('ffmpeg', [
+        '-nostdin', '-y', '-f', 'lavfi', '-i', `sine=f=${freq}:d=0.6`,
+        '-c:a', 'libmp3lame', config.toWinPath(mp3Path)
+      ], { stdio: 'ignore' });
     }
 
     // Create valid distinct PNG files for each visual sub-cut using pure Node zlib + CRC32
@@ -175,11 +203,12 @@ async function testExplainerPacingAndAssembly() {
     assert.ok(fs.existsSync(masterVideoPath), `Assembled static-cut master video must exist at ${masterVideoPath}`);
     assert.ok(fs.statSync(masterVideoPath).size > 5000, 'Assembled master video must be non-empty');
 
-    console.log(`  [PASS] PERF-01 verified: ${sb.clauses_count} clauses -> ${sb.shots.length} visual cuts, synthesized ${synthesisTargets.length} voices, assembled master video.\n`);
+    // PERF-02: Verify concat_plan.txt was deterministically cleaned up by assembleStaticCuts finally block
+    const concatPlan = path.join(config.OUTPUT_DIR, 'concat_plan.txt');
+    assert.strictEqual(fs.existsSync(concatPlan), false, 'concat_plan.txt must be deterministically removed after assembleStaticCuts');
 
     if (fs.existsSync(masterVideoPath)) fs.unlinkSync(masterVideoPath);
-    const concatPlan = path.join(config.OUTPUT_DIR, 'concat_plan.txt');
-    if (fs.existsSync(concatPlan)) fs.unlinkSync(concatPlan);
+    console.log(`  [PASS] PERF-01 & static-cut cleanup verified: ${sb.clauses_count} clauses -> ${sb.shots.length} visual cuts.\n`);
   } finally {
     try {
       if (fs.existsSync(epRenderDir)) fs.rmSync(epRenderDir, { recursive: true, force: true });
@@ -188,11 +217,106 @@ async function testExplainerPacingAndAssembly() {
   }
 }
 
+async function testSinglePassCompositeVideo() {
+  const compositorSrc = fs.readFileSync(path.join(config.PROJECT_DIR, 'engine', 'compositor.js'), 'utf8');
+  assert.ok(!compositorSrc.includes('raw_master.mp4'), 'compositor.js must not write redundant intermediate raw_master.mp4');
+  assert.ok(compositorSrc.includes('concat=n=${videoFiles.length}:v=1:a=1'), 'compositor.js must use single-pass concat filtergraph');
+
+  const testSeries = 'test_perf02';
+  const testEp = 'ep01';
+  const projectId = `${testSeries}_${testEp}`;
+  const epRenderDir = path.join(config.RENDERS_DIR, projectId);
+  const epAudioDir = path.join(config.AUDIO_DIR, projectId);
+  const tempAssembleDir = path.join(config.RENDERS_DIR, 'temp_assemble');
+
+  try {
+    fs.mkdirSync(epRenderDir, { recursive: true });
+    fs.mkdirSync(epAudioDir, { recursive: true });
+
+    const sb = {
+      project: projectId,
+      series_id: projectId,
+      episode_id: testEp,
+      aspect_ratio: '9:16',
+      hardsub: false,
+      bgm_volume: 0,
+      shots: [
+        { id: 'shot_01', duration: 1, prompt: 'Test shot 1', audio: { voiceover: 'First test clip.' } },
+        { id: 'shot_02', duration: 1, prompt: 'Test shot 2', audio: { voiceover: 'Second test clip.' } }
+      ]
+    };
+
+    for (let i = 0; i < sb.shots.length; i++) {
+      const s = sb.shots[i];
+      const clipPath = path.join(epRenderDir, `${s.id}.mp4`);
+      const voicePath = path.join(epAudioDir, `voice_${s.id}.mp3`);
+      execFileSync('ffmpeg', [
+        '-nostdin', '-y',
+        '-f', 'lavfi', '-i', `color=c=${i === 0 ? 'red' : 'blue'}:s=360x640:r=24:d=1`,
+        '-f', 'lavfi', '-i', `sine=f=${220 + i * 110}:d=1`,
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-shortest',
+        config.toWinPath(clipPath)
+      ], { stdio: 'ignore' });
+      execFileSync('ffmpeg', [
+        '-nostdin', '-y',
+        '-f', 'lavfi', '-i', `sine=f=${440 + i * 150}:d=0.8`,
+        '-c:a', 'libmp3lame',
+        config.toWinPath(voicePath)
+      ], { stdio: 'ignore' });
+    }
+
+    const outRes = await compositor.assembleStoryboard(sb);
+    const outPath = typeof outRes === 'string' ? outRes : outRes.outputVideoPath;
+    assert.ok(outPath && fs.existsSync(outPath), `Single-pass compositeVideo output must exist at ${outPath}`);
+    assert.ok(fs.statSync(outPath).size > 2000, 'Single-pass compositeVideo output must be non-empty');
+    assert.strictEqual(fs.existsSync(tempAssembleDir), false, 'renders/temp_assemble must be deterministically cleaned up in finally block');
+
+    if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+    console.log('  [PASS] PERF-02 verified: Single-pass H.264 filtergraph assembly & deterministic temp_assemble cleanup.\n');
+  } finally {
+    try {
+      if (fs.existsSync(epRenderDir)) fs.rmSync(epRenderDir, { recursive: true, force: true });
+      if (fs.existsSync(epAudioDir)) fs.rmSync(epAudioDir, { recursive: true, force: true });
+      if (fs.existsSync(tempAssembleDir)) fs.rmSync(tempAssembleDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+// 5. PERF-03: CDP Connection Pooling & Memory Hygiene
+console.log('Test 5 (PERF-03): CDP connection reuse, lease reference counting & Base64/DOM hygiene...');
+function testCdpPoolingAndFlowMemory() {
+  const client = new cdp.CDPClient('ws://127.0.0.1:9999/devtools/page/mock', { pooled: true, idleTtlMs: 50 });
+  assert.strictEqual(client._refCount, 0, 'Initial refCount must be 0');
+  client.retain();
+  client.retain();
+  assert.strictEqual(client._refCount, 2, 'Two retain() calls must increment refCount to 2');
+  client.release();
+  assert.strictEqual(client._refCount, 1, 'One release() call must decrement refCount to 1');
+  client.release();
+  assert.strictEqual(client._refCount, 0, 'Second release() call must decrement refCount to 0');
+  client.forceClose();
+
+  const stats = cdp.getPoolStats();
+  assert.strictEqual(typeof stats.keys, 'number', 'cdp.getPoolStats() must report pool keys count');
+  assert.strictEqual(typeof stats.activeClients, 'number', 'cdp.getPoolStats() must report activeClients count');
+  cdp.closeAllClients();
+
+  const flowSrc = fs.readFileSync(path.join(config.PROJECT_DIR, 'engine', 'flow.js'), 'utf8');
+  assert.ok(!flowSrc.includes(".split(',')[1]"), 'flow.js must not duplicate Base64 strings with .split(",")');
+  assert.ok(flowSrc.includes("res.indexOf(',')"), 'flow.js must slice Base64 strings using indexOf(",")');
+  assert.ok(flowSrc.includes('pruneFlowDomMemory'), 'flow.js must prune offscreen DOM/Blob resources during batch runs');
+  assert.ok(flowSrc.includes('cdp.releaseMemory'), 'flow.js must invoke cdp.releaseMemory() after heavy transfers');
+  console.log('  [PASS] PERF-03 CDP connection reuse and memory hygiene verified.\n');
+}
+
 (async () => {
   const secOk = await doctor.runSecurityChecks(config.PROJECT_DIR);
   assert.strictEqual(secOk, true, 'doctor.runSecurityChecks must pass on repository');
   await testExplainerPacingAndAssembly();
-  console.log('=== ALL SECURITY & EXPLAINER PACING TESTS PASSED ===');
+  await testSinglePassCompositeVideo();
+  testCdpPoolingAndFlowMemory();
+  console.log('=== ALL SECURITY & PERFORMANCE TESTS PASSED ===');
 })().catch(err => {
   console.error('\n[FAIL] Test failed:', err);
   process.exit(1);

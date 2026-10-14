@@ -1,4 +1,4 @@
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const config = require('./config');
@@ -23,7 +23,7 @@ async function runDoctor() {
 
   // 2. FFmpeg & FFprobe Check
   try {
-    const ffmpegVer = execSync('ffmpeg -version', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0];
+    const ffmpegVer = execFileSync('ffmpeg', ['-version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0];
     console.log(`  [✓] FFmpeg: ${ffmpegVer.split(' Copyright')[0]}`);
   } catch {
     console.log(`  [✗] FFmpeg: Không tìm thấy lệnh 'ffmpeg' trong PATH!`);
@@ -31,7 +31,7 @@ async function runDoctor() {
   }
 
   try {
-    const ffprobeVer = execSync('ffprobe -version', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0];
+    const ffprobeVer = execFileSync('ffprobe', ['-version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).split('\n')[0];
     console.log(`  [✓] FFprobe: ${ffprobeVer.split(' Copyright')[0]}`);
   } catch {
     console.log(`  [✗] FFprobe: Không tìm thấy lệnh 'ffprobe' trong PATH!`);
@@ -129,7 +129,7 @@ async function runDoctor() {
 
   // 9. Lavish Visual Studio Check (lavish-axi)
   try {
-    const lavishVer = execSync('lavish-axi --version', {
+    const lavishVer = execFileSync('lavish-axi', ['--version'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 3000
@@ -233,7 +233,7 @@ async function runSecurityChecks(projectDir = config.PROJECT_DIR) {
     const hookFile = path.join(projectDir, '.githooks', 'pre-commit');
     let hooksPath = '';
     try {
-      hooksPath = execSync('git config --local --get core.hooksPath', {
+      hooksPath = execFileSync('git', ['config', '--local', '--get', 'core.hooksPath'], {
         encoding: 'utf8',
         cwd: projectDir,
         stdio: ['ignore', 'pipe', 'ignore']
@@ -242,11 +242,11 @@ async function runSecurityChecks(projectDir = config.PROJECT_DIR) {
 
     if (hooksPath !== '.githooks') {
       try {
-        execSync('git config --local core.hooksPath .githooks', {
+        execFileSync('git', ['config', '--local', 'core.hooksPath', '.githooks'], {
           cwd: projectDir,
           stdio: ['ignore', 'pipe', 'ignore']
         });
-        hooksPath = execSync('git config --local --get core.hooksPath', {
+        hooksPath = execFileSync('git', ['config', '--local', '--get', 'core.hooksPath'], {
           encoding: 'utf8',
           cwd: projectDir,
           stdio: ['ignore', 'pipe', 'ignore']
@@ -271,7 +271,7 @@ async function runSecurityChecks(projectDir = config.PROJECT_DIR) {
       secOk = false;
     }
 
-    const trackedFiles = execSync('git ls-files', { encoding: 'utf8', cwd: projectDir })
+    const trackedFiles = execFileSync('git', ['ls-files'], { encoding: 'utf8', cwd: projectDir })
       .split('\n')
       .map(f => f.trim())
       .filter(Boolean);
