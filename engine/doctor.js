@@ -141,45 +141,174 @@ async function runDoctor() {
   }
 
   // 10. Open-Source IP Security & Gitignore Hygiene
+  const secOk = await runSecurityChecks(config.PROJECT_DIR);
+  if (!secOk) {
+    allOk = false;
+  }
+
+  console.log(`\n============================================================`);
+  if (allOk) {
+    console.log(`  ✓ HỆ THỐNG ĐẠT CHUẨN AN TOÀN VÀ SẴN SÀNG VẬN HÀNH!`);
+  } else {
+    console.log(`  ✗ CẦN KHẮC PHỤC CÁC CẢNH BÁO ĐỎ TRƯỚC KHI XUẤT XƯỞNG.`);
+  }
+  console.log(`============================================================\n`);
+  return allOk;
+}
+
+function escapeRegex(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Build Zero-Leak regex patterns using structural rules and optional custom tokens from local .env.
+ * Strictly contains zero hardcoded Base64 or plaintext private channel/personal identifiers in tracked code.
+ */
+function buildLeakPatterns(projectDir = config.PROJECT_DIR) {
+  const patterns = [
+    {
+      name: 'YouTube Channel ID',
+      regex: /(?:^|[^a-zA-Z0-9_-])UC[a-zA-Z0-9_-]{22}(?:$|[^a-zA-Z0-9_-])/i
+    }
+  ];
+
+  const customTokens = new Set();
+  const addTokensFromRaw = (raw) => {
+    if (!raw || typeof raw !== 'string') return;
+    const cleaned = raw.trim().replace(/^['"]|['"]$/g, '');
+    for (const part of cleaned.split(/[|,]/)) {
+      const tok = part.trim();
+      if (tok && tok.length >= 3 && tok !== 'YOUR_YOUTUBE_CHANNEL_ID') {
+        customTokens.add(tok);
+      }
+    }
+  };
+
+  addTokensFromRaw(process.env.ZERO_LEAK_BLOCKLIST);
+  addTokensFromRaw(process.env.PRIVATE_BLOCKLIST);
+  addTokensFromRaw(process.env.LEAK_BLOCKLIST);
+  addTokensFromRaw(process.env.YOUTUBE_CHANNEL_ID);
+
+  // Also parse local .env directly if present in projectDir
+  const envFile = path.join(projectDir, '.env');
+  if (fs.existsSync(envFile)) {
+    try {
+      const lines = fs.readFileSync(envFile, 'utf8').split(/\r?\n/);
+      for (const line of lines) {
+        const m = line.match(/^(ZERO_LEAK_BLOCKLIST|PRIVATE_BLOCKLIST|LEAK_BLOCKLIST|YOUTUBE_CHANNEL_ID|YOUTUBE_CHANNELS_JSON)=(.*)$/);
+        if (!m) continue;
+        const key = m[1];
+        const val = m[2].trim().replace(/^['"]|['"]$/g, '');
+        if (key === 'YOUTUBE_CHANNELS_JSON') {
+          try {
+            const parsed = JSON.parse(val);
+            for (const [alias, chId] of Object.entries(parsed)) {
+              if (alias && alias.length >= 3) customTokens.add(alias);
+              if (typeof chId === 'string' && chId.length >= 3) customTokens.add(chId);
+            }
+          } catch {}
+        } else {
+          addTokensFromRaw(val);
+        }
+      }
+    } catch {}
+  }
+
+  if (customTokens.size > 0) {
+    const joined = Array.from(customTokens).map(escapeRegex).join('|');
+    patterns.push({
+      name: 'Custom Private Token (.env Blocklist)',
+      regex: new RegExp(`(${joined})`, 'i')
+    });
+  }
+
+  return patterns;
+}
+
+async function runSecurityChecks(projectDir = config.PROJECT_DIR) {
+  let secOk = true;
   console.log(`\n--- KIỂM TRA BẢO MẬT MÃ NGUỒN MỞ (IP PROTECTION) ---`);
   try {
-    const trackedFiles = execSync('git ls-files', { encoding: 'utf8', cwd: config.PROJECT_DIR }).split('\n');
+    // 10a. Check and enforce git core.hooksPath (.githooks/pre-commit)
+    const hookFile = path.join(projectDir, '.githooks', 'pre-commit');
+    let hooksPath = '';
+    try {
+      hooksPath = execSync('git config --local --get core.hooksPath', {
+        encoding: 'utf8',
+        cwd: projectDir,
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim();
+    } catch {}
 
-    const envTracked = trackedFiles.filter(f => f.endsWith('.env') && !f.endsWith('.env.example'));
+    if (hooksPath !== '.githooks') {
+      try {
+        execSync('git config --local core.hooksPath .githooks', {
+          cwd: projectDir,
+          stdio: ['ignore', 'pipe', 'ignore']
+        });
+        hooksPath = execSync('git config --local --get core.hooksPath', {
+          encoding: 'utf8',
+          cwd: projectDir,
+          stdio: ['ignore', 'pipe', 'ignore']
+        }).trim();
+      } catch {}
+    }
+
+    if (fs.existsSync(hookFile)) {
+      try {
+        const mode = fs.statSync(hookFile).mode;
+        if ((mode & 0o111) === 0) {
+          fs.chmodSync(hookFile, 0o755);
+        }
+      } catch {}
+    }
+
+    const hookExecOk = fs.existsSync(hookFile) && ((fs.statSync(hookFile).mode & 0o111) !== 0);
+    if (hooksPath === '.githooks' && hookExecOk) {
+      console.log(`  [✓] Git Pre-Commit Hook (core.hooksPath): Đã kích hoạt (.githooks/pre-commit)`);
+    } else {
+      console.log(`  [✗] LỖI BẢO MẬT: Git Pre-Commit Hook chưa kích hoạt chuẩn (core.hooksPath=${hooksPath || 'unset'})`);
+      secOk = false;
+    }
+
+    const trackedFiles = execSync('git ls-files', { encoding: 'utf8', cwd: projectDir })
+      .split('\n')
+      .map(f => f.trim())
+      .filter(Boolean);
+
+    const envTracked = trackedFiles.filter(f => (f === '.env' || f.endsWith('/.env') || f.endsWith('.env')) && !f.endsWith('.env.example'));
     if (envTracked.length === 0) {
       console.log(`  [✓] File bảo mật (.env): Được bảo vệ an toàn (Không track trên Git)`);
     } else {
       console.log(`  [✗] LỖI NGUY HIỂM: File bí mật đang bị Git theo dõi: ${envTracked.join(', ')}`);
-      allOk = false;
+      secOk = false;
     }
 
     const sbTracked = trackedFiles.filter(f => f.startsWith('storyboards/') && f.endsWith('.json'));
     if (sbTracked.length === 0) {
       console.log(`  [✓] Bản quyền kịch bản (storyboards/*.json): 100% Private (Không leak Git)`);
     } else {
-      console.log(`  [!] Cảnh báo: Có kịch bản đang bị Git track: ${sbTracked.join(', ')}`);
+      console.log(`  [✗] LỖI NGUY HIỂM: Có kịch bản riêng tư đang bị Git track: ${sbTracked.join(', ')}`);
+      secOk = false;
     }
 
-    const rendersTracked = trackedFiles.filter(f => f.startsWith('renders/') && !f.endsWith('.gitkeep'));
+    const rendersTracked = trackedFiles.filter(f =>
+      (f.startsWith('renders/') || f.startsWith('audio/') || f.startsWith('output/')) && !f.endsWith('.gitkeep')
+    );
     if (rendersTracked.length === 0) {
-      console.log(`  [✓] Thư mục media (renders/*, audio/*): Không bị commit file rác`);
+      console.log(`  [✓] Thư mục media (renders/*, audio/*, output/*): Không bị commit file rác`);
     } else {
-      console.log(`  [!] Cảnh báo: File media đang bị Git track: ${rendersTracked.slice(0, 3).join(', ')}...`);
+      console.log(`  [✗] LỖI NGUY HIỂM: File media đang bị Git track: ${rendersTracked.slice(0, 3).join(', ')}...`);
+      secOk = false;
     }
 
-    // 9. Automated Regex Scan for Private Identifiers / IP Leaks
-    const forbiddenAliases = Buffer.from('emZzdHVkaW98c2tldGNoX3RoZV9wYXN0fGF0aGVuYXN0b2Nr', 'base64').toString('utf8');
-    const forbiddenName = Buffer.from('R2lhIFBow7o=', 'base64').toString('utf8');
-    const leakPatterns = [
-      { name: 'YouTube Channel ID', regex: /UC[a-zA-Z0-9_-]{22}/ },
-      { name: 'Private Channel Alias', regex: new RegExp('\\b(' + forbiddenAliases + ')\\b', 'i') },
-      { name: 'Personal Profile Name', regex: new RegExp(forbiddenName, 'i') }
-    ];
+    // Automated Regex Scan for Private Identifiers / IP Leaks (includes .env.example)
+    const leakPatterns = buildLeakPatterns(projectDir);
 
-    let foundLeaks = [];
+    const foundLeaks = [];
     for (const file of trackedFiles) {
-      if (!file || file.endsWith('.env.example') || file.endsWith('doctor.js')) continue;
-      const fullPath = path.join(config.PROJECT_DIR, file);
+      if (!file || file === 'engine/doctor.js' || file === '.githooks/pre-commit') continue;
+      const fullPath = path.join(projectDir, file);
       if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
         const content = fs.readFileSync(fullPath, 'utf8');
         for (const lp of leakPatterns) {
@@ -197,22 +326,19 @@ async function runDoctor() {
       for (const l of foundLeaks) {
         console.log(`      └─ File: ${l.file} (Loại: ${l.type})`);
       }
-      allOk = false;
+      secOk = false;
     }
   } catch (err) {
-    console.log(`  [i] Không thể kiểm tra Git status: ${err.message}`);
+    console.log(`  [✗] Không thể kiểm tra Git security status: ${err.message}`);
+    secOk = false;
   }
-
-  console.log(`\n============================================================`);
-  if (allOk) {
-    console.log(`  ✓ HỆ THỐNG ĐẠT CHUẨN AN TOÀN VÀ SẴN SÀNG VẬN HÀNH!`);
-  } else {
-    console.log(`  ✗ CẦN KHẮC PHỤC CÁC CẢNH BÁO ĐỎ TRƯỚC KHI XUẤT XƯỞNG.`);
-  }
-  console.log(`============================================================\n`);
-  return allOk;
+  return secOk;
 }
 
 module.exports = {
-  runDoctor
+  runDoctor,
+  runSecurityChecks,
+  buildLeakPatterns
 };
+
+

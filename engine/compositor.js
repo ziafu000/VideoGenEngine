@@ -343,6 +343,7 @@ function assembleStaticCuts({
 
   console.log(`[-] Running 1-pass FFmpeg Concat Demuxer for ${shots.length} static cuts...`);
   execFileSync('ffmpeg', [
+    '-nostdin',
     '-y',
     '-f', 'concat',
     '-safe', '0',
@@ -356,7 +357,7 @@ function assembleStaticCuts({
     '-b:a', '192k',
     '-shortest',
     config.toWinPath(outputPath)
-  ], { stdio: 'inherit' });
+  ], { stdio: ['ignore', 'inherit', 'inherit'] });
 
   console.log(`[✓] Master video created: ${outputPath} (${(fs.statSync(outputPath).size / (1024 * 1024)).toFixed(2)} MB)`);
   return outputPath;
@@ -411,12 +412,23 @@ async function assembleStoryboard(sb, options = {}) {
       staticShots.push({ imagePath: foundImg, duration: shotDur });
     }
 
-    let masterAudio = path.join(audioDir, 'master_voice_tight.wav');
+    let masterAudio = (sb.audio_master && fs.existsSync(sb.audio_master))
+      ? sb.audio_master
+      : path.join(audioDir, 'master_voice_tight.wav');
     if (!fs.existsSync(masterAudio)) {
       masterAudio = path.join(audioDir, 'master_voice.wav');
     }
     if (!fs.existsSync(masterAudio)) {
       masterAudio = path.join(audioDir, 'master_voice_clauses.wav');
+    }
+    if (!fs.existsSync(masterAudio)) {
+      try {
+        const ttsModule = require('./tts');
+        const builtMaster = ttsModule.buildMasterClauseAudio(sb, audioDir, sbPath);
+        if (builtMaster && fs.existsSync(builtMaster)) {
+          masterAudio = builtMaster;
+        }
+      } catch {}
     }
 
     const outVideoName = (sb.project && sb.project.id ? `${sb.project.id}_Master_1080p.mp4` : `${episodeName}_Master_1080p.mp4`);
@@ -425,7 +437,7 @@ async function assembleStoryboard(sb, options = {}) {
       shots: staticShots,
       audioMasterPath: masterAudio,
       outputPath: masterOutPath,
-      aspectRatio: sb.aspect_ratio || '16:9'
+      aspectRatio: sb.aspect_ratio || (sb.project && sb.project.aspect_ratio) || '16:9'
     });
   }
 

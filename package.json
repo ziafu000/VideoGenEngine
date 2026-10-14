@@ -13,7 +13,7 @@
     "status": "node videogen bridge status",
     "bridge": "node videogen bridge",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "test": "node tests/test_board_and_axi.js && node tests/test_facebook_uploader.js && node tests/test_tiktok_uploader.js && node tests/test_pipeline_loop.js"
+    "test": "node tests/test_board_and_axi.js && node tests/test_facebook_uploader.js && node tests/test_tiktok_uploader.js && node tests/test_pipeline_loop.js && node tests/test_security_and_pacing_fixes.js"
   },
   "engines": {
     "node": ">=20.0.0"
