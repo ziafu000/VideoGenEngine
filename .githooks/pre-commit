@@ -21,6 +21,13 @@ if [ -f "$REPO_ROOT/.env" ]; then
   fi
 fi
 
+# Pre-validate pattern syntax fail-closed (A06)
+printf '' | grep -E "$PATTERN" >/dev/null 2>&1
+if [ $? -eq 2 ]; then
+  printf "❌ [BLOCK] Lỗi cú pháp regex trong Zero-Leak pattern hoặc cấu hình .env!\n" >&2
+  exit 1
+fi
+
 # Safe null-terminated iteration over staged files (does not blind-skip .env.example)
 git diff --cached --name-only -z | xargs -0 sh -c '
   PATTERN=$1
@@ -61,10 +68,15 @@ git diff --cached --name-only -z | xargs -0 sh -c '
       continue
     fi
 
-    FILE_DIFF=$(git diff --cached -- "$file" | grep -E "^\+[^+]" | grep -iE "$PATTERN")
-    if [ -n "$FILE_DIFF" ]; then
-      printf "  [✗] Vi phạm trong %s:\n" "$file"
-      printf "%s\n" "$FILE_DIFF"
+    # Scan all added diff lines without skipping leading plus chars (A06)
+    FILE_DIFF=$(git diff --cached -U0 -- "$file" | grep "^[+]" | grep -v "^[+][+][+] " | grep -iE "$PATTERN")
+    GREP_STATUS=$?
+
+    if [ $GREP_STATUS -eq 2 ]; then
+      printf "  [✗] Lỗi cú pháp regex khi quét file %s\n" "$file" >&2
+      LEAKS="yes"
+    elif [ -n "$FILE_DIFF" ]; then
+      printf "  [✗] Vi phạm bảo mật trong %s: Phát hiện mẫu dữ liệu nhạy cảm (Nội dung đã được che chắn an toàn)\n" "$file"
       LEAKS="yes"
     fi
   done

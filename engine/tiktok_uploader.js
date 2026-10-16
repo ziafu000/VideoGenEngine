@@ -296,8 +296,12 @@ async function uploadSingleShortToTikTok({
         })()`);
         await sleep(1000);
 
-        // 2. Chuyển tháng nếu cần
-        const targetMonthName = schedObj.month === 10 ? "October" : "September";
+        // 2. Chuyển tháng nếu cần (Hỗ trợ đầy đủ 12 tháng - ARCH-04)
+        const monthNames = [
+          "January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December"
+        ];
+        const targetMonthName = monthNames[schedObj.month - 1] || "September";
         await cdp.evaluate(`(() => {
           const header = document.querySelector(".month-header-wrapper");
           if (!header) return;

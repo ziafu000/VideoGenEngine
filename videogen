@@ -530,17 +530,24 @@ async function main() {
         
         const baseName = path.basename(sbArg || '', '.json');
         const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
-        let latestMaster = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
-        if (!fs.existsSync(latestMaster)) {
-          const mp4s = fs.readdirSync(config.OUTPUT_DIR)
-            .filter(f => f.endsWith('.mp4'))
-            .map(f => ({ path: path.join(config.OUTPUT_DIR, f), mtime: fs.statSync(path.join(config.OUTPUT_DIR, f)).mtimeMs }))
-            .sort((a, b) => b.mtime - a.mtime);
-          if (mp4s.length > 0) latestMaster = mp4s[0].path;
+        const candidates = [
+          path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`),
+          path.join(config.OUTPUT_DIR, `${episodeName}_master_720p.mp4`),
+          path.join(config.OUTPUT_DIR, `${episodeName}_master.mp4`),
+          path.join(config.OUTPUT_DIR, `${baseName}_master_1080p.mp4`),
+          path.join(config.OUTPUT_DIR, `${baseName}.mp4`)
+        ];
+        let latestMaster = null;
+        for (const c of candidates) {
+          if (fs.existsSync(c)) {
+            latestMaster = c;
+            break;
+          }
         }
 
         if (!latestMaster || !fs.existsSync(latestMaster)) {
-          console.error('[!] Không tìm thấy video thành phẩm trong output/ để tải lên!');
+          console.error(`[!] Không tìm thấy video thành phẩm của tập "${episodeName}" trong output/ để tải lên!`);
+          console.error(`    Cần chạy ./videogen assemble trước khi upload. Không tự ý chọn video tập khác.`);
           process.exit(1);
         }
 
@@ -618,11 +625,8 @@ async function main() {
           }
 
           if (!videoToUpload) {
-            const mp4s = fs.readdirSync(config.OUTPUT_DIR)
-              .filter(f => f.endsWith('.mp4'))
-              .map(f => ({ path: path.join(config.OUTPUT_DIR, f), mtime: fs.statSync(path.join(config.OUTPUT_DIR, f)).mtimeMs }))
-              .sort((a, b) => b.mtime - a.mtime);
-            if (mp4s.length > 0) videoToUpload = mp4s[0].path;
+            console.error(`[!] Không tìm thấy file video phù hợp của tập "${episodeName}" trong output/!`);
+            process.exit(1);
           }
         }
 
@@ -649,38 +653,55 @@ async function main() {
         }
 
         const isDraft = args.includes('--draft');
+        const isPublic = args.includes('--public');
+        const visArg = args.find(a => a.startsWith('--visibility='));
+        const visibility = isDraft ? 'private' : (isPublic ? 'public' : (visArg ? visArg.split('=')[1] : null));
         const noUpload = args.includes('--no-upload') || args.includes('--no-up');
         const skipRender = args.includes('--skip-render') || args.includes('--no-render');
         const skipVoice = args.includes('--skip-voice') || args.includes('--no-voice');
         const is720p = args.includes('--720p');
         const resolution = is720p ? '720p' : '1080p';
         const platformArg = args.find(a => a.startsWith('--platform='));
-        const targetPlatform = platformArg ? platformArg.split('=')[1] : 'all';
+        const targetPlatform = platformArg ? platformArg.split('=')[1] : 'both';
+        const channelArg = args.find(a => a.startsWith('--channel='));
+        const channel = channelArg ? channelArg.split('=')[1] : null;
 
         if (!skipRender || !skipVoice || !noUpload) {
           await bridge.ensureBridge();
         }
 
-        await pipelineLoop.runPipelineForStoryboard(sbArg, {
+        const runReport = await pipelineLoop.runPipelineForStoryboard(sbArg, {
           draft: isDraft,
+          visibility,
           noUpload,
           skipRender,
           skipVoice,
           resolution,
-          targetPlatform
+          targetPlatform,
+          channel
         });
+
+        if (!runReport.publicationSuccess) {
+          console.error(`\n[!] Pipeline run chưa hoàn tất xuất bản trên các nền tảng yêu cầu.`);
+          process.exit(1);
+        }
         break;
       }
 
       case 'loop': {
         const isDraft = args.includes('--draft');
+        const isPublic = args.includes('--public');
+        const visArg = args.find(a => a.startsWith('--visibility='));
+        const visibility = isDraft ? 'private' : (isPublic ? 'public' : (visArg ? visArg.split('=')[1] : null));
         const noUpload = args.includes('--no-upload') || args.includes('--no-up');
         const skipRender = args.includes('--skip-render') || args.includes('--no-render');
         const skipVoice = args.includes('--skip-voice') || args.includes('--no-voice');
         const is720p = args.includes('--720p');
         const resolution = is720p ? '720p' : '1080p';
         const platformArg = args.find(a => a.startsWith('--platform='));
-        const targetPlatform = platformArg ? platformArg.split('=')[1] : 'all';
+        const targetPlatform = platformArg ? platformArg.split('=')[1] : 'both';
+        const channelArg = args.find(a => a.startsWith('--channel='));
+        const channel = channelArg ? channelArg.split('=')[1] : null;
 
         // Storyboard paths are non-flag arguments after 'loop'
         const sbArgs = args.slice(1).filter(a => !a.startsWith('--'));
@@ -689,14 +710,21 @@ async function main() {
           await bridge.ensureBridge();
         }
 
-        await pipelineLoop.runLoop(sbArgs, {
+        const loopReport = await pipelineLoop.runLoop(sbArgs, {
           draft: isDraft,
+          visibility,
           noUpload,
           skipRender,
           skipVoice,
           resolution,
-          targetPlatform
+          targetPlatform,
+          channel
         });
+
+        if (!loopReport.success) {
+          console.error(`\n[!] Batch loop có ${loopReport.failed.length} tập thất bại hoặc chưa xuất bản thành công.`);
+          process.exit(1);
+        }
         break;
       }
 

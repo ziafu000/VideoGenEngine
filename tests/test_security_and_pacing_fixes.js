@@ -46,16 +46,9 @@ const doctorPath = path.join(config.PROJECT_DIR, 'engine', 'doctor.js');
 const preCommitSrc = fs.readFileSync(preCommitPath, 'utf8');
 const doctorSrc = fs.readFileSync(doctorPath, 'utf8');
 
-// Verify no hardcoded Base64 secret strings remain in tracked code
-const bannedBase64Fragments = [
-  'emZzdHVkaW98',
-  'R2lhIFBow7o=',
-  'VUNbYS16QS1aMC05Xy1dezIyfXx6ZnN0dWRpbw'
-];
-for (const frag of bannedBase64Fragments) {
-  assert.ok(!preCommitSrc.includes(frag), `.githooks/pre-commit must not contain hardcoded Base64 secret ${frag}`);
-  assert.ok(!doctorSrc.includes(frag), `engine/doctor.js must not contain hardcoded Base64 secret ${frag}`);
-}
+// Verify no hardcoded Base64 secret strings or legacy private blocklists remain in tracked code (A06)
+assert.ok(!preCommitSrc.includes('base64'), '.githooks/pre-commit must not contain hardcoded Base64 blocklist');
+assert.ok(!doctorSrc.includes('base64'), 'engine/doctor.js must not contain hardcoded Base64 blocklist');
 
 // Verify POSIX printf, case-insensitive grep -iE, null-terminated git diff -z, and no blind skip of .env.example
 assert.ok(preCommitSrc.includes("printf '%s"), '.githooks/pre-commit must use POSIX printf');

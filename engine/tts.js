@@ -229,7 +229,8 @@ function cleanDialogueText(text) {
   return text
     .replace(/\{\\[^}]+\}/g, '') // Remove ASS formatting tags e.g. {\b1}, {\b0}
     .replace(/\\N/g, ' ')        // Replace line breaks with spaces
-    .replace(/\[\s*GIAO THỨC CỘI NGUỒN\s*\]/gi, '[ GIAO THỨC CỘI NGUỒN ]')
+    .replace(/\[\s+/g, '[')      // Generic bracket normalization
+    .replace(/\s+\]/g, ']')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -652,17 +653,33 @@ function buildMasterClauseAudio(storyboardData, outDir, sbPath = null) {
   const clauseAudioFiles = [];
   let durationsUpdated = false;
 
+  // Determine required voiceover groups (A07)
+  let requiredGroupsCount = 0;
   for (const group of clauseGroups) {
+    const text = getShotVoiceoverText(group.primaryShot, 0, [group.primaryShot], false);
+    if (text && text.trim() && !text.includes('Hết Tập')) {
+      requiredGroupsCount++;
+    }
+  }
+
+  for (const group of clauseGroups) {
+    const text = getShotVoiceoverText(group.primaryShot, 0, [group.primaryShot], false);
+    const hasSpoken = Boolean(text && text.trim() && !text.includes('Hết Tập'));
+    if (!hasSpoken) continue;
+
     const shotFile = path.join(outDir, `voice_${group.primaryShotId}.mp3`);
     const clauseFile = path.join(outDir, `voice_${group.clauseId}.mp3`);
 
-    if (fs.existsSync(shotFile) && !fs.existsSync(clauseFile)) {
+    // Primary shot audio always takes precedence over legacy alias to avoid stale audio (A07)
+    let activeAudio = null;
+    if (fs.existsSync(shotFile) && fs.statSync(shotFile).size > 0) {
+      activeAudio = shotFile;
       try { fs.copyFileSync(shotFile, clauseFile); } catch {}
-    } else if (fs.existsSync(clauseFile) && !fs.existsSync(shotFile)) {
+    } else if (fs.existsSync(clauseFile) && fs.statSync(clauseFile).size > 0) {
+      activeAudio = clauseFile;
       try { fs.copyFileSync(clauseFile, shotFile); } catch {}
     }
 
-    const activeAudio = fs.existsSync(clauseFile) ? clauseFile : (fs.existsSync(shotFile) ? shotFile : null);
     if (activeAudio && fs.statSync(activeAudio).size > 0) {
       clauseAudioFiles.push(activeAudio);
 
@@ -695,10 +712,18 @@ function buildMasterClauseAudio(storyboardData, outDir, sbPath = null) {
     }
   }
 
-  if (clauseAudioFiles.length === 0) return null;
+  // Fail-closed if required clauses are missing (A07)
+  if (clauseAudioFiles.length !== requiredGroupsCount || clauseAudioFiles.length === 0) {
+    console.warn(`    [!] Master audio build halted: Cần ${requiredGroupsCount} clause audio nhưng chỉ tìm thấy ${clauseAudioFiles.length}. Thiếu audio thoại cho một số phân cảnh!`);
+    return null;
+  }
 
   const concatListPath = path.join(outDir, 'concat_clauses.txt');
-  const concatLines = clauseAudioFiles.map(f => `file '${config.toWinPath(f).replace(/\\/g, '/')}'`);
+  // Escape single quotes for ffconcat grammar (A14)
+  const concatLines = clauseAudioFiles.map(f => {
+    const winF = config.toWinPath(f).replace(/\\/g, '/').replace(/'/g, "'\\''");
+    return `file '${winF}'`;
+  });
   fs.writeFileSync(concatListPath, concatLines.join('\n') + '\n', 'utf8');
 
   const masterClausesPath = path.join(outDir, 'master_voice_clauses.wav');
@@ -738,12 +763,16 @@ function buildMasterClauseAudio(storyboardData, outDir, sbPath = null) {
 async function generateAllVoicesVieNeu(storyboardData, targetShotIds = null, sbPath = null) {
   const shots = storyboardData.shots || [];
   const baseName = sbPath ? path.basename(sbPath, '.json') : '';
-  const episodeName = storyboardData.series_id ||
+  const rawEpisodeName = storyboardData.series_id ||
     (storyboardData.project && storyboardData.project.id ? storyboardData.project.id : '') ||
     baseName ||
     'shorts';
+  const episodeName = config.sanitizeIdentifier(rawEpisodeName, 'shorts');
 
-  const outDir = path.join(config.AUDIO_DIR, episodeName);
+  const outDir = path.resolve(config.AUDIO_DIR, episodeName);
+  if (!config.isPathContained(config.AUDIO_DIR, outDir)) {
+    throw new Error(`Đường dẫn audio không an toàn: ${outDir}`);
+  }
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
   // Resolve voice profile name from storyboard or default
@@ -949,10 +978,14 @@ async function generateAllVoicesF5(storyboardData, targetShotIds = null, sbPath 
       console.log(`    [✓] Hoàn thành voice clip: ${destFile}`);
     } catch (err) {
       console.error(`    [!] Lỗi khi sinh voice cho ${shotId}:`, err.message);
+      throw new Error(`[F5-TTS Error] Sinh voice thất bại cho ${shotId}: ${err.message}`);
     }
   }
 
-  buildMasterClauseAudio(storyboardData, outDir, sbPath);
+  const masterResult = buildMasterClauseAudio(storyboardData, outDir, sbPath);
+  if (!masterResult) {
+    throw new Error(`[F5-TTS Error] Không thể tạo master audio hợp lệ cho ${episodeName}`);
+  }
   console.log(`\n✓ Hoàn tất tạo voiceover F5-TTS cho ${episodeName}!`);
   return outDir;
 }

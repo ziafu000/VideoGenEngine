@@ -67,6 +67,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
  */
 function generateSubtitles(storyboardData, clipTimelines, outputPath) {
   const isShorts = (storyboardData.aspect_ratio === '9:16') ||
+                   (storyboardData.geometry && storyboardData.geometry.aspect_ratio === '9:16') ||
                    (storyboardData.format === 'shorts_40s') ||
                    (storyboardData.project && (storyboardData.project.mode === 'shorts' || storyboardData.project.aspect_ratio === '9:16'));
   const customStyles = storyboardData.subtitle_style || (storyboardData.project && storyboardData.project.subtitle_style) || {};

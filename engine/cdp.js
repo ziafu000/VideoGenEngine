@@ -6,11 +6,47 @@ const { spawnSync } = require('child_process');
 const config = require('./config');
 
 const clientPool = new Map();
+const inFlightPageClients = new Map();
 const DEFAULT_IDLE_TTL_MS = 1500;
 const EVAL_OBJECT_GROUP = 'videogen-eval';
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Validate target URL against requested pattern ensuring exact origin match (A04)
+ * Prevents tab-spoofing via URL query parameters (e.g. untrusted.invalid/?next=flow.google.com)
+ */
+function matchesPageUrl(pageUrl, pattern) {
+  if (!pageUrl || typeof pageUrl !== 'string') return false;
+  if (pattern instanceof RegExp) return pattern.test(pageUrl);
+  if (typeof pattern !== 'string') return false;
+
+  try {
+    const parsed = new URL(pageUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+
+    // Disallowed helper/auth pages
+    if (pageUrl.includes('RotateCookiesPage') || pageUrl.includes('accounts.google.com') || pageUrl.includes('stripe') || pageUrl.includes('inner.html')) {
+      return false;
+    }
+
+    const patternClean = pattern.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const [patternHost, ...patternPathParts] = patternClean.split('/');
+    const patternPath = patternPathParts.length > 0 ? '/' + patternPathParts.join('/') : '';
+
+    // Verify host match: exact match or legitimate subdomain
+    const hostMatches = parsed.hostname === patternHost || parsed.hostname.endsWith('.' + patternHost);
+    if (!hostMatches) return false;
+
+    if (patternPath) {
+      return parsed.pathname.startsWith(patternPath);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 class CDPClient extends EventEmitter {
@@ -28,28 +64,62 @@ class CDPClient extends EventEmitter {
     this._idleTtlMs = typeof options.idleTtlMs === 'number' ? options.idleTtlMs : DEFAULT_IDLE_TTL_MS;
     this._dialogEnabled = false;
     this._evalCount = 0;
+    this._readyResolved = false;
+    this._readyResolve = null;
+    this._readyReject = null;
+
+    const connectTimeoutMs = typeof options.connectTimeoutMs === 'number' ? options.connectTimeoutMs : 15000;
+    let connectTimer = null;
 
     this.ready = new Promise((resolve, reject) => {
+      this._readyResolve = () => {
+        if (!this._readyResolved) {
+          this._readyResolved = true;
+          if (connectTimer) clearTimeout(connectTimer);
+          resolve();
+        }
+      };
+      this._readyReject = (err) => {
+        if (!this._readyResolved) {
+          this._readyResolved = true;
+          if (connectTimer) clearTimeout(connectTimer);
+          reject(err);
+        }
+      };
+
+      if (connectTimeoutMs > 0) {
+        connectTimer = setTimeout(() => {
+          if (!this._readyResolved) {
+            const timeoutErr = new Error(`CDPClient connection timed out after ${connectTimeoutMs}ms`);
+            this.forceClose();
+            this._readyReject(timeoutErr);
+          }
+        }, connectTimeoutMs);
+      }
+
       this.ws.onopen = async () => {
         try {
           await this.enableDialogHandling().catch(() => {});
         } catch {}
-        resolve();
+        this._readyResolve();
       };
       this.ws.onerror = (err) => {
         this._cleanupPoolEntry();
+        const errObj = err instanceof Error ? err : new Error(`WebSocket error: ${err.message || err}`);
         for (const [, p] of this.pending.entries()) {
-          p.reject(new Error(`WebSocket error: ${err.message || err}`));
+          p.reject(errObj);
         }
         this.pending.clear();
-        reject(err);
+        this._readyReject(errObj);
       };
       this.ws.onclose = () => {
         this._cleanupPoolEntry();
+        const closeErr = new Error('WebSocket closed');
         for (const [, p] of this.pending.entries()) {
-          p.reject(new Error('WebSocket closed'));
+          p.reject(closeErr);
         }
         this.pending.clear();
+        this._readyReject(closeErr);
       };
     });
     this.ready.catch(() => {});
@@ -128,6 +198,9 @@ class CDPClient extends EventEmitter {
 
   forceClose() {
     this._cleanupPoolEntry();
+    if (this._readyReject) {
+      this._readyReject(new Error('CDPClient closed manually'));
+    }
     try {
       this.ws.close();
     } catch {}
@@ -326,45 +399,64 @@ async function getClientForPage(urlPattern, options = {}) {
     clientPool.delete(patternKey);
   }
 
-  const pages = await listPages();
-  const page = pages.find(p => p.type === 'page' && p.url && (
-    typeof urlPattern === 'string'
-      ? (p.url.startsWith('http') && p.url.includes(urlPattern) && !p.url.includes('RotateCookiesPage') && !p.url.includes('accounts.google.com') && !p.url.includes('stripe') && !p.url.includes('inner.html'))
-      : urlPattern.test(p.url)
-  ));
-  if (!page) {
-    throw new Error(`No open page found matching pattern: ${urlPattern}`);
-  }
-  if (!page.webSocketDebuggerUrl) {
-    throw new Error(`Page found but missing webSocketDebuggerUrl: ${page.url}`);
-  }
-
-  const wsKey = `ws:${page.webSocketDebuggerUrl}`;
-  if (reuse && clientPool.has(wsKey)) {
-    const cachedByWs = clientPool.get(wsKey);
-    if (cachedByWs && cachedByWs.isOpen()) {
-      cachedByWs._poolKeys.add(patternKey);
-      clientPool.set(patternKey, cachedByWs);
-      cachedByWs.retain();
-      return cachedByWs;
+  // Concurrency guard: deduplicate simultaneous in-flight connection acquisitions (A12)
+  if (reuse && inFlightPageClients.has(patternKey)) {
+    const inFlightClient = await inFlightPageClients.get(patternKey);
+    if (inFlightClient && inFlightClient.isOpen()) {
+      inFlightClient.retain();
+      return inFlightClient;
     }
-    clientPool.delete(wsKey);
   }
 
-  const client = new CDPClient(page.webSocketDebuggerUrl, {
-    pooled: reuse,
-    idleTtlMs: options.idleTtlMs
-  });
-  await client.ready;
+  const acquirePromise = (async () => {
+    const pages = await listPages();
+    const page = pages.find(p => p.type === 'page' && p.url && matchesPageUrl(p.url, urlPattern));
+    if (!page) {
+      throw new Error(`No open page found matching pattern: ${urlPattern}`);
+    }
+    if (!page.webSocketDebuggerUrl) {
+      throw new Error(`Page found but missing webSocketDebuggerUrl: ${page.url}`);
+    }
+
+    const wsKey = `ws:${page.webSocketDebuggerUrl}`;
+    if (reuse && clientPool.has(wsKey)) {
+      const cachedByWs = clientPool.get(wsKey);
+      if (cachedByWs && cachedByWs.isOpen()) {
+        cachedByWs._poolKeys.add(patternKey);
+        clientPool.set(patternKey, cachedByWs);
+        cachedByWs.retain();
+        return cachedByWs;
+      }
+      clientPool.delete(wsKey);
+    }
+
+    const client = new CDPClient(page.webSocketDebuggerUrl, {
+      pooled: reuse,
+      idleTtlMs: options.idleTtlMs
+    });
+    await client.ready;
+
+    if (reuse) {
+      client._poolKeys.add(patternKey);
+      client._poolKeys.add(wsKey);
+      clientPool.set(patternKey, client);
+      clientPool.set(wsKey, client);
+      client.retain();
+    }
+    return client;
+  })();
 
   if (reuse) {
-    client._poolKeys.add(patternKey);
-    client._poolKeys.add(wsKey);
-    clientPool.set(patternKey, client);
-    clientPool.set(wsKey, client);
-    client.retain();
+    inFlightPageClients.set(patternKey, acquirePromise);
   }
-  return client;
+
+  try {
+    return await acquirePromise;
+  } finally {
+    if (reuse) {
+      inFlightPageClients.delete(patternKey);
+    }
+  }
 }
 
 /**
@@ -383,6 +475,22 @@ async function captureDiagnosticScreenshot(filename = null, dir = null, clientIn
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
   }
+
+  // Bounded screenshot retention (SEC-05): limit diagnostic screenshots to max 50 files
+  try {
+    const existing = fs.readdirSync(targetDir)
+      .filter(f => f.startsWith('diagnostic_') && f.endsWith('.png'))
+      .map(f => {
+        const full = path.join(targetDir, f);
+        return { path: full, mtime: fs.statSync(full).mtimeMs };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+    if (existing.length >= 50) {
+      for (const old of existing.slice(49)) {
+        try { fs.unlinkSync(old.path); } catch {}
+      }
+    }
+  } catch {}
 
   const name = filename || `diagnostic_${Date.now()}.png`;
   const targetFile = path.resolve(targetDir, name);

@@ -119,10 +119,18 @@ const TTS_PROVIDER = process.env.TTS_PROVIDER || 'vieneu';
 const VIENEU_DEFAULT_VENV = path.join(os.homedir(), 'ai/vieneu/.venv/bin/python');
 const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync(VIENEU_DEFAULT_VENV) ? VIENEU_DEFAULT_VENV : 'python3');
 
+// Cache toWinPath results to reduce expensive wslpath subprocess invocations (PERF-04)
+const winPathCache = new Map();
+const MAX_WINPATH_CACHE = 1000;
+
 // Robust cross-platform path conversion (WSL to Windows)
 function toWinPath(p) {
   if (!p) return p;
   const abs = path.resolve(p);
+  if (winPathCache.has(abs)) {
+    return winPathCache.get(abs);
+  }
+
   // Resolve symlinks if path or its parent directory is a symlink (WSL / Windows compatibility)
   let resolvedAbs = abs;
   try {
@@ -136,32 +144,69 @@ function toWinPath(p) {
     }
   } catch {}
 
+  let result = resolvedAbs;
   const match = resolvedAbs.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
   if (match) {
     const drive = match[1].toUpperCase();
     const rest = match[2].replace(/\//g, '\\');
-    return `${drive}:\\${rest}`;
-  }
-
-  // Linux internal path fallback (e.g. WSL home dir):
-  // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
-  try {
-    const { execFileSync } = require('child_process');
-    const unc = execFileSync('wslpath', ['-m', resolvedAbs], { encoding: 'utf8' }).trim();
-    if (unc) return unc;
-  } catch {}
-
-  const winTempDir = `/mnt/c/Users/${WIN_USER}/AppData/Local/Temp`;
-  if (fs.existsSync(winTempDir) && fs.existsSync(resolvedAbs)) {
+    result = `${drive}:\\${rest}`;
+  } else {
+    // Linux internal path fallback (e.g. WSL home dir):
+    // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
+    let uncSuccess = false;
     try {
-      if (!fs.statSync(resolvedAbs).isDirectory()) {
-        const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(resolvedAbs)}`);
-        fs.copyFileSync(resolvedAbs, dest);
-        return `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
+      const { execFileSync } = require('child_process');
+      const unc = execFileSync('wslpath', ['-m', resolvedAbs], { encoding: 'utf8', timeout: 5000 }).trim();
+      if (unc) {
+        result = unc;
+        uncSuccess = true;
       }
     } catch {}
+
+    if (!uncSuccess) {
+      const winTempDir = `/mnt/c/Users/${WIN_USER}/AppData/Local/Temp`;
+      if (fs.existsSync(winTempDir) && fs.existsSync(resolvedAbs)) {
+        try {
+          if (!fs.statSync(resolvedAbs).isDirectory()) {
+            const dest = path.join(winTempDir, `vg_${Date.now()}_${path.basename(resolvedAbs)}`);
+            fs.copyFileSync(resolvedAbs, dest);
+            result = `C:\\Users\\${WIN_USER}\\AppData\\Local\\Temp\\${path.basename(dest)}`;
+          }
+        } catch {}
+      }
+    }
   }
-  return resolvedAbs;
+
+  if (winPathCache.size >= MAX_WINPATH_CACHE) {
+    const firstKey = winPathCache.keys().next().value;
+    winPathCache.delete(firstKey);
+  }
+  winPathCache.set(abs, result);
+  return result;
+}
+
+/**
+ * Sanitize an identifier (shot ID, episode ID, series ID) to prevent directory traversal (A14)
+ * Only allows alphanumeric, underscore, and hyphen characters.
+ * @param {string} id
+ * @param {string} fallback
+ * @returns {string}
+ */
+function sanitizeIdentifier(id, fallback = 'default') {
+  if (!id || typeof id !== 'string') return fallback;
+  const cleaned = id.replace(/[^a-zA-Z0-9_-]/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned.length > 0 ? cleaned : fallback;
+}
+
+/**
+ * Verify whether a target path is safely contained within an allowed base directory (A14)
+ * @param {string} baseDir
+ * @param {string} targetPath
+ * @returns {boolean}
+ */
+function isPathContained(baseDir, targetPath) {
+  const rel = path.relative(path.resolve(baseDir), path.resolve(targetPath));
+  return !rel.startsWith('..') && !path.isAbsolute(rel);
 }
 
 const CHROME_DEVTOOLS_AXI_SESSION = process.env.CHROME_DEVTOOLS_AXI_SESSION || null;
@@ -189,5 +234,7 @@ module.exports = {
   TTS_PROVIDER,
   VIENEU_PYTHON,
   getPowerShellCmd,
-  toWinPath
+  toWinPath,
+  sanitizeIdentifier,
+  isPathContained
 };

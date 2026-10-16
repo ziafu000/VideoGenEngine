@@ -40,10 +40,45 @@ async function uploadVideo({
   }
 
   return new Promise((resolve, reject) => {
-    const child = fork(uploaderScript, args, { stdio: 'inherit' });
+    let stdoutData = '';
+    const child = fork(uploaderScript, args, {
+      stdio: ['ignore', 'pipe', 'inherit'],
+      timeout: 300000 // 5 minute subprocess timeout (A12)
+    });
+
+    if (child.stdout) {
+      child.stdout.on('data', (chunk) => {
+        const text = chunk.toString();
+        stdoutData += text;
+        process.stdout.write(text);
+      });
+    }
+
+    child.on('error', (err) => {
+      reject(new Error(`YouTube uploader process error: ${err.message}`));
+    });
+
     child.on('exit', (code) => {
-      if (code === 0) resolve(true);
-      else reject(new Error(`YouTube upload exited with code ${code}`));
+      if (code === 0) {
+        let parsedResult = null;
+        try {
+          const jsonMatch = stdoutData.match(/\{[\s\S]*"success":\s*true[\s\S]*\}/);
+          if (jsonMatch) {
+            parsedResult = JSON.parse(jsonMatch[0]);
+          }
+        } catch {}
+
+        if (parsedResult && parsedResult.success && parsedResult.video_id) {
+          resolve(parsedResult);
+        } else if (parsedResult && parsedResult.success) {
+          resolve(parsedResult);
+        } else {
+          // Exit 0 but missing positive proof (A02)
+          reject(new Error('YouTube uploader thoát với mã 0 nhưng thiếu bằng chứng xác nhận video_id'));
+        }
+      } else {
+        reject(new Error(`YouTube upload exited with code ${code}`));
+      }
     });
   });
 }

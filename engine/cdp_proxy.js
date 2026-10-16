@@ -9,7 +9,8 @@ const LISTEN_PORT = parseInt(process.env.CDP_PORT || '9223', 10);
 
 /**
  * Validate whether a remote client IP is allowed to access the CDP proxy.
- * Only loopback (127.0.0.1, ::1) and WSL2 vEthernet subnet (172.16.0.0/12) are permitted.
+ * Only loopback (127.0.0.1, ::1) and specifically permitted WSL interfaces are allowed.
+ * Does NOT allow arbitrary external LAN ranges (A03).
  * @param {string} remoteAddress
  * @returns {boolean}
  */
@@ -21,7 +22,14 @@ function isAllowedClientIp(remoteAddress) {
     return true;
   }
 
-  // WSL subnet 172.16.0.0/12 (172.16.0.0 - 172.31.255.255)
+  // Explicit allowed clients via environment configuration
+  if (process.env.CDP_ALLOWED_CLIENTS || process.env.CDP_ALLOWED_IPS) {
+    const raw = (process.env.CDP_ALLOWED_CLIENTS || process.env.CDP_ALLOWED_IPS).trim();
+    const allowedList = raw.split(/[,;\s]+/).map(ip => ip.trim());
+    if (allowedList.includes(clean)) return true;
+  }
+
+  // Standard WSL vEthernet subnet (172.16.0.0/12: 172.16.0.0 - 172.31.255.255)
   const match = clean.match(/^172\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (match) {
     const o2 = parseInt(match[1], 10);
@@ -83,6 +91,20 @@ function createProxyServer() {
 
     clientSocket.on('error', () => {
       chromeSocket.destroy();
+    });
+
+    // Lifecycle & cleanup bounds: ensure peer socket is destroyed when client closes (A12)
+    clientSocket.on('close', () => {
+      chromeSocket.destroy();
+    });
+    clientSocket.on('end', () => {
+      chromeSocket.end();
+    });
+    chromeSocket.on('close', () => {
+      clientSocket.destroy();
+    });
+    chromeSocket.on('end', () => {
+      clientSocket.end();
     });
   });
 }

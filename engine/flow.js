@@ -382,11 +382,29 @@ async function downloadLatestDirect(targetFile, options = {}) {
       throw new Error('Không lấy được Direct Signed CDN URL từ thẻ video Flow!');
     }
 
+    // Validate target URL origin (A04)
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(videoSrc);
+    } catch {
+      throw new Error(`Đường dẫn video không hợp lệ: ${videoSrc}`);
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error(`Giao thức không an toàn: ${parsedUrl.protocol}`);
+    }
+    const isGoogleFlow = parsedUrl.hostname === 'flow-content.google' ||
+                         parsedUrl.hostname === 'flow.google.com' ||
+                         parsedUrl.hostname.endsWith('.google.com') ||
+                         parsedUrl.hostname.endsWith('.googleusercontent.com');
+    if (!isGoogleFlow) {
+      throw new Error(`Origin video không được tin cậy (chỉ chấp nhận domain Google Flow): ${parsedUrl.hostname}`);
+    }
+
     console.log(`    [-] Tải nhanh qua Direct CDN (720p): ${videoSrc.slice(0, 60)}...`);
 
-    // Lấy cookie xác thực từ Chrome session nếu cần (chỉ cho flow.google.com, không áp dụng cho signed CDN flow-content.google)
+    // Lấy cookie xác thực từ Chrome session CHỈ KHI host thực sự là flow.google.com (A04)
     let cookieArgs = [];
-    if (!videoSrc.includes('flow-content.google')) {
+    if (parsedUrl.hostname === 'flow.google.com') {
       try {
         const cookieRes = await cdp.send('Network.getCookies', { urls: ['https://flow.google.com'] });
         if (cookieRes && cookieRes.cookies && cookieRes.cookies.length > 0) {
@@ -406,11 +424,11 @@ async function downloadLatestDirect(targetFile, options = {}) {
     } catch {}
 
     try {
-      execFileSync('curl', ['-s', '-f', '-L', ...cookieArgs, videoSrc, '-o', targetFile]);
+      execFileSync('curl', ['-s', '-f', '-L', '--max-time', '120', ...cookieArgs, videoSrc, '-o', targetFile]);
     } catch (curlErr) {
       if (cookieArgs.length > 0) {
         // Fallback tải trực tiếp không kèm cookie
-        execFileSync('curl', ['-s', '-f', '-L', videoSrc, '-o', targetFile]);
+        execFileSync('curl', ['-s', '-f', '-L', '--max-time', '120', videoSrc, '-o', targetFile]);
       } else {
         throw curlErr;
       }
@@ -635,13 +653,20 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
   const cdp = await getFlowClient(existingCdp);
   const settingsKey = `${mode}:${ratio}:${model}`;
   try {
+    const triggerExists = await cdp.evaluate(`(() => {
+      return !!document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+    })()`);
+    if (!triggerExists) {
+      throw new Error('[Flow Preflight Error] Không tìm thấy settings trigger button trên giao diện Flow (DOM rỗng hoặc chưa tải xong).');
+    }
+
     const curSettings = await cdp.evaluate(`(() => {
       const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
       return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
     })()`);
 
     const hasBanana = curSettings.includes('Banana');
-    const hasRatio = ratio === '16:9' ? curSettings.includes('crop_16_9') : curSettings.includes('crop_9_16');
+    const hasRatio = ratio === '16:9' ? (curSettings.includes('crop_16_9') || curSettings.includes('16:9')) : (curSettings.includes('crop_9_16') || curSettings.includes('9:16'));
     const hasPro = model === 'Nano Banana Pro' ? curSettings.includes('Pro') : true;
 
     if (hasBanana && hasRatio && hasPro) {
@@ -659,25 +684,23 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
 
     if (mode === 'image') {
       await cdp.evaluate(`(() => {
-        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button'));
-        const imgBtn = btns.find(b => (b.innerText || '').includes('Hình ảnh'));
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+        const imgBtn = btns.find(b => (b.innerText || '').includes('Hình ảnh') || (b.innerText || '').includes('Image'));
         if (imgBtn) imgBtn.click();
       })()`);
       await sleep(500);
     }
 
-    if (ratio === '16:9') {
-      await cdp.evaluate(`(() => {
-        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button'));
-        const ratioBtn = btns.find(b => (b.innerText || '').includes('16:9'));
-        if (ratioBtn) ratioBtn.click();
-      })()`);
-      await sleep(500);
-    }
+    await cdp.evaluate(`((targetRatio) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+      const ratioBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
+      if (ratioBtn) ratioBtn.click();
+    })(${JSON.stringify(ratio)})`);
+    await sleep(500);
 
     if (model === 'Nano Banana Pro') {
       await cdp.evaluate(`(() => {
-        const btn = document.querySelector('button[aria-label="Chọn nhóm mô hình"], .model-select-trigger-content');
+        const btn = document.querySelector('button[aria-label="Chọn nhóm mô hình"], .model-select-trigger-content, [aria-label*="model"]');
         if (btn) btn.click();
       })()`);
       await sleep(600);
@@ -698,8 +721,103 @@ async function ensureFlowSettings({ mode = 'image', ratio = '16:9', model = 'Nan
       const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
       return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
     })()`);
+
+    if (!verified || (!verified.includes('Banana') && !verified.includes('Pro') && !verified.includes('crop'))) {
+      throw new Error(`[Flow Preflight Error] Cài đặt hình ảnh chưa được xác nhận trên giao diện: "${verified || 'DOM trống'}"`);
+    }
+
     cdp._verifiedFlowSettings = settingsKey;
     console.log(`    [✓] [Flow Preflight] Đã kích hoạt cấu hình Flow chuẩn: "${verified}"`);
+    return true;
+  } finally {
+    cdp.close();
+  }
+}
+
+// 7b. Ensure Flow Video Settings (Duration, Ratio, Model) with Fail-Closed Verification (A11)
+async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', model = 'Omni 1.1 Flash', cdp: existingCdp = null } = {}) {
+  const cdp = await getFlowClient(existingCdp);
+  const settingsKey = `video:${ratio}:${duration}:${model}`;
+  try {
+    const triggerExists = await cdp.evaluate(`(() => {
+      return !!document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+    })()`);
+    if (!triggerExists) {
+      throw new Error('[Flow Preflight Error] Không tìm thấy settings trigger button trên giao diện Flow (DOM rỗng hoặc chưa tải xong).');
+    }
+
+    const curSettings = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
+    })()`);
+
+    const hasVideo = curSettings.includes('Video') || curSettings.includes('videocam');
+    const hasDuration = curSettings.includes(duration) || (duration.includes('10') && curSettings.includes('10'));
+    const hasRatio = ratio === '9:16' ? (curSettings.includes('crop_9_16') || curSettings.includes('9:16')) : (curSettings.includes('crop_16_9') || curSettings.includes('16:9'));
+
+    if (hasVideo && hasDuration && hasRatio) {
+      cdp._verifiedFlowSettings = settingsKey;
+      return true;
+    }
+
+    console.log(`    [-] [Flow Preflight] Tự động cấu hình chuẩn video Flow: ${duration} | ${ratio} (${model})...`);
+
+    const rect = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width/2), y: Math.round(r.y + r.height/2) };
+    })()`);
+    if (rect) {
+      await cdp.clickMouse(rect.x, rect.y);
+    } else {
+      await cdp.evaluate(`(() => {
+        const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+        if (b) b.click();
+      })()`);
+    }
+    await sleep(600);
+
+    // Switch to Video mode
+    await cdp.evaluate(`(() => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+      const vidBtn = btns.find(b => (b.innerText || '').includes('Video') || (b.innerText || '').includes('videocam'));
+      if (vidBtn && !vidBtn.className.includes('checked') && !vidBtn.className.includes('selected')) vidBtn.click();
+    })()`);
+    await sleep(500);
+
+    // Select Ratio (9:16 or 16:9)
+    await cdp.evaluate(`((targetRatio) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+      const rBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
+      if (rBtn) rBtn.click();
+    })(${JSON.stringify(ratio)})`);
+    await sleep(500);
+
+    // Select Duration
+    await cdp.evaluate(`((targetDuration) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+      const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration));
+      if (dBtn) dBtn.click();
+    })(${JSON.stringify(duration)})`);
+    await sleep(500);
+
+    // Close overlay
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, text: '' });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, text: '' });
+    await sleep(500);
+
+    const verified = await cdp.evaluate(`(() => {
+      const b = document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      return b ? b.innerText.replace(/\\s+/g, ' ').trim() : '';
+    })()`);
+
+    if (!verified || (!verified.includes('Video') && !verified.includes('videocam') && !verified.includes('crop') && !verified.includes('10'))) {
+      throw new Error(`[Flow Preflight Error] Cài đặt Video chưa được xác nhận trên giao diện: "${verified || 'DOM trống'}"`);
+    }
+
+    cdp._verifiedFlowSettings = settingsKey;
+    console.log(`    [✓] [Flow Preflight] Đã kích hoạt cấu hình Video Flow chuẩn: "${verified.replace(/\\n/g, ' ')}"`);
     return true;
   } finally {
     cdp.close();
@@ -912,8 +1030,12 @@ async function renderStoryboard(sb, options = {}) {
   } = options;
 
   const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
-  const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
-  const epRenderDir = path.join(config.RENDERS_DIR, episodeName);
+  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  const episodeName = config.sanitizeIdentifier(rawEpisodeName, 'storyboard');
+  const epRenderDir = path.resolve(config.RENDERS_DIR, episodeName);
+  if (!config.isPathContained(config.RENDERS_DIR, epRenderDir)) {
+    throw new Error(`Đường dẫn thư mục render không an toàn: ${epRenderDir}`);
+  }
   if (!fs.existsSync(epRenderDir)) fs.mkdirSync(epRenderDir, { recursive: true });
 
   const isImageMode = (sb.engine === 'nano_banana_pro') || 
@@ -938,14 +1060,19 @@ async function renderStoryboard(sb, options = {}) {
   try {
     for (let i = 0; i < shots.length; i++) {
       const s = shots[i];
-      const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      const rawShotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      const shotId = config.sanitizeIdentifier(rawShotId, `shot_${i + 1}`);
       if (targetShots.length > 0 && !targetShots.includes(shotId)) continue;
 
       const isShotImage = isImageMode || s.type === 'image' || (!s.flow_prompt && s.image_prompt);
       const ext = isShotImage ? '.png' : '.mp4';
       const outFile = path.join(epRenderDir, `${shotId}${ext}`);
-      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
-        console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại trong ${episodeName}/, bỏ qua.`);
+      const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
+      const contentHash = crypto.createHash('md5').update(promptText + ':' + (isShotImage ? 'image' : resolution)).digest('hex');
+      const hashFile = path.join(epRenderDir, `.${shotId}.hash`);
+
+      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000 && fs.existsSync(hashFile) && fs.readFileSync(hashFile, 'utf8').trim() === contentHash) {
+        console.log(`[✓] [${i + 1}/${shots.length}] ${shotId}: Đã tồn tại với nội dung đồng nhất trong ${episodeName}/, bỏ qua.`);
         continue;
       }
 
@@ -955,7 +1082,6 @@ async function renderStoryboard(sb, options = {}) {
 
       console.log(`\n>>> [${i + 1}/${shots.length}] Xử lý ${shotId}...`);
       try {
-        const promptText = s.image_prompt || s.flow_prompt || s.prompt || '';
         if (isShotImage) {
           console.log(`    [-] [Nano Banana Pro] Gửi câu lệnh vẽ ảnh: "${promptText.slice(0, 60)}..."`);
           await generateImage({
@@ -964,8 +1090,16 @@ async function renderStoryboard(sb, options = {}) {
             seenHashes,
             cdp: sharedCdp
           });
+          try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
           await sleep(3500);
         } else {
+          const isShorts = (sb.aspect_ratio === '9:16') || (sb.geometry && sb.geometry.aspect_ratio === '9:16') || (sb.format === 'shorts_40s') || (s.flow_prompt && s.flow_prompt.includes('9:16'));
+          await ensureVideoSettings({
+            ratio: isShorts ? '9:16' : '16:9',
+            duration: '10 giây',
+            model: 'Omni 1.1 Flash',
+            cdp: sharedCdp
+          });
           await clearCharacters({ cdp: sharedCdp });
           const chars = s.characters || [];
           for (const c of chars) {
@@ -976,6 +1110,7 @@ async function renderStoryboard(sb, options = {}) {
           await submitPrompt(promptText, { cdp: sharedCdp });
           await waitForRender(240, { cdp: sharedCdp });
           await downloadLatest(outFile, { resolution, cdp: sharedCdp });
+          try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
           await pruneFlowDomMemory(sharedCdp);
           try {
             fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
@@ -1006,5 +1141,6 @@ module.exports = {
   downloadLatestDirect,
   generateImage,
   ensureFlowSettings,
+  ensureVideoSettings,
   renderStoryboard
 };
