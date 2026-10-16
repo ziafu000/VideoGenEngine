@@ -166,6 +166,15 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function serializeForScript(obj) {
+  return JSON.stringify(obj)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 /**
  * Ensure .lavish directory and symlinks for assets
  */
@@ -579,10 +588,10 @@ function generateBoard(storyboardData, options = {}) {
 
         <!-- Quick Production Actions -->
         <div class="flex items-center gap-2">
-          <button onclick="copyCommand('./videogen render ${escapeHtml(sbPath || baseName + '.json')}')" class="px-3.5 py-1.5 bg-[#3a312a] hover:bg-[#4a3e35] text-amber-200 border border-[#57483d] rounded-lg font-mono text-xs font-semibold cursor-pointer shadow transition-all" title="Copy Render Command">
+          <button type="button" onclick="copyCommandBtn(this)" data-cmd="./videogen render ${escapeHtml(sbPath || baseName + '.json')}" class="px-3.5 py-1.5 bg-[#3a312a] hover:bg-[#4a3e35] text-amber-200 border border-[#57483d] rounded-lg font-mono text-xs font-semibold cursor-pointer shadow transition-all" title="Copy Render Command">
             Render
           </button>
-          <button onclick="copyCommand('./videogen assemble ${escapeHtml(sbPath || baseName + '.json')}')" class="px-3.5 py-1.5 bg-[#3a312a] hover:bg-[#4a3e35] text-emerald-300 border border-emerald-500/40 rounded-lg font-mono text-xs font-semibold cursor-pointer shadow transition-all" title="Copy Assemble Command">
+          <button type="button" onclick="copyCommandBtn(this)" data-cmd="./videogen assemble ${escapeHtml(sbPath || baseName + '.json')}" class="px-3.5 py-1.5 bg-[#3a312a] hover:bg-[#4a3e35] text-emerald-300 border border-emerald-500/40 rounded-lg font-mono text-xs font-semibold cursor-pointer shadow transition-all" title="Copy Assemble Command">
             Assemble
           </button>
         </div>
@@ -765,7 +774,8 @@ function generateBoard(storyboardData, options = {}) {
                 <button
                   type="button"
                   class="text-amber-400 hover:text-amber-300 font-bold uppercase cursor-pointer"
-                  onclick="copyText('${escapeHtml(s.prompt)}', this)"
+                  data-shot-id="${escapeHtml(s.id)}"
+                  onclick="copyShotPrompt(this.dataset.shotId, this)"
                 >
                   Copy
                 </button>
@@ -1034,7 +1044,7 @@ function generateBoard(storyboardData, options = {}) {
       }
     }
 
-    const SHOTS_MAP = ${JSON.stringify(shotsMap)};
+    const SHOTS_MAP = ${serializeForScript(shotsMap)};
     const SHOT_IDS = Object.keys(SHOTS_MAP);
 
     function openLightboxFor(shotId) {
@@ -1123,6 +1133,18 @@ function generateBoard(storyboardData, options = {}) {
 
     function copyCommand(cmd) {
       copyText(cmd);
+    }
+
+    function copyCommandBtn(btn) {
+      const cmd = btn ? btn.getAttribute('data-cmd') : null;
+      if (cmd) copyCommand(cmd);
+    }
+
+    function copyShotPrompt(shotId, btn) {
+      const s = SHOTS_MAP[shotId];
+      if (s && s.prompt) {
+        copyText(s.prompt, btn);
+      }
     }
 
     // Audio Preview Player Core

@@ -4,7 +4,12 @@ const crypto = require('crypto');
 const { execFileSync } = require('child_process');
 const config = require('./config');
 
+const durationCache = new Map();
+
 function getDuration(filePath) {
+  if (!filePath) return 0.0;
+  const key = String(filePath);
+  if (durationCache.has(key)) return durationCache.get(key);
   try {
     const winPath = config.toWinPath(filePath);
     const out = execFileSync('ffprobe', [
@@ -12,9 +17,11 @@ function getDuration(filePath) {
       '-show_entries', 'format=duration',
       '-of', 'default=noprint_wrappers=1:nokey=1',
       winPath
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000 }).trim();
     const val = parseFloat(out);
-    return isNaN(val) ? 0.0 : val;
+    const res = isNaN(val) ? 0.0 : val;
+    if (res > 0) durationCache.set(key, res);
+    return res;
   } catch {
     return 0.0;
   }
@@ -54,8 +61,10 @@ async function compositeVideo({
   aspectRatio = '16:9',
   burnSubtitles = true
 }) {
-  const tempDir = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  const assembleBase = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
+  if (!fs.existsSync(assembleBase)) fs.mkdirSync(assembleBase, { recursive: true });
+  // Per-invocation isolated scratch directory (A09)
+  const tempDir = fs.mkdtempSync(path.join(assembleBase, 'job_'));
 
   try {
     // 0. MD5 duplicate check across audio files (Voice Doubling Prevention)
@@ -136,7 +145,8 @@ async function compositeVideo({
             winPaddedAudio
           ], { stdio: 'ignore' });
         }
-        audioConcatContent += `file '${config.toWinPath(paddedAudio).replace(/\\/g, '/')}'\n`;
+        const winPadded = config.toWinPath(paddedAudio).replace(/\\/g, '/').replace(/'/g, "'\\''");
+        audioConcatContent += `file '${winPadded}'\n`;
       }
 
       timelines.push({
@@ -302,10 +312,13 @@ async function compositeVideo({
       timelines
     };
   } finally {
-    // Deterministic cleanup of temporary audio/video scratch files
+    // Deterministic cleanup of THIS invocation's scratch files only (A09)
     try {
-      if (fs.existsSync(tempDir)) {
+      if (tempDir && fs.existsSync(tempDir)) {
         fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      if (fs.existsSync(assembleBase) && fs.readdirSync(assembleBase).length === 0) {
+        fs.rmdirSync(assembleBase);
       }
     } catch {}
   }
@@ -469,18 +482,21 @@ function assembleStaticCuts({
     seenImageHashes.set(hash, i);
   }
 
-  // 1. Build ffconcat version 1.0
+  // 1. Build ffconcat version 1.0 with escaped file paths (A14)
   const concatLines = ['ffconcat version 1.0'];
   for (const s of shots) {
-    concatLines.push(`file '${config.toWinPath(s.imagePath).replace(/\\/g, '/')}'`);
+    const winImg = config.toWinPath(s.imagePath).replace(/\\/g, '/').replace(/'/g, "'\\''");
+    concatLines.push(`file '${winImg}'`);
     concatLines.push(`duration ${Number(s.duration).toFixed(3)}`);
   }
   const lastImg = shots[shots.length - 1].imagePath;
-  concatLines.push(`file '${config.toWinPath(lastImg).replace(/\\/g, '/')}'`);
+  const winLast = config.toWinPath(lastImg).replace(/\\/g, '/').replace(/'/g, "'\\''");
+  concatLines.push(`file '${winLast}'`);
 
   const outDir = path.dirname(outputPath);
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
-  const concatFile = path.join(outDir, 'concat_plan.txt');
+  // Per-invocation unique concat plan to prevent cross-process collisions (A09)
+  const concatFile = path.join(outDir, `concat_plan_${process.pid}_${Date.now()}.txt`);
   fs.writeFileSync(concatFile, concatLines.join('\n'), 'utf8');
 
   const isShorts = aspectRatio === '9:16';

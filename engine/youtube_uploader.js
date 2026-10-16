@@ -62,7 +62,15 @@ function postPut(url, method = 'POST') {
 
 async function getStudioTab() {
   const tabs = await fetchJson(`${PROXY_BASE}/json/list`);
-  let studioTab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('studio.youtube.com'));
+  let studioTab = tabs.find(t => {
+    if (t.type !== 'page' || !t.url) return false;
+    try {
+      const u = new URL(t.url);
+      return u.hostname === 'studio.youtube.com';
+    } catch {
+      return false;
+    }
+  });
   if (!studioTab) {
     studioTab = await postPut(`${PROXY_BASE}/json/new?${STUDIO_URL}`, 'PUT');
     await sleep(4000);
@@ -594,6 +602,10 @@ async function cmdUpload(args) {
     } catch {}
 
     const videoId = finalUrl ? (finalUrl.split('/').pop().split('?')[0]) : null;
+
+    if (!finalUrl || !videoId) {
+      throw new Error('Không thể xác nhận video_id hoặc shareable URL từ YouTube Studio sau khi tải lên. Giao diện tải lên chưa hoàn tất hoặc bị gián đoạn!');
+    }
 
     const outputResult = {
       success: true,

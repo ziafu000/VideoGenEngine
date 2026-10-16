@@ -114,8 +114,17 @@ function buildCaption(storyboard, customCaption = '') {
 async function getFacebookTab() {
   const pages = await listPages();
 
+  const isSafeFbHost = (urlStr) => {
+    try {
+      const u = new URL(urlStr);
+      return ['http:', 'https:'].includes(u.protocol) && (u.hostname === 'facebook.com' || u.hostname.endsWith('.facebook.com'));
+    } catch {
+      return false;
+    }
+  };
+
   // 1. Look for existing reels composer / creator tab
-  let fbTab = pages.find(p => p.type === 'page' && p.url && (
+  let fbTab = pages.find(p => p.type === 'page' && p.url && isSafeFbHost(p.url) && (
     p.url.includes('business.facebook.com/latest/reels_composer') ||
     p.url.includes('facebook.com/reels/create') ||
     (p.url.includes('facebook.com/reel/') && p.title && (p.title.includes('Tạo thước phim') || p.title.includes('Create reel')))
@@ -123,12 +132,12 @@ async function getFacebookTab() {
 
   // 2. Look for any active Meta Business Suite tab
   if (!fbTab) {
-    fbTab = pages.find(p => p.type === 'page' && p.url && p.url.includes('business.facebook.com'));
+    fbTab = pages.find(p => p.type === 'page' && p.url && isSafeFbHost(p.url) && p.url.includes('business.facebook.com'));
   }
 
   // 3. Look for any active facebook tab
   if (!fbTab) {
-    fbTab = pages.find(p => p.type === 'page' && p.url && p.url.includes('facebook.com'));
+    fbTab = pages.find(p => p.type === 'page' && p.url && isSafeFbHost(p.url));
   }
 
   // 4. If no suitable tab found, open a dedicated tab
@@ -833,13 +842,17 @@ async function uploadReel({
 
     client.close();
 
+    if (!confirmed) {
+      throw new Error('Facebook Reels upload hoàn tất phiên nhưng không nhận được xác nhận thành công từ Facebook (toast/modal missing). Trạng thái unverified!');
+    }
+
     const result = {
       success: true,
       video: videoPath,
       caption: finalCaption,
       posture: draft ? 'draft' : (schedData ? 'scheduled' : 'published'),
       schedule: schedData,
-      confirmed,
+      confirmed: true,
       uploaded_at: new Date().toISOString()
     };
 

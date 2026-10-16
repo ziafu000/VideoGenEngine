@@ -285,14 +285,14 @@ function applyMultiImagePacing(rawShots) {
     const pBg = (PALETTES[orig.palette] && PALETTES[orig.palette].bg)
       || PALETTES.modern_interior.bg;
 
-    const basePromptCore = orig.image_prompt.includes('.. CHARACTERS:')
-      ? orig.image_prompt.split('.. CHARACTERS:')[0].replace('2D comic illustration of ', '')
+    const basePromptCore = (orig.image_prompt.includes('. CHARACTERS:') || orig.image_prompt.includes('.. CHARACTERS:') || orig.image_prompt.includes('CHARACTERS:'))
+      ? orig.image_prompt.split(/\.{1,2}\s*CHARACTERS:|CHARACTERS:/)[0].replace('2D comic illustration of ', '').trim()
       : orig.clause;
 
-    // 1. Đặc biệt: 4 giây đầu tiên (Opening Hook) - Bắt buộc chia nhỏ dồn dập ~1.0s/ảnh
+    // 1. Đặc biệt: 4 giây đầu tiên (Opening Hook) - Bắt buộc chia nhỏ dồn dập ~1.0s/ảnh (4 cuts cho clause 4s)
     if (cumulativeTime < 4.0) {
       if (dur > 1.8) {
-        const numCuts = dur >= 3.0 ? 3 : 2;
+        const numCuts = dur >= 3.5 ? 4 : (dur >= 2.5 ? 3 : 2);
         const subDur = Math.round((dur / numCuts) * 100) / 100;
         for (let c = 0; c < numCuts; c++) {
           const actualSubDur = (c === numCuts - 1)
@@ -301,8 +301,10 @@ function applyMultiImagePacing(rawShots) {
 
           let subPrompt = orig.image_prompt;
           if (c > 0) {
-            const angle = c === 1 ? 'Dynamic close-up and exaggerated reaction' : 'Dramatic wide view and impact';
-            subPrompt = `2D comic illustration of ${angle} to ${basePromptCore}.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+            let angle = 'Dynamic close-up and exaggerated reaction';
+            if (c === 2) angle = 'Dramatic wide view and impact';
+            else if (c === 3) angle = 'Giant visual metaphor and reaction';
+            subPrompt = `2D comic illustration of ${angle} to ${basePromptCore}. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
           }
 
           pacedShots.push({
@@ -364,7 +366,7 @@ function applyMultiImagePacing(rawShots) {
         audio: primaryAudio
       });
 
-      const reactionPrompt = `2D comic illustration of Dynamic comic close-up and exaggerated reaction to ${basePromptCore}, with expressive cartoon meme eyes and comic motion lines.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+      const reactionPrompt = `2D comic illustration of Dynamic comic close-up and exaggerated reaction to ${basePromptCore}, with expressive cartoon meme eyes and comic motion lines. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
       pacedShots.push({
         id: '',
@@ -405,7 +407,7 @@ function applyMultiImagePacing(rawShots) {
       audio: primaryAudio
     });
 
-    const actionPrompt = `2D comic illustration of Exaggerated comic focal angle of ${basePromptCore}, bold visual metaphor and dynamic motion trails.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+    const actionPrompt = `2D comic illustration of Exaggerated comic focal angle of ${basePromptCore}, bold visual metaphor and dynamic motion trails. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
     pacedShots.push({
       id: '',
@@ -422,7 +424,7 @@ function applyMultiImagePacing(rawShots) {
       audio: { ...continuationAudio }
     });
 
-    const outcomePrompt = `2D comic illustration of Aftermath and meme reaction to ${basePromptCore}, character with funny derp face and educational indicator arrows.. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
+    const outcomePrompt = `2D comic illustration of Aftermath and meme reaction to ${basePromptCore}, character with funny derp face and educational indicator arrows. CHARACTERS: Expressive minimalist white stickman mascot with round white head (#ffffff), solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes, interacting directly with the scene. ENVIRONMENT: ${pBg}. STYLE: High-contrast educational graphic novel illustration, bold clean black ink line art, flat vibrant color accents on focal elements, clean paper texture, comic motion lines and indicator arrows. ${NEGATIVE_PROMPT}`;
 
     pacedShots.push({
       id: '',
