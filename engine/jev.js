@@ -34,7 +34,7 @@ class JevHelper {
   static classify(text, statesMap) {
     const keys = Object.keys(statesMap);
     if (!keys.length) return { choice: '', confidence: 0 };
-    if (!text || typeof text !== 'string') return { choice: keys[0], confidence: 0 };
+    if (!text || typeof text !== 'string') return { choice: '', confidence: 0 };
 
     try {
       const cleanText = text.replace(/[\r\n\t]+/g, ' ').slice(0, 800);
@@ -46,7 +46,7 @@ class JevHelper {
       });
       return JSON.parse(out.trim());
     } catch (err) {
-      return { choice: keys[0], confidence: 0, error: err.message };
+      return { choice: '', confidence: 0, error: err.message };
     }
   }
 
