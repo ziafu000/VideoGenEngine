@@ -42,7 +42,7 @@ async function uploadVideo({
   return new Promise((resolve, reject) => {
     let stdoutData = '';
     const child = fork(uploaderScript, args, {
-      stdio: ['ignore', 'pipe', 'inherit'],
+      stdio: ['ignore', 'pipe', 'inherit', 'ipc'],
       timeout: 300000 // 5 minute subprocess timeout (A12)
     });
 

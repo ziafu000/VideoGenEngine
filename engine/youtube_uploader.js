@@ -75,6 +75,11 @@ async function getStudioTab() {
     studioTab = await postPut(`${PROXY_BASE}/json/new?${STUDIO_URL}`, 'PUT');
     await sleep(4000);
   }
+  if (studioTab && studioTab.id) {
+    try {
+      await postPut(`${PROXY_BASE}/json/activate/${studioTab.id}`, 'GET');
+    } catch {}
+  }
   return studioTab;
 }
 
@@ -174,7 +179,7 @@ async function cmdUpload(args) {
   console.error(`  - Chế độ: ${schedData ? `LÊN LỊCH (${schedData.formattedDate} lúc ${schedData.time})` : visibility.toUpperCase()}`);
 
   const studioTab = await getStudioTab();
-  const client = new CDPClient(studioTab.webSocketDebuggerUrl);
+  let client = new CDPClient(studioTab.webSocketDebuggerUrl);
   await client.ready;
 
   try {
@@ -286,13 +291,15 @@ async function cmdUpload(args) {
 
     console.error(`✓ Đã nạp file video thành công! Chờ YouTube xử lý metadata dialog...`);
 
-    // 4. Chờ metadata editor xuất hiện (tối đa 35s)
+    // 4. Chờ metadata editor xuất hiện đầy đủ cả 2 ô Title và Description (tối đa 35s)
     let editorReady = false;
     for (let i = 0; i < 35; i++) {
       await sleep(1000);
       editorReady = await client.eval(`(() => {
-        const titleBox = document.querySelector('#textbox[aria-label*="Tiêu đề"], #textbox[aria-label*="Title"], ytcp-social-suggestions-textbox#title-textarea');
-        return !!titleBox;
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+        const boxes = dialog.querySelectorAll('#textbox[contenteditable="true"], ytcp-social-suggestions-textbox #textbox');
+        const nfk = dialog.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
+        return !!(boxes.length >= 2 && nfk);
       })()`);
       if (editorReady) break;
     }
@@ -301,28 +308,35 @@ async function cmdUpload(args) {
       throw new Error('Hộp thoại chỉnh sửa chi tiết video (Metadata editor) không xuất hiện sau khi chọn file.');
     }
 
-    console.error(`[-] Điền tiêu đề và mô tả video...`);
+    await sleep(1500);
+    // Đảm bảo tiêu đề <= 100 ký tự theo giới hạn bắt buộc của YouTube
+    const safeTitle = title.length > 100 ? title.slice(0, 97).trim() + '...' : title;
+    console.error(`[-] Điền tiêu đề (${safeTitle.length}/100 ký tự) và mô tả video...`);
     // 5. Điền Title và Description
     await client.eval(`((titleText, descText) => {
-      const titleBox = document.querySelector('#textbox[aria-label*="Tiêu đề"], #textbox[aria-label*="Title"], ytcp-social-suggestions-textbox#title-textarea [contenteditable="true"]');
+      const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+      const allBoxes = Array.from(dialog.querySelectorAll('#textbox[contenteditable="true"], ytcp-social-suggestions-textbox #textbox'));
+      const titleBox = allBoxes[0];
       if (titleBox) {
         titleBox.focus();
-        titleBox.innerText = titleText;
-        titleBox.dispatchEvent(new Event('input', { bubbles: true }));
+        titleBox.textContent = titleText;
+        titleBox.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: titleText, inputType: 'insertText' }));
+        titleBox.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
-      const descBox = document.querySelector('#textbox[aria-label*="Mô tả"], #textbox[aria-label*="Description"], ytcp-social-suggestions-textbox#description-textarea [contenteditable="true"]');
-      if (descBox && descText) {
+      const descBox = allBoxes[1];
+      if (descBox && descText && descBox !== titleBox) {
         descBox.focus();
-        descBox.innerText = descText;
-        descBox.dispatchEvent(new Event('input', { bubbles: true }));
+        descBox.textContent = descText;
+        descBox.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: descText, inputType: 'insertText' }));
+        descBox.dispatchEvent(new Event('change', { bubbles: true }));
       }
 
-      const notForKids = document.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
+      const notForKids = dialog.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"] #radioContainer, tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
       if (notForKids) {
         notForKids.click();
       }
-    })(${JSON.stringify(title)}, ${JSON.stringify(description)})`);
+    })(${JSON.stringify(safeTitle)}, ${JSON.stringify(description)})`);
 
     // 6. Tải thumbnail (nếu có)
     if (winThumbPath) {
@@ -351,45 +365,30 @@ async function cmdUpload(args) {
     console.error(`[-] Điều hướng qua các bước kiểm tra (Checks) sang bước Hiển thị...`);
     for (let step = 1; step <= 3; step++) {
       await client.eval(`(() => {
-        const nextBtn = document.querySelector('#next-button, button#next-button, ytcp-button#next-button');
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+        const nextBtn = dialog.querySelector('#next-button button, #next-button, ytcp-button#next-button');
         if (nextBtn) nextBtn.click();
       })()`);
       await sleep(1500);
     }
 
-    // 8. Chọn chế độ hiển thị hoặc Lên lịch
+    // 8. Chọn chế độ hiển thị hoặc Lên lịch (scope chặt trong ytcp-uploads-dialog)
     if (schedData) {
       console.error(`[-] Cấu hình LÊN LỊCH: ${schedData.formattedDate} lúc ${schedData.time}...`);
-      // Kích hoạt accordion/radio Lên lịch
       const scheduleOpened = await client.eval(`(() => {
-        // 0. Polymer API direct call
-        const visSelect = document.querySelector('ytcp-video-visibility-select');
-        if (visSelect) {
-          if (typeof visSelect.expandSecondContainerCollapseOthers === 'function') {
-            visSelect.expandSecondContainerCollapseOthers();
-          }
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+        const visSelect = dialog.querySelector('ytcp-video-visibility-select');
+        if (visSelect && typeof visSelect.expandSecondContainerCollapseOthers === 'function') {
+          visSelect.expandSecondContainerCollapseOthers();
           if (typeof visSelect.changeSelectionToSchedule === 'function') {
             visSelect.changeSelectionToSchedule();
           }
+          return true;
         }
 
-        // 1. New YouTube Studio UI: #second-container with expand button
-        const expandBtn = document.querySelector('#second-container-expand-button, #second-container .early-access-header, [tooltip-label*="expand"]');
+        const expandBtn = dialog.querySelector('#second-container-expand-button, #schedule-radio-button #radioContainer, #schedule-radio-button, tp-yt-paper-radio-button[name="SCHEDULE"]');
         if (expandBtn) {
           expandBtn.click();
-          return true;
-        }
-
-        // 2. Radio button format
-        const schedRadio = document.querySelector('#schedule-radio-button #radioContainer, #schedule-radio-button, tp-yt-paper-radio-button[name="SCHEDULE"], #second-container-checkbox');
-        if (schedRadio) {
-          schedRadio.click();
-          return true;
-        }
-        const allRadios = Array.from(document.querySelectorAll('tp-yt-paper-radio-button'));
-        const match = allRadios.find(r => (r.innerText || '').includes('Lên lịch') || (r.innerText || '').includes('Schedule'));
-        if (match) {
-          match.click();
           return true;
         }
         return false;
@@ -401,10 +400,13 @@ async function cmdUpload(args) {
 
       await sleep(1500);
 
-      // Chờ ytcp-datetime-picker xuất hiện
+      // Chờ ytcp-datetime-picker xuất hiện bên trong ytcp-uploads-dialog
       let pickerFound = false;
       for (let pAttempt = 0; pAttempt < 15; pAttempt++) {
-        pickerFound = await client.eval(`(() => !!document.querySelector('ytcp-datetime-picker'))()`);
+        pickerFound = await client.eval(`(() => {
+          const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+          return !!dialog.querySelector('ytcp-datetime-picker');
+        })()`);
         if (pickerFound) break;
         await sleep(800);
       }
@@ -413,68 +415,42 @@ async function cmdUpload(args) {
         throw new Error('ytcp-datetime-picker không xuất hiện sau khi chọn Lên lịch');
       }
 
-      // Điền Date & Time qua Polymer component model
+      // Điền Date & Time qua Polymer component model-change event
       console.error(`    [-] Điền ngày & giờ: ${schedData.year}-${schedData.month}-${schedData.day} ${schedData.time}...`);
       const setDateRes = await client.eval(`((targetYear, targetMonth, targetDay, targetTime) => {
         try {
-          const picker = document.querySelector('ytcp-datetime-picker');
-          const datePicker = document.querySelector('ytcp-date-picker');
-          const parent = document.querySelector('ytcp-video-visibility-select');
+          const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+          const picker = dialog.querySelector('ytcp-datetime-picker');
+          const parent = dialog.querySelector('ytcp-video-visibility-select');
           if (!picker) return { ok: false, error: 'no picker' };
 
-          // 1. Trích xuất target day object từ ytcp-scrollable-calendar nếu có
-          let dateObj = { year: targetYear, month: targetMonth - 1, day: targetDay };
-          const list = document.querySelector('ytcp-scrollable-calendar tp-yt-iron-list');
-          if (list && list.items) {
-            for (const item of list.items) {
-              if (item.weeks) {
-                const found = item.weeks.flat().find(d => d.date && d.date.year === targetYear && d.date.month === (targetMonth - 1) && d.date.day === targetDay);
-                if (found && found.date) {
-                  dateObj = found.date;
-                  break;
-                }
-              }
-            }
-          }
-
-          // 2. Dispatch qua datePicker.fire('ytcp-date-picker-selected', dateObj)
-          if (datePicker && typeof datePicker.fire === 'function') {
-            datePicker.fire('ytcp-date-picker-selected', dateObj);
-          } else if (datePicker && typeof datePicker.onDateClicked === 'function') {
-            datePicker.onDateClicked({ detail: dateObj });
-          }
-
-          // 3. Tính toán seconds từ targetTime ("08:00" -> 28800, "13:00" -> 46800)
+          const dateObj = { year: targetYear, month: targetMonth - 1, day: targetDay };
           const [hStr, mStr] = (targetTime || '08:00').split(':');
           const hours = parseInt(hStr, 10) || 0;
           const mins = parseInt(mStr, 10) || 0;
           const totalSeconds = hours * 3600 + mins * 60;
 
-          // 4. Set time trên picker model và parent visibility-select
-          if (picker.set) {
-            picker.set('model.selectedTimeOfDayValue', totalSeconds);
-            picker.set('renderData.selectedTimeOfDayString', targetTime);
-          }
-          if (parent && parent.set) {
-            parent.set('model.schedulingDate.selectedTimeOfDayValue', totalSeconds);
-          }
+          const newModel = Object.assign({}, picker.model || {}, {
+            date: dateObj,
+            selectedTimeOfDayValue: totalSeconds,
+            selectedTimezoneIndex: (picker.model && picker.model.selectedTimezoneIndex != null) ? picker.model.selectedTimezoneIndex : 0
+          });
 
-          const paperInput = picker.querySelector('#textbox');
-          if (paperInput) {
-            paperInput.value = targetTime;
-            const inp = paperInput.querySelector('input');
-            if (inp) inp.value = targetTime;
+          if (typeof picker.fire === 'function') {
+            picker.fire('model-change', newModel);
+          } else {
+            picker.dispatchEvent(new CustomEvent('model-change', { detail: newModel, bubbles: true, composed: true }));
           }
 
           if (parent && typeof parent.onScheduledVisibilityChange === 'function') {
-            parent.onScheduledVisibilityChange({ detail: picker.model });
+            parent.onScheduledVisibilityChange({ detail: newModel });
           }
 
           return {
             ok: true,
-            dateString: picker.get ? picker.get('renderData.dateString') : null,
-            timeString: targetTime,
-            parentModel: parent ? parent.model.schedulingDate : null
+            dateString: picker.renderData ? picker.renderData.dateString : null,
+            timeString: picker.renderData ? picker.renderData.selectedTimeOfDayString : targetTime,
+            model: picker.model
           };
         } catch(err) {
           return { ok: false, error: err.message, stack: err.stack };
@@ -482,35 +458,14 @@ async function cmdUpload(args) {
       })(${schedData.year}, ${schedData.month}, ${schedData.day}, ${JSON.stringify(schedData.time)})`);
 
       console.error(`    [+] Kết quả chọn ngày giờ:`, JSON.stringify(setDateRes));
-      await sleep(500);
-
-      // Thay thế text trực tiếp vào ô input giờ của YouTube Studio qua CDP (chuẩn hóa theo chỉ thị Captain)
-      const timeInputFocused = await client.eval(`(() => {
-        const dt = document.querySelector('ytcp-datetime-picker');
-        const inp = dt ? dt.querySelector('input') : null;
-        if (inp) {
-          inp.focus();
-          inp.select();
-          return true;
-        }
-        return false;
-      })()`);
-
-      if (timeInputFocused) {
-        await client.send('Input.insertText', { text: schedData.time });
-        await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-        await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-        await sleep(500);
-        console.error(`    [✓] Đã thay thế và xác nhận text giờ YouTube: ${schedData.time}`);
-      }
-
       await sleep(1000);
 
     } else {
       console.error(`[-] Thiết lập chế độ hiển thị: ${visibility.toUpperCase()}...`);
       await client.eval(`((vis) => {
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
         const radioName = vis === 'public' ? 'PUBLIC' : (vis === 'private' ? 'PRIVATE' : 'UNLISTED');
-        const radio = document.querySelector(\`tp-yt-paper-radio-button[name="\${radioName}"]\`);
+        const radio = dialog.querySelector(\`tp-yt-paper-radio-button[name="\${radioName}"]\`);
         if (radio) {
           radio.click();
         }
@@ -518,10 +473,12 @@ async function cmdUpload(args) {
       await sleep(1000);
     }
 
-    // 9. Lấy đường link YouTube xem trước
+    // 9. Lấy đường link YouTube xem trước (chỉ lấy từ bước Chi tiết trong ytcp-uploads-dialog)
     const videoUrl = await client.eval(`(() => {
-      const linkEl = document.querySelector('a.ytcp-video-info[href*="youtu.be"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"]');
-      return linkEl ? linkEl.href : null;
+      const dialog = document.querySelector('ytcp-uploads-dialog');
+      if (!dialog) return null;
+      const linkEl = dialog.querySelector('a.ytcp-video-info[href*="youtu.be"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"]');
+      return linkEl && linkEl.href ? linkEl.href : null;
     })()`);
 
     // 9b. Chờ upload bytes truyền xong lên máy chủ YouTube
@@ -533,7 +490,7 @@ async function cmdUpload(args) {
         const p = dialog.querySelector('ytcp-video-upload-progress, .progress-label');
         return p ? (p.innerText || '').trim() : '';
       })()`);
-      if (upProgress && (upProgress.includes('Đã tải lên') || upProgress.includes('xử lý') || upProgress.includes('hoàn tất') || upProgress.includes('complete') || upProgress.includes('Processing'))) {
+      if (upProgress && (upProgress.includes('Đã tải lên') || upProgress.includes('xử lý') || upProgress.includes('hoàn tất') || upProgress.includes('complete') || upProgress.includes('Processing') || upProgress.includes('Đã kiểm tra xong'))) {
         console.error(`    [✓] Trạng thái: ${upProgress}`);
         break;
       }
@@ -544,62 +501,159 @@ async function cmdUpload(args) {
     }
 
     console.error(`[-] Lưu cài đặt xuất bản video...`);
-    // 10. Bấm nút LƯU / XUẤT BẢN / LÊN LỊCH (#done-button)
-    await client.eval(`(() => {
-      const doneBtn = document.querySelector('#done-button button, #done-button [role="button"], #done-button, button#done-button, ytcp-button#done-button');
-      if (doneBtn) doneBtn.click();
-    })()`);
+    // 10. Bấm nút LƯU / XUẤT BẢN / LÊN LỊCH (#done-button trong ytcp-uploads-dialog)
+    try {
+      await Promise.race([
+        client.eval(`(() => {
+          const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+          const doneBtn = dialog.querySelector('#done-button button, #done-button [role="button"], #done-button, button#done-button, ytcp-button#done-button');
+          if (doneBtn) doneBtn.click();
+        })()`),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('EVAL_TIMEOUT')), 4000))
+      ]);
+    } catch {
+      try { client.close(true); } catch {}
+      await sleep(500);
+      const freshTab = await getStudioTab();
+      client = new CDPClient(freshTab.webSocketDebuggerUrl);
+      await client.ready;
+    }
 
     // 10b. Đợi chậm rãi để bắt pop-up kiểm duyệt sơ bộ nếu upload nhanh chưa kịp check xong
     await sleep(3500);
-    await client.eval(`(() => {
-      const secBtn = document.querySelector('ytcp-prechecks-warning-dialog #secondary-action-button button, #secondary-action-button button, #secondary-action-button');
-      if (secBtn) {
-        secBtn.click();
-        return;
-      }
-      const all = Array.from(document.querySelectorAll('ytcp-button, button'));
-      const target = all.find(b => {
-        const t = (b.innerText || b.textContent || '').trim();
-        return t.includes('xuất bản') || t.includes('Publish anyway');
-      });
-      if (target) {
-        const native = target.querySelector('button') || target;
-        native.click();
-      }
-    })()`);
+    try {
+      await Promise.race([
+        client.eval(`(() => {
+          const preDialog = document.querySelector('ytcp-prechecks-warning-dialog');
+          if (preDialog && preDialog.offsetParent !== null) {
+            const secBtn = preDialog.querySelector('#secondary-action-button button, #secondary-action-button');
+            if (secBtn && secBtn.offsetParent !== null) {
+              secBtn.click();
+              return;
+            }
+            const priBtn = preDialog.querySelector('#primary-action-button button, #primary-action-button');
+            if (priBtn && priBtn.offsetParent !== null) {
+              priBtn.click();
+              return;
+            }
+          }
+          const all = Array.from(document.querySelectorAll('ytcp-prechecks-warning-dialog ytcp-button, ytcp-prechecks-warning-dialog button'));
+          const target = all.find(b => {
+            const t = (b.innerText || b.textContent || '').trim();
+            return t.includes('xuất bản') || t.includes('Publish anyway') || t.includes('Đã hiểu') || t.includes('Got it');
+          });
+          if (target) {
+            const native = target.querySelector('button') || target;
+            native.click();
+          }
+        })()`),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('EVAL_TIMEOUT')), 4000))
+      ]);
+    } catch {
+      try { client.close(true); } catch {}
+      await sleep(500);
+      const freshTab = await getStudioTab();
+      client = new CDPClient(freshTab.webSocketDebuggerUrl);
+      await client.ready;
+    }
 
-    // 11. Chờ xác nhận và đóng dialog
+    // 11. Chờ xác nhận rằng hộp thoại ytcp-uploads-dialog đã lưu xong hoặc hiện dialog xác nhận xuất bản/lên lịch
     let finalUrl = videoUrl;
-    for (let w = 0; w < 12; w++) {
+    let publishConfirmed = false;
+    for (let w = 0; w < 20; w++) {
       await sleep(1000);
-      const confirmedUrl = await client.eval(`(() => {
-        const link = document.querySelector('a[href*="youtu.be"], .share-url a');
-        const closeBtn = document.querySelector('#close-button, ytcp-button#close-button');
-        if (closeBtn) closeBtn.click();
-        return link ? link.href : null;
-      })()`);
-      if (confirmedUrl) {
-        finalUrl = confirmedUrl;
+      let checkState = { state: 'WAITING' };
+      try {
+        checkState = await Promise.race([
+          client.eval(`(() => {
+            // Check if prechecks warning dialog appeared late
+            const preDialog = document.querySelector('ytcp-prechecks-warning-dialog');
+            if (preDialog && preDialog.offsetParent !== null) {
+              const btn = preDialog.querySelector('#secondary-action-button button, #secondary-action-button, #primary-action-button button, #primary-action-button');
+              if (btn && btn.offsetParent !== null) {
+                btn.click();
+                return { state: 'PRECHECK_CLICKED' };
+              }
+            }
+            const shareDialog = document.querySelector('ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog');
+            const upDialog = document.querySelector('ytcp-uploads-dialog');
+            const upDialogOpen = upDialog && (upDialog.offsetParent !== null || upDialog.hasAttribute('opened'));
+            if (shareDialog && (shareDialog.offsetParent !== null || shareDialog.innerText.includes('Đã lên lịch') || shareDialog.innerText.includes('Đã lưu') || shareDialog.innerText.includes('Scheduled'))) {
+              const link = shareDialog.querySelector('a[href*="youtu.be"], .share-url a');
+              const shareUrl = link ? link.href : null;
+              const closeBtn = shareDialog.querySelector('#close-button, ytcp-button#close-button');
+              if (closeBtn) closeBtn.click();
+              return { state: 'CONFIRMED', url: shareUrl };
+            }
+            if (!upDialogOpen) {
+              return { state: 'DIALOG_CLOSED', url: null };
+            }
+            // Check for daily upload limit error
+            const errText = upDialog ? (upDialog.innerText || '') : '';
+            if (errText.includes('giới hạn tải video lên hằng ngày') || errText.includes('Daily upload limit reached')) {
+              return { state: 'QUOTA_LIMIT', error: 'Daily upload limit reached on YouTube Studio' };
+            }
+            return { state: 'WAITING', url: null };
+          })()`),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('EVAL_TIMEOUT')), 4000))
+        ]);
+      } catch (evalErr) {
+        // Reconnect CDP client if YouTube Studio popup close froze the WebSocket
+        try { client.close(true); } catch {}
+        await sleep(500);
+        const freshTab = await getStudioTab();
+        client = new CDPClient(freshTab.webSocketDebuggerUrl);
+        await client.ready;
+        continue;
+      }
+
+      if (checkState.url) finalUrl = checkState.url;
+      if (checkState.state === 'QUOTA_LIMIT') {
+        throw new Error(checkState.error);
+      }
+      if (checkState.state === 'CONFIRMED' || checkState.state === 'DIALOG_CLOSED') {
+        publishConfirmed = true;
         break;
       }
     }
 
+    if (!publishConfirmed) {
+      throw new Error('Hộp thoại tải lên chưa đóng hoặc chưa xác nhận trạng thái xuất bản/lên lịch sau khi bấm Lưu/Lên lịch!');
+    }
+
+    if (!finalUrl) {
+      // Fallback: lấy từ dòng đầu tiên trên danh sách video của Studio vừa được cập nhật
+      await sleep(2000);
+      try {
+        finalUrl = await Promise.race([
+          client.eval(`((expectedTitle) => {
+            const rows = Array.from(document.querySelectorAll('ytcp-video-row'));
+            const match = rows.find(r => (r.innerText || '').includes(expectedTitle.slice(0, 30))) || rows[0];
+            if (match) {
+              const a = match.querySelector('a[href*="/video/"]');
+              if (a) {
+                const m = a.getAttribute('href').match(/\\/video\\/([^\\/\\?]+)/);
+                if (m && m[1]) return 'https://youtu.be/' + m[1];
+              }
+            }
+            return null;
+          })(${JSON.stringify(safeTitle)})`),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('EVAL_TIMEOUT')), 4000))
+        ]);
+      } catch {}
+    }
+
     try {
-      await client.eval(`(() => {
-        const closeBtn = document.querySelector('ytcp-uploads-dialog #close-button, ytcp-dialog #close-button, tp-yt-paper-dialog #close-button, #dismiss-button');
-        if (closeBtn) closeBtn.click();
-      })()`);
+      await Promise.race([
+        client.eval(`(() => {
+          const closeBtn = document.querySelector('ytcp-video-share-dialog #close-button, ytcp-uploads-still-processing-dialog #close-button, tp-yt-paper-dialog #close-button, #dismiss-button');
+          if (closeBtn) closeBtn.click();
+        })()`),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('EVAL_TIMEOUT')), 3000))
+      ]);
     } catch {}
 
-    client.close();
-
-    try {
-      if (finalUrl && finalUrl.includes('youtu.be')) {
-        const jParsed = jev.verify(finalUrl + ' ' + title, 'video upload succeeded with shareable link');
-        console.error(`  [TypeSafe Jev: ${jParsed.verified ? 'Verified ✓' : 'Unverified ✗'}] Xác thực xuất bản YouTube.`);
-      }
-    } catch {}
+    try { client.close(true); } catch {}
 
     const videoId = finalUrl ? (finalUrl.split('/').pop().split('?')[0]) : null;
 
