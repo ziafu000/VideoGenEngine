@@ -101,13 +101,20 @@ async function getStatus(options = {}) {
 async function clearCharacters(options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
-    return await cdp.evaluate(`(() => {
+    return await cdp.evaluate(`(async () => {
       // Dismiss any failed generation cards only (never delete valid tiles or assets)
       const errTiles = Array.from(document.querySelectorAll('flow-error-tile'));
       errTiles.forEach(t => {
-        const delBtns = Array.from(t.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('delete_forever') || b.innerText.includes('Xóa') || b.getAttribute('aria-label') === 'Xóa'));
+        const delBtns = Array.from(t.querySelectorAll('button')).filter(b => {
+          const txt = (b.innerText || b.textContent || '').trim();
+          const aria = (b.getAttribute('aria-label') || '').trim();
+          return txt.includes('delete_forever') || txt.includes('Xóa') || txt.includes('Xoá') || aria === 'Xóa' || aria === 'Xoá';
+        });
         delBtns.forEach(b => b.click());
       });
+      if (errTiles.length > 0) {
+        await new Promise(r => setTimeout(r, 600));
+      }
 
       // Dismiss any lingering snackbars / toasts
       const snackDismiss = Array.from(document.querySelectorAll('snack-bar-container button, .mat-mdc-snack-bar-container button')).find(b => b.innerText && (b.innerText.includes('Đóng') || b.innerText.includes('Close')));
@@ -176,15 +183,15 @@ async function addCharacter(charName, options = {}) {
       const insertBtn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Thêm vào câu lệnh'));
       if (insertBtn) insertBtn.click();
 
-      // Wait for overlay to close and mention-chip to settle in ProseMirror (up to 1.5s)
-      for (let w = 0; w < 10; w++) {
+      // Wait for overlay to close and mention-chip to settle in live ProseMirror (up to 2.0s)
+      for (let w = 0; w < 14; w++) {
         await new Promise(r => setTimeout(r, 150));
-        const mChips = Array.from(pm.querySelectorAll('.mention-chip')).map(c => c.innerText.trim().toLowerCase());
+        const mChips = Array.from(document.querySelectorAll('.ProseMirror .mention-chip')).map(c => c.innerText.trim().toLowerCase());
         if (mChips.includes(cleanName)) break;
       }
       await new Promise(r => setTimeout(r, 250));
 
-      const chips = Array.from(pm.querySelectorAll('.mention-chip')).map(c => c.innerText.trim());
+      const chips = Array.from(document.querySelectorAll('.ProseMirror .mention-chip')).map(c => c.innerText.trim());
       const ingCount = document.querySelectorAll('flow-character-ingredient-chip').length;
       return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips, ingCount };
     })()`);
@@ -386,7 +393,22 @@ async function downloadLatestDirect(targetFile, options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
     let videoSrc = null;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
+      const tileRect = await cdp.evaluate(`(() => {
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        const tile = tiles[0];
+        if (!tile || tile.querySelector('flow-pending-tile')) return null;
+        tile.scrollIntoView({ block: 'center' });
+        const r = tile.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+      })()`);
+      if (tileRect) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.max(10, tileRect.x - 15), y: Math.max(10, tileRect.y - 15) });
+        await sleep(100);
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tileRect.x, y: tileRect.y });
+        await sleep(500);
+      }
+
       videoSrc = await cdp.evaluate(`(() => {
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
         const tile = tiles[0];
@@ -400,7 +422,7 @@ async function downloadLatestDirect(targetFile, options = {}) {
       })()`);
 
       if (videoSrc) break;
-      await sleep(800);
+      await sleep(700);
     }
 
     if (!videoSrc) {
