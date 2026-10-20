@@ -593,6 +593,7 @@ function getShotVoiceoverText(s, index, shots, allowNonAsciiFallback = true) {
     return (s.voice && s.voice.text)
       || (s.audio && s.audio.voiceover)
       || (s.audio && s.audio.sub_text)
+      || s.text
       || s.subtitles
       || null;
   }
@@ -601,6 +602,7 @@ function getShotVoiceoverText(s, index, shots, allowNonAsciiFallback = true) {
     || (s.audio && s.audio.sub_text)
     || s.vietnamese_subtitles
     || (s.audio && s.audio.voiceover)
+    || s.text
     || s.subtitles
     || null;
 }
@@ -683,29 +685,36 @@ function buildMasterClauseAudio(storyboardData, outDir, sbPath = null) {
     if (activeAudio && fs.statSync(activeAudio).size > 0) {
       clauseAudioFiles.push(activeAudio);
 
-      // Proportionally synchronize sub-cut durations to actual measured clause audio duration
+      // Proportionally synchronize sub-cut durations to actual measured clause audio duration (only for multi-cut or static cut explainers, preserving fixed video clip durations like 10s Shorts)
+      const isFixedVideoTimeline = Boolean(
+        (storyboardData.timeline && storyboardData.timeline.duration_per_shot_sec >= 8) ||
+        (group.subShots.length === 1 && group.primaryShot.flow_prompt && group.primaryShot.duration_sec >= 8)
+      );
       const measuredDur = probeAudioDuration(activeAudio);
       if (measuredDur > 0 && group.subShots.length > 0) {
-        const currentTotal = group.subShots.reduce((sum, sub) => sum + (Number(sub.duration) || 1.0), 0);
-        if (currentTotal > 0 && Math.abs(currentTotal - measuredDur) > 0.05) {
-          let allocated = 0;
-          for (let k = 0; k < group.subShots.length; k++) {
-            const sub = group.subShots[k];
-            if (k === group.subShots.length - 1) {
-              sub.duration = Math.max(0.2, Math.round((measuredDur - allocated) * 100) / 100);
-            } else {
-              const ratio = (Number(sub.duration) || 1.0) / currentTotal;
-              const scaled = Math.max(0.2, Math.round(measuredDur * ratio * 100) / 100);
-              sub.duration = scaled;
-              allocated += scaled;
+        if (!isFixedVideoTimeline) {
+          const currentTotal = group.subShots.reduce((sum, sub) => sum + (Number(sub.duration) || 1.0), 0);
+          if (currentTotal > 0 && Math.abs(currentTotal - measuredDur) > 0.05) {
+            let allocated = 0;
+            for (let k = 0; k < group.subShots.length; k++) {
+              const sub = group.subShots[k];
+              if (k === group.subShots.length - 1) {
+                sub.duration = Math.max(0.2, Math.round((measuredDur - allocated) * 100) / 100);
+              } else {
+                const ratio = (Number(sub.duration) || 1.0) / currentTotal;
+                const scaled = Math.max(0.2, Math.round(measuredDur * ratio * 100) / 100);
+                sub.duration = scaled;
+                allocated += scaled;
+              }
             }
+            durationsUpdated = true;
           }
-          durationsUpdated = true;
         }
         for (let k = 0; k < group.subShots.length; k++) {
           const sub = group.subShots[k];
           if (sub.audio) {
             sub.audio.file = activeAudio;
+            sub.audio.voice_duration = measuredDur;
           }
         }
       }

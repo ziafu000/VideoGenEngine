@@ -1,0 +1,129 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ziafu000/VideoGenEngine/main/examples/storyboards/schema_v2.json",
+  "project_name": "${PROJECT_SLUG}",
+  "title": "${SHORT_TITLE_WITH_HASHTAGS}",
+  "description": "${SHORT_DESCRIPTION_WITH_HASHTAGS}",
+  "version": "2.0",
+  "channel": "${YOUTUBE_CHANNEL_ID_OR_ALIAS}",
+  "aspect_ratio": "9:16",
+  "hardsub": false,
+
+  "geometry": {
+    "aspect_ratio": "9:16",
+    "resolution": "1080p"
+  },
+
+  "timeline": {
+    "shots_count": 4,
+    "duration_per_shot_sec": 10,
+    "total_duration_sec": 40
+  },
+
+  "voice": {
+    "provider": "f5-tts",
+    "profile": "f5-tts-latest",
+    "ref_audio": "assets/voices/f5_tts_latest_ref.wav",
+    "speed": 0.9,
+    "language": "en",
+    "target_density_wps": 2.4,
+    "settings": {
+      "speed": 0.9,
+      "studio_eq": true
+    }
+  },
+
+  "visuals": {
+    "engine": "flow_video",
+    "pacing": "motion_video",
+    "style": "2D_STICKMAN_COMIC"
+  },
+
+  "subtitles": {
+    "enabled": false,
+    "hardsub": false
+  },
+
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "sfx_volume": 0.25,
+    "bgm_volume": 0
+  },
+
+  "youtube": {
+    "channel": "${YOUTUBE_CHANNEL_ID_OR_ALIAS}",
+    "title": "${SHORT_TITLE_WITH_HASHTAGS}",
+    "description": "${SHORT_DESCRIPTION_WITH_HASHTAGS}",
+    "visibility": "private"
+  },
+
+  "shots": [
+    {
+      "id": "shot_01",
+      "duration": 10,
+      "duration_sec": 10,
+      "strategy": "HOOK",
+      "palette": "dark_vignette",
+      "text": "${SHOT_01_ENGLISH_NARRATION_22_TO_26_WORDS}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SHOT_01_ENGLISH_NARRATION_22_TO_26_WORDS}",
+        "voice_delay_sec": 0.1
+      },
+      "audio": {
+        "voiceover": "${SHOT_01_ENGLISH_NARRATION_22_TO_26_WORDS}"
+      },
+      "flow_prompt": "Vertical 9:16 2D comic animation featuring an expressive white stickman mascot (round white head #ffffff, solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes) on a dark charcoal slate watercolor vignette background with a warm cream spotlight halo (#fbf9f5). [0.0s - 1.5s]: ${SEGMENT_1_ACTION_AND_DIAGRAM}. [1.5s - 3.2s]: ${SEGMENT_2_ACTION_AND_DIAGRAM}. [3.2s - 5.0s]: ${SEGMENT_3_ACTION_AND_DIAGRAM}. [5.0s - 6.8s]: ${SEGMENT_4_ACTION_AND_DIAGRAM}. [6.8s - 8.5s]: ${SEGMENT_5_ACTION_AND_DIAGRAM}. [8.5s - 10.0s]: ${SEGMENT_6_ACTION_AND_DIAGRAM}. CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO TITLE BANNER. NO TOP HEADER. NO WATERMARK. NO LOGO. NO 3D. NO CGI. NO PHOTOREALISM. AUDIO: SFX ONLY. ${TIME_SYNCED_COMIC_AND_EDUCATIONAL_SFX}."
+    },
+    {
+      "id": "shot_02",
+      "duration": 10,
+      "duration_sec": 10,
+      "strategy": "LITERAL",
+      "palette": "clean_diagram",
+      "text": "${SHOT_02_ENGLISH_NARRATION_22_TO_26_WORDS}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SHOT_02_ENGLISH_NARRATION_22_TO_26_WORDS}",
+        "voice_delay_sec": 0.1
+      },
+      "audio": {
+        "voiceover": "${SHOT_02_ENGLISH_NARRATION_22_TO_26_WORDS}"
+      },
+      "flow_prompt": "Vertical 9:16 2D comic animation featuring an expressive white stickman mascot (round white head #ffffff, solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes) on clean cream parchment paper (#fbf9f5) with anatomical cross-section diagrams and indicator arrows. [0.0s - 1.6s]: ${SEGMENT_1_ACTION_AND_DIAGRAM}. [1.6s - 3.3s]: ${SEGMENT_2_ACTION_AND_DIAGRAM}. [3.3s - 5.0s]: ${SEGMENT_3_ACTION_AND_DIAGRAM}. [5.0s - 6.7s]: ${SEGMENT_4_ACTION_AND_DIAGRAM}. [6.7s - 8.4s]: ${SEGMENT_5_ACTION_AND_DIAGRAM}. [8.4s - 10.0s]: ${SEGMENT_6_ACTION_AND_DIAGRAM}. CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO TITLE BANNER. NO TOP HEADER. NO WATERMARK. NO LOGO. NO 3D. NO CGI. NO PHOTOREALISM. AUDIO: SFX ONLY. ${TIME_SYNCED_COMIC_AND_EDUCATIONAL_SFX}."
+    },
+    {
+      "id": "shot_03",
+      "duration": 10,
+      "duration_sec": 10,
+      "strategy": "METAPHOR",
+      "palette": "apricot_terracotta",
+      "text": "${SHOT_03_ENGLISH_NARRATION_22_TO_26_WORDS}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SHOT_03_ENGLISH_NARRATION_22_TO_26_WORDS}",
+        "voice_delay_sec": 0.1
+      },
+      "audio": {
+        "voiceover": "${SHOT_03_ENGLISH_NARRATION_22_TO_26_WORDS}"
+      },
+      "flow_prompt": "Vertical 9:16 2D comic animation featuring an expressive white stickman mascot (round white head #ffffff, solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes) on a warm apricot and terracotta watercolor wash background (#fbf9f5). [0.0s - 1.6s]: ${SEGMENT_1_ACTION_AND_DIAGRAM}. [1.6s - 3.3s]: ${SEGMENT_2_ACTION_AND_DIAGRAM}. [3.3s - 5.0s]: ${SEGMENT_3_ACTION_AND_DIAGRAM}. [5.0s - 6.7s]: ${SEGMENT_4_ACTION_AND_DIAGRAM}. [6.7s - 8.4s]: ${SEGMENT_5_ACTION_AND_DIAGRAM}. [8.4s - 10.0s]: ${SEGMENT_6_ACTION_AND_DIAGRAM}. CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO TITLE BANNER. NO TOP HEADER. NO WATERMARK. NO LOGO. NO 3D. NO CGI. NO PHOTOREALISM. AUDIO: SFX ONLY. ${TIME_SYNCED_COMIC_AND_EDUCATIONAL_SFX}."
+    },
+    {
+      "id": "shot_04",
+      "duration": 10,
+      "duration_sec": 10,
+      "strategy": "POSE_CHURN",
+      "palette": "slate_blue",
+      "text": "${SHOT_04_ENGLISH_NARRATION_22_TO_26_WORDS}",
+      "voice": {
+        "speaker": "narrator",
+        "text": "${SHOT_04_ENGLISH_NARRATION_22_TO_26_WORDS}",
+        "voice_delay_sec": 0.1
+      },
+      "audio": {
+        "voiceover": "${SHOT_04_ENGLISH_NARRATION_22_TO_26_WORDS}"
+      },
+      "flow_prompt": "Vertical 9:16 2D comic animation featuring an expressive white stickman mascot (round white head #ffffff, solid white limbs, clean bold black comic ink contours, big expressive cartoon meme eyes) on a pale slate-blue watercolor wash vignette (#a0c0d0) over cream paper texture (#fbf9f5). [0.0s - 1.6s]: ${SEGMENT_1_ACTION_AND_DIAGRAM}. [1.6s - 3.3s]: ${SEGMENT_2_ACTION_AND_DIAGRAM}. [3.3s - 5.0s]: ${SEGMENT_3_ACTION_AND_DIAGRAM}. [5.0s - 6.7s]: ${SEGMENT_4_ACTION_AND_DIAGRAM}. [6.7s - 8.4s]: ${SEGMENT_5_ACTION_AND_DIAGRAM}. [8.4s - 10.0s]: ${SEGMENT_6_ACTION_AND_DIAGRAM}. CLEAN FOOTAGE ONLY. STRICTLY NO VOICE. NO SPEECH. NO DIALOGUE. NO TEXT. NO TITLE BANNER. NO TOP HEADER. NO WATERMARK. NO LOGO. NO 3D. NO CGI. NO PHOTOREALISM. AUDIO: SFX ONLY. ${TIME_SYNCED_COMIC_AND_EDUCATIONAL_SFX}."
+    }
+  ]
+}

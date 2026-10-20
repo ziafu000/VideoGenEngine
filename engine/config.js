@@ -46,7 +46,21 @@ function getWinUser() {
   return process.env.USER || 'User';
 }
 
-// Determine Windows Host IP from default route or fallback
+// Determine WSL guest IP on the default route interface
+function getWslGuestIp() {
+  try {
+    const routeOut = execFileSync('ip', ['route'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 1000
+    });
+    for (const line of routeOut.split(/\r?\n/)) {
+      const m = line.match(/\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})\b/);
+      if (m && m[1]) return m[1];
+    }
+  } catch {}
+  return '';
+}
 function getWinHost() {
   if (process.env.WIN_HOST) return process.env.WIN_HOST;
   try {
@@ -234,6 +248,7 @@ module.exports = {
   TTS_PROVIDER,
   VIENEU_PYTHON,
   getPowerShellCmd,
+  getWslGuestIp,
   toWinPath,
   sanitizeIdentifier,
   isPathContained

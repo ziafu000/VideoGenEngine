@@ -64,11 +64,30 @@ async function ensureBridge() {
           }
           Start-Sleep -Seconds 3
       }
+      # Find WSL guest IP to explicitly authorize in CDP_ALLOWED_CLIENTS
+      $wslHostIp = ${JSON.stringify(String(config.WIN_HOST || ''))}
+      $wslGuestIp = ${JSON.stringify(String(config.getWslGuestIp ? config.getWslGuestIp() : ''))}
+      if ($wslHostIp) { $env:CDP_PROXY_BIND = $wslHostIp }
+      if ($wslGuestIp -and $wslHostIp) {
+          $env:CDP_ALLOWED_CLIENTS = "$wslHostIp,$wslGuestIp,127.0.0.1"
+      } elseif ($wslHostIp) {
+          $env:CDP_ALLOWED_CLIENTS = "$wslHostIp,127.0.0.1"
+      }
+
       $proxyConns = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
+      $hasHostBind = $false
       foreach ($conn in $proxyConns) {
           if ($conn.LocalAddress -eq '0.0.0.0' -or $conn.LocalAddress -eq '::') {
               Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+          } elseif ($wslHostIp -and $conn.LocalAddress -eq $wslHostIp) {
+              $hasHostBind = $true
           }
+      }
+      if ($wslHostIp -and -not $hasHostBind -and $proxyConns) {
+          foreach ($conn in $proxyConns) {
+              Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+          }
+          Start-Sleep -Milliseconds 300
       }
       $proxyListening = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
       if (-not $proxyListening) {

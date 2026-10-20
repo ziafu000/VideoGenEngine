@@ -543,7 +543,8 @@ async function assembleStoryboard(sb, options = {}) {
 
   const shots = sb.shots || [];
   const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
-  const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || sb.project_name || baseName;
+  const episodeName = config.sanitizeIdentifier(rawEpisodeName, 'storyboard');
   let epRenderDir = path.join(config.RENDERS_DIR, episodeName);
   let audioDir = path.join(config.AUDIO_DIR, episodeName);
   if (!fs.existsSync(audioDir) && fs.existsSync(path.join(config.AUDIO_DIR, baseName))) {
@@ -697,16 +698,19 @@ async function assembleStoryboard(sb, options = {}) {
     subtitlesModule.generateSubtitles(sb, timelines, assPath);
   }
 
-  const safeTitle = ((sb.project && sb.project.title) || sb.title || episodeName).replace(/\s+/g, '_');
-  const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
+  const rawTitle = (sb.project && sb.project.id) || sb.project_name || sb.series_id || episodeName || ((sb.project && sb.project.title) || sb.title || 'master');
+  const safeTitle = config.sanitizeIdentifier(rawTitle, 'master');
+  const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_master_1080p.mp4`);
 
   const audioMix = sb.audio_mix || {};
-  const ambientVol = typeof audioMix.ambient_volume === 'number' ? audioMix.ambient_volume : 0.25;
+  const ambientVol = typeof audioMix.sfx_volume === 'number'
+    ? audioMix.sfx_volume
+    : (typeof audioMix.ambient_volume === 'number' ? audioMix.ambient_volume : 0.25);
   const voiceVol = typeof audioMix.voice_volume === 'number' ? audioMix.voice_volume : 1.0;
   const bgmVol = typeof audioMix.bgm_volume === 'number' ? audioMix.bgm_volume : (typeof sb.bgm_volume === 'number' ? sb.bgm_volume : 0.15);
   const bgmPath = audioMix.bgm_path || sb.bgm || null;
 
-  return compositeVideo({
+  const res = await compositeVideo({
     videoFiles,
     audioFiles,
     assSubtitlePath: noHardsub ? null : assPath,
@@ -720,6 +724,15 @@ async function assembleStoryboard(sb, options = {}) {
     aspectRatio: isShorts ? '9:16' : '16:9',
     burnSubtitles: !noHardsub
   });
+
+  // Also keep a canonical alias ${safeTitle}_master.mp4 for backward compatibility
+  const legacyAlias = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
+  try {
+    if (fs.existsSync(masterOutput) && masterOutput !== legacyAlias) {
+      fs.copyFileSync(masterOutput, legacyAlias);
+    }
+  } catch {}
+  return res;
 }
 
 module.exports = {

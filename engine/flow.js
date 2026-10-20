@@ -740,9 +740,14 @@ async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', mode
   const settingsKey = `video:${ratio}:${duration}:${model}`;
   try {
     const triggerExists = await cdp.evaluate(`(() => {
-      return !!document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      if (document.querySelector('.settings-trigger-button, button.prompt-settings-trigger')) return true;
+      const createBtn = Array.from(document.querySelectorAll('button, a')).find(b => b.innerText && (b.innerText.includes('Start Creating') || b.innerText.includes('Dự án mới') || b.innerText.includes('New Project')));
+      if (createBtn) { createBtn.click(); return 'clicked_create'; }
+      return false;
     })()`);
-    if (!triggerExists) {
+    if (triggerExists === 'clicked_create') {
+      await sleep(3500);
+    } else if (!triggerExists) {
       throw new Error('[Flow Preflight Error] Không tìm thấy settings trigger button trên giao diện Flow (DOM rỗng hoặc chưa tải xong).');
     }
 
@@ -778,28 +783,69 @@ async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', mode
     }
     await sleep(600);
 
-    // Switch to Video mode
-    await cdp.evaluate(`(() => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+    // Switch to Video mode via native mouse click or fallback
+    const vidCoords = await cdp.evaluate(`(() => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
       const vidBtn = btns.find(b => (b.innerText || '').includes('Video') || (b.innerText || '').includes('videocam'));
-      if (vidBtn && !vidBtn.className.includes('checked') && !vidBtn.className.includes('selected')) vidBtn.click();
+      if (!vidBtn) return null;
+      const r = vidBtn.getBoundingClientRect();
+      return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
     })()`);
+    if (vidCoords && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(vidCoords.x, vidCoords.y);
+    } else {
+      await cdp.evaluate(`(() => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const vidBtn = btns.find(b => (b.innerText || '').includes('Video') || (b.innerText || '').includes('videocam'));
+        if (vidBtn) vidBtn.click();
+      })()`);
+    }
     await sleep(500);
 
     // Select Ratio (9:16 or 16:9)
-    await cdp.evaluate(`((targetRatio) => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+    const ratioCoords = await cdp.evaluate(`((targetRatio) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
       const rBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
-      if (rBtn) rBtn.click();
+      if (!rBtn) return null;
+      const r = rBtn.getBoundingClientRect();
+      return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
     })(${JSON.stringify(ratio)})`);
+    if (ratioCoords && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(ratioCoords.x, ratioCoords.y);
+    } else {
+      await cdp.evaluate(`((targetRatio) => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const rBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
+        if (rBtn) rBtn.click();
+      })(${JSON.stringify(ratio)})`);
+    }
     await sleep(500);
 
-    // Select Duration
-    await cdp.evaluate(`((targetDuration) => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
-      const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration));
-      if (dBtn) dBtn.click();
+    // Select Duration & Count x1
+    const durCoords = await cdp.evaluate(`((targetDuration) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+      const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration) || (b.innerText || '').includes('10s'));
+      const x1Btn = btns.find(b => (b.innerText || '').trim() === 'x1');
+      const getPt = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
+      };
+      return { dPt: getPt(dBtn), x1Pt: getPt(x1Btn) };
     })(${JSON.stringify(duration)})`);
+    if (durCoords && durCoords.dPt && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(durCoords.dPt.x, durCoords.dPt.y);
+      await sleep(300);
+      if (durCoords.x1Pt) await cdp.clickMouse(durCoords.x1Pt.x, durCoords.x1Pt.y);
+    } else {
+      await cdp.evaluate(`((targetDuration) => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration) || (b.innerText || '').includes('10s'));
+        if (dBtn) dBtn.click();
+        const x1Btn = btns.find(b => (b.innerText || '').trim() === 'x1');
+        if (x1Btn) x1Btn.click();
+      })(${JSON.stringify(duration)})`);
+    }
     await sleep(500);
 
     // Close overlay
@@ -1030,7 +1076,7 @@ async function renderStoryboard(sb, options = {}) {
   } = options;
 
   const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
-  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || sb.project_name || baseName;
   const episodeName = config.sanitizeIdentifier(rawEpisodeName, 'storyboard');
   const epRenderDir = path.resolve(config.RENDERS_DIR, episodeName);
   if (!config.isPathContained(config.RENDERS_DIR, epRenderDir)) {
@@ -1112,9 +1158,6 @@ async function renderStoryboard(sb, options = {}) {
           await downloadLatest(outFile, { resolution, cdp: sharedCdp });
           try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
           await pruneFlowDomMemory(sharedCdp);
-          try {
-            fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
-          } catch {}
         }
       } catch (err) {
         console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
