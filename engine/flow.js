@@ -102,15 +102,18 @@ async function clearCharacters(options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
     return await cdp.evaluate(`(() => {
-      // Dismiss any failed generation cards
-      const delBtns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('delete_forever') || b.innerText.includes('Xóa') || b.getAttribute('aria-label') === 'Xóa'));
-      delBtns.forEach(b => b.click());
+      // Dismiss any failed generation cards only (never delete valid tiles or assets)
+      const errTiles = Array.from(document.querySelectorAll('flow-error-tile'));
+      errTiles.forEach(t => {
+        const delBtns = Array.from(t.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('delete_forever') || b.innerText.includes('Xóa') || b.getAttribute('aria-label') === 'Xóa'));
+        delBtns.forEach(b => b.click());
+      });
 
       // Dismiss any lingering snackbars / toasts
       const snackDismiss = Array.from(document.querySelectorAll('snack-bar-container button, .mat-mdc-snack-bar-container button')).find(b => b.innerText && (b.innerText.includes('Đóng') || b.innerText.includes('Close')));
       if (snackDismiss) snackDismiss.click();
 
-      const cancelButtons = Array.from(document.querySelectorAll('flow-ingredient-bar button, .ingredient-bar button, flow-ingredient-chip button, flow-ingredient-chip mat-icon')).filter(b => 
+      const cancelButtons = Array.from(document.querySelectorAll('flow-ingredient-bar button, .ingredient-bar button, flow-ingredient-chip button, flow-ingredient-chip mat-icon, flow-character-ingredient-chip button, flow-character-ingredient-chip mat-icon')).filter(b => 
         b.innerText && (b.innerText.includes('cancel') || b.innerText.includes('close'))
       );
       cancelButtons.forEach(b => b.click());
@@ -140,29 +143,50 @@ async function addCharacter(charName, options = {}) {
       if (!pm) return { error: 'Không tìm thấy ô nhập prompt .ProseMirror' };
 
       pm.focus();
+      const p = pm.querySelector('p') || pm;
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      if (pm.querySelectorAll('.mention-chip').length > 0 && !p.innerText.endsWith(' ')) {
+        document.execCommand('insertText', false, ' ');
+      }
       document.execCommand('insertText', false, '@');
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 750));
 
       // Click tab 'Nhân vật' if available in overlay
       const navItems = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-list-item, .cdk-overlay-pane button, .cdk-overlay-pane span'));
       const charTab = navItems.find(i => (i.innerText || '').includes('Nhân vật'));
       if (charTab) {
         charTab.click();
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 750));
       }
 
-      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item'));
-      const target = options.find(o => (o.innerText || '').toLowerCase().includes(${JSON.stringify(charName.toLowerCase())}));
+      const cleanName = ${JSON.stringify(charName.replace(/^@/, '').toLowerCase())};
+      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
+      const target = options.find(o => (o.innerText || '').trim().toLowerCase() === cleanName) ||
+                     options.find(o => (o.innerText || '').toLowerCase().includes(cleanName));
       if (!target) return { error: 'Không tìm thấy nhân vật ' + ${JSON.stringify(charName)} + ' trong menu' };
       target.click();
 
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 650));
       const insertBtn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Thêm vào câu lệnh'));
       if (insertBtn) insertBtn.click();
 
-      await new Promise(r => setTimeout(r, 400));
-      const chips = Array.from(document.querySelectorAll('.chip-container, flow-character-ingredient-chip, flow-ingredient-chip, .mention-chip')).map(c => c.innerText.trim());
-      return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips };
+      // Wait for overlay to close and mention-chip to settle in ProseMirror (up to 1.5s)
+      for (let w = 0; w < 10; w++) {
+        await new Promise(r => setTimeout(r, 150));
+        const mChips = Array.from(pm.querySelectorAll('.mention-chip')).map(c => c.innerText.trim().toLowerCase());
+        if (mChips.includes(cleanName)) break;
+      }
+      await new Promise(r => setTimeout(r, 250));
+
+      const chips = Array.from(pm.querySelectorAll('.mention-chip')).map(c => c.innerText.trim());
+      const ingCount = document.querySelectorAll('flow-character-ingredient-chip').length;
+      return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips, ingCount };
     })()`);
     return res;
   } finally {
@@ -279,12 +303,13 @@ async function waitForRender(timeoutSec = 240, options = {}) {
 
         const text = tile0.innerText || '';
         const m = text.match(/\\d+%/);
-        const hasVideo = !!tile0.querySelector('video');
+        const realVideo = Array.from(tile0.querySelectorAll('video')).find(v => !v.closest('flow-pending-tile') && v.src && v.src.includes('flow-content.google'));
+        const hasVideo = !!realVideo;
         const hasThumb = !!tile0.querySelector('img.thumbnail');
-        const hasPending = !!tile0.querySelector('flow-pending-tile');
+        const hasPending = document.querySelectorAll('flow-pending-tile').length > 0 || tiles.some(t => /\\d+%/.test(t.innerText || ''));
 
-        const isActivelyPending = (hasPending || !!m) && !hasVideo;
-        const isReady = (hasVideo || (hasThumb && !hasPending)) && !isActivelyPending;
+        const isActivelyPending = hasPending || !!m;
+        const isReady = (hasVideo || hasThumb) && !isActivelyPending;
 
         const err = tile0.querySelector('.error-message, [role="alert"]');
         const refusal = tile0.innerText && (tile0.innerText.includes('Không thành công') || tile0.innerText.includes('vi phạm chính sách') || tile0.innerText.includes('policy') || tile0.innerText.includes('violate'))
@@ -364,14 +389,14 @@ async function downloadLatestDirect(targetFile, options = {}) {
     for (let i = 0; i < 10; i++) {
       videoSrc = await cdp.evaluate(`(() => {
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        const tile = tiles.find(t => !t.querySelector('flow-pending-tile')) || tiles[0];
-        if (!tile) return null;
+        const tile = tiles[0];
+        if (!tile || tile.querySelector('flow-pending-tile')) return null;
         tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         tile.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
         const container = tile.querySelector('.container');
         if (container) container.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        const v = tile.querySelector('video');
-        return v && v.src && v.src.startsWith('http') ? v.src : null;
+        const v = Array.from(tile.querySelectorAll('video')).find(el => !el.closest('flow-pending-tile') && el.src && (el.src.includes('flow-content.google') || (!el.src.includes('/asb/') && el.src.startsWith('http'))));
+        return v ? v.src : null;
       })()`);
 
       if (videoSrc) break;
@@ -488,6 +513,18 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
     await sleep(400);
 
     // 2. Click Tải xuống -> 1080p
+    const tileRect = await cdp.evaluate(`(() => {
+      const tile = document.querySelector('flow-video-tile');
+      if (!tile) return null;
+      tile.scrollIntoView({ block: 'center' });
+      const r = tile.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`);
+    if (tileRect) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tileRect.x, y: tileRect.y });
+      await sleep(450);
+    }
+
     const triggerRes = await cdp.evaluate(`(async () => {
       const tile = document.querySelector('flow-video-tile');
       if (!tile) return { error: 'Không tìm thấy thẻ video Flow' };
@@ -497,16 +534,17 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
 
       let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
       if (!dlBtn) {
-        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác');
+        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
         if (moreBtn) {
           moreBtn.click();
-          await new Promise(r => setTimeout(r, 400));
+          await new Promise(r => setTimeout(r, 500));
           const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
           dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
         }
       }
       if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trên thẻ video' };
 
+      dlBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
       dlBtn.click();
       await new Promise(r => setTimeout(r, 600));
 
