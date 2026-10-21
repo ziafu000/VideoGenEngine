@@ -55,6 +55,7 @@ async function compositeVideo({
   outputVideoPath,
   voiceVolume = 1.0,
   ambientVolume = 0.25,
+  sfxLowpassHz = 300,
   bgmPath = null,
   bgmVolume = 0.15,
   delays = [],
@@ -250,18 +251,20 @@ async function compositeVideo({
       sfxSourceLabel = '[a_cat]';
     }
 
+    const sfxLowpassFilter = (hasVoiceTrack && Number(sfxLowpassHz) > 0) ? `lowpass=f=${Number(sfxLowpassHz)},` : '';
+
     if (hasVoiceTrack && effectiveBgm) {
-      console.log(`    [-] Hòa âm đa tầng 3 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
+      console.log(`    [-] Hòa âm đa tầng 3 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX${sfxLowpassFilter ? ` lowpass=${Number(sfxLowpassHz)}Hz` : ''}) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại) + BGM (${(bgmVolume * 100).toFixed(0)}% Nhạc nền)...`);
       filterParts.push(
-        `${sfxSourceLabel}volume=${ambientVolume}[a_sfx]`,
+        `${sfxSourceLabel}${sfxLowpassFilter}volume=${ambientVolume}[a_sfx]`,
         `[${voiceInputIdx}:a]volume=${voiceVolume}[a_voice]`,
         `[${bgmInputIdx}:a]volume=${bgmVolume},afade=t=in:st=0:d=0.5,afade=t=out:st=${fadeOutStart}:d=2[a_bgm]`,
         `[a_sfx][a_voice][a_bgm]amix=inputs=3:duration=first:dropout_transition=2:normalize=0[a]`
       );
     } else if (hasVoiceTrack && !effectiveBgm) {
-      console.log(`    [-] Hòa âm đa tầng 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại)...`);
+      console.log(`    [-] Hòa âm đa tầng 2 nguồn: Dải âm gốc Flow (${(ambientVolume * 100).toFixed(0)}% SFX${sfxLowpassFilter ? ` lowpass=${Number(sfxLowpassHz)}Hz` : ''}) + Voiceover (${(voiceVolume * 100).toFixed(0)}% Lời thoại)...`);
       filterParts.push(
-        `${sfxSourceLabel}volume=${ambientVolume}[a_sfx]`,
+        `${sfxSourceLabel}${sfxLowpassFilter}volume=${ambientVolume}[a_sfx]`,
         `[${voiceInputIdx}:a]volume=${voiceVolume}[a_voice]`,
         `[a_sfx][a_voice]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[a]`
       );
@@ -705,7 +708,8 @@ async function assembleStoryboard(sb, options = {}) {
   const audioMix = sb.audio_mix || {};
   const ambientVol = typeof audioMix.sfx_volume === 'number'
     ? audioMix.sfx_volume
-    : (typeof audioMix.ambient_volume === 'number' ? audioMix.ambient_volume : 0.25);
+    : (typeof audioMix.ambient_volume === 'number' ? audioMix.ambient_volume : 0.15);
+  const sfxLowpassHz = typeof audioMix.sfx_lowpass_hz === 'number' ? audioMix.sfx_lowpass_hz : 300;
   const voiceVol = typeof audioMix.voice_volume === 'number' ? audioMix.voice_volume : 1.0;
   const bgmVol = typeof audioMix.bgm_volume === 'number' ? audioMix.bgm_volume : (typeof sb.bgm_volume === 'number' ? sb.bgm_volume : 0.15);
   const bgmPath = audioMix.bgm_path || sb.bgm || null;
@@ -717,6 +721,7 @@ async function assembleStoryboard(sb, options = {}) {
     subtitles_path: noHardsub ? null : assPath,
     outputVideoPath: masterOutput,
     ambientVolume: ambientVol,
+    sfxLowpassHz,
     voiceVolume: voiceVol,
     bgmVolume: bgmVol,
     bgmPath: bgmPath,
