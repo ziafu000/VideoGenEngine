@@ -12,6 +12,7 @@ async function getFlowClient(existingCdp = null) {
     return existingCdp;
   }
   const client = await getClientForPage('flow.google.com');
+  await client.send('Page.bringToFront').catch(() => {});
   const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
   if (client._downloadBehaviorDir !== winDownloads) {
     try {

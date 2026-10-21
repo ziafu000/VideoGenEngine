@@ -151,6 +151,12 @@ async function getFacebookTab() {
     await sleep(4000);
   }
 
+  if (fbTab && fbTab.id) {
+    try {
+      await fetch(`${config.CDP_URL}/json/activate/${fbTab.id}`);
+    } catch {}
+  }
+
   return fbTab;
 }
 
@@ -484,10 +490,54 @@ async function uploadReel({
     let captionInserted = false;
 
     for (let cAttempt = 0; cAttempt < 15; cAttempt++) {
-      // Tìm tọa độ click của ô editor
+      // Ưu tiên cập nhật trực tiếp qua React Fiber Draft.js EditorState (miễn nhiễm với cuộn trang/offscreen)
+      const draftUpdated = await client.evaluate(`((text) => {
+        const editor = document.querySelector('div.notranslate._5rpu') || document.querySelector('[role="textbox"]');
+        if (!editor) return null;
+        editor.scrollIntoView({ block: 'center', behavior: 'instant' });
+        const fk = Object.keys(editor).find(k => k.startsWith('__reactFiber'));
+        let f = fk ? editor[fk] : null;
+        while (f) {
+          if (f.memoizedProps && f.memoizedProps.editorState && f.stateNode && typeof f.stateNode.update === 'function') {
+            if (f.memoizedProps.readOnly) return { readOnly: true };
+            const es = f.memoizedProps.editorState;
+            const cs = es.getCurrentContent();
+            if (cs && cs.constructor && typeof cs.constructor.createFromText === 'function' && es.constructor && typeof es.constructor.push === 'function') {
+              const newCs = cs.constructor.createFromText(text);
+              let nextEs = es.constructor.push(es, newCs, 'insert-characters');
+              if (typeof es.constructor.moveFocusToEnd === 'function') {
+                nextEs = es.constructor.moveFocusToEnd(nextEs);
+              }
+              f.stateNode.update(nextEs);
+              if (typeof f.memoizedProps.onChange === 'function') {
+                f.memoizedProps.onChange(nextEs);
+              }
+              return { ok: true };
+            }
+          }
+          f = f.return;
+        }
+        return null;
+      })(${JSON.stringify(finalCaption)})`);
+
+      if (draftUpdated && draftUpdated.ok) {
+        await sleep(400);
+        const checkDraftText = await client.evaluate(`(() => {
+          const editor = document.querySelector('div.notranslate._5rpu') || document.querySelector('[role="textbox"]');
+          return editor ? (editor.innerText || '').trim() : '';
+        })()`);
+        if (checkDraftText.length > 20) {
+          captionInserted = true;
+          console.log(`    [✓] Đã điền và commit caption/hashtags qua Draft.js EditorState thành công (${checkDraftText.length} ký tự)!`);
+          break;
+        }
+      }
+
+      // Tìm tọa độ click của ô editor (fallback)
       const editorPoint = await client.evaluate(`(() => {
         const editor = document.querySelector('div.notranslate._5rpu') || document.querySelector('[role="textbox"]');
         if (!editor) return null;
+        editor.scrollIntoView({ block: 'center', behavior: 'instant' });
         const r = editor.getBoundingClientRect();
         return { x: r.x + 20, y: r.y + 15 };
       })()`);
@@ -715,9 +765,30 @@ async function uploadReel({
         console.warn(`    [!] Chú ý: Chưa xác nhận được ngày ${schedData.date}, tiếp tục thiết lập giờ...`);
       }
 
-      // 4. Chỉ sau khi ngày đã chốt xong, tiến hành điều chỉnh Giờ và Phút bằng spinbox React Fiber onSpin
-      await setSpinboxValue(client, 'input[aria-label*="giờ"], input[aria-label*="hour" i]', schedData.hour);
-      await setSpinboxValue(client, 'input[aria-label*="phút"], input[aria-label*="minute" i]', schedData.min);
+      // 4. Điều chỉnh Phút trước, Giờ sau (tránh việc giảm phút từ 0 xuống 59 làm lùi 1 giờ), đồng thời chốt qua GeoDateTimeInput.onChange
+      await setSpinboxValue(client, 'input[role="spinbutton"][aria-label*="phút"], input[aria-label*="phút"], input[aria-label*="minute" i]', schedData.min);
+      await setSpinboxValue(client, 'input[role="spinbutton"][aria-label*="giờ"], input[aria-label*="giờ"], input[aria-label*="hour" i]', schedData.hour);
+      await client.evaluate(`((sData) => {
+        const h = document.querySelector('input[role="spinbutton"][aria-label*="giờ"], input[aria-label*="giờ"], input[aria-label*="hour" i]');
+        if (!h) return;
+        const fk = Object.keys(h).find(k => k.startsWith('__reactFiber'));
+        let f = fk ? h[fk] : null;
+        while (f) {
+          const name = typeof f.type === 'string' ? f.type : (f.type?.displayName || f.type?.name || '');
+          if (name === 'GeoDateTimeInput' && f.memoizedProps?.value && typeof f.memoizedProps.onChange === 'function') {
+            const nextV = f.memoizedProps.value.set({
+              year: parseInt(sData.year, 10),
+              month: parseInt(sData.month, 10),
+              day: parseInt(sData.day, 10),
+              hour: parseInt(sData.hour, 10),
+              minute: parseInt(sData.min, 10)
+            });
+            f.memoizedProps.onChange(nextV);
+            break;
+          }
+          f = f.return;
+        }
+      })(${JSON.stringify(schedData)})`);
       await sleep(1000);
     }
 
@@ -795,21 +866,22 @@ async function uploadReel({
 
       // Xử lý modal hoàn tất "Đã lên lịch đăng thước phim" / "Đang xử lý thước phim" với nút "Xong"
       const modalHandled = await client.evaluate(`(() => {
-        const dialogs = Array.from(document.querySelectorAll('[role="dialog"], div'));
-        const processingDialog = dialogs.find(d => {
-          const t = (d.innerText || '').toLowerCase();
-          return t.includes('đã lên lịch đăng thước phim') || t.includes('xử lý thước phim') || t.includes('đăng thước phim') || t.includes('lên lịch');
-        });
-        if (processingDialog) {
-          const btns = Array.from(processingDialog.querySelectorAll('button, div[role="button"]'));
+        const bodyText = (document.body.innerText || '').toLowerCase();
+        const hasCompletionModalText = bodyText.includes('đã lên lịch đăng thước phim') ||
+          bodyText.includes('theo lịch, video của bạn sẽ đăng vào') ||
+          bodyText.includes('đang xử lý thước phim') ||
+          bodyText.includes('đã đăng thước phim');
+        if (hasCompletionModalText) {
+          const btns = Array.from(document.querySelectorAll('button, div[role="button"]'));
           const xongBtn = btns.find(b => {
             const t = (b.innerText || '').trim();
-            return t === 'Xong' || t === 'Done' || t === 'Đóng' || t === 'Close';
+            return t === 'Xong' || t === 'Done';
           });
           if (xongBtn) {
             xongBtn.click();
-            return { closed: true, text: xongBtn.innerText?.trim() };
+            return { closed: true, text: xongBtn.innerText?.trim() || 'Xong' };
           }
+          return { closed: true, text: 'Đã lên lịch đăng thước phim' };
         }
         return null;
       })()`);
