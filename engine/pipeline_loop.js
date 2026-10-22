@@ -378,7 +378,7 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     }
 
     const ytTitle = ytMeta.title || episodeTitle;
-    const ytDescription = ytMeta.description || (sb.project && sb.project.series) || '';
+    const ytDescription = ytMeta.description || sb.description || (sb.project && sb.project.series) || '';
     const effectiveChannel = channel || ytMeta.channel || ytMeta.channel_id || sb.channel || null;
 
     // Upload to YouTube

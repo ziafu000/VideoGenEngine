@@ -183,6 +183,7 @@ async function cmdUpload(args) {
   await client.ready;
 
   try {
+    await client.send('Page.bringToFront').catch(() => {});
     await client.enableDialogHandling();
     await client.dismissModals();
 
@@ -308,35 +309,86 @@ async function cmdUpload(args) {
       throw new Error('Hộp thoại chỉnh sửa chi tiết video (Metadata editor) không xuất hiện sau khi chọn file.');
     }
 
-    await sleep(1500);
+    await sleep(2500);
     // Đảm bảo tiêu đề <= 100 ký tự theo giới hạn bắt buộc của YouTube
     const safeTitle = title.length > 100 ? title.slice(0, 97).trim() + '...' : title;
-    console.error(`[-] Điền tiêu đề (${safeTitle.length}/100 ký tự) và mô tả video...`);
-    // 5. Điền Title và Description
-    await client.eval(`((titleText, descText) => {
-      const dialog = document.querySelector('ytcp-uploads-dialog') || document;
-      const allBoxes = Array.from(dialog.querySelectorAll('#textbox[contenteditable="true"], ytcp-social-suggestions-textbox #textbox'));
-      const titleBox = allBoxes[0];
-      if (titleBox) {
-        titleBox.focus();
-        titleBox.textContent = titleText;
-        titleBox.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: titleText, inputType: 'insertText' }));
-        titleBox.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+    console.error(`[-] Điền tiêu đề (${safeTitle.length}/100 ký tự) và mô tả video (${description.length} ký tự)...`);
 
-      const descBox = allBoxes[1];
-      if (descBox && descText && descBox !== titleBox) {
-        descBox.focus();
-        descBox.textContent = descText;
-        descBox.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: descText, inputType: 'insertText' }));
-        descBox.dispatchEvent(new Event('change', { bubbles: true }));
-      }
+    // 5. Điền Title và Description (kết hợp execCommand('insertText') + Polymer events + kiểm tra đối soát chống ghi đè bởi Upload Defaults)
+    for (let metaAttempt = 0; metaAttempt < 4; metaAttempt++) {
+      const metaCheck = await client.eval(`((titleText, descText) => {
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+        const allBoxes = Array.from(dialog.querySelectorAll('#textbox[contenteditable="true"], ytcp-social-suggestions-textbox #textbox'));
+        const titleContainer = dialog.querySelector('#title-textarea, ytcp-video-title, ytcp-mention-textbox[label*="Tiêu đề"], ytcp-mention-textbox[label*="Title"]');
+        const descContainer = dialog.querySelector('#description-textarea, ytcp-video-description, ytcp-mention-textbox[label*="Mô tả"], ytcp-mention-textbox[label*="Description"]');
+        const titleBox = (titleContainer && titleContainer.querySelector('#textbox')) || allBoxes[0];
+        const descBox = (descContainer && descContainer.querySelector('#textbox')) || allBoxes[1];
 
-      const notForKids = dialog.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"] #radioContainer, tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
-      if (notForKids) {
-        notForKids.click();
+        function fillPolymerBox(box, text) {
+          if (!box || !text) return '';
+          box.scrollIntoView({ block: 'center', behavior: 'instant' });
+          box.focus();
+          try {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(box);
+            sel.removeAllRanges();
+            sel.addRange(range);
+            document.execCommand('selectAll', false, null);
+            document.execCommand('delete', false, null);
+            document.execCommand('insertText', false, text);
+          } catch {}
+          if ((box.innerText || '').trim() !== text.trim()) {
+            box.textContent = text;
+          }
+          box.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, data: text, inputType: 'insertText' }));
+          box.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: text, inputType: 'insertText' }));
+          box.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          box.dispatchEvent(new Event('blur', { bubbles: true, composed: true }));
+          const host = box.closest('ytcp-social-suggestions-textbox, ytcp-mention-textbox');
+          if (host) {
+            host.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            host.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          }
+          return (box.innerText || '').trim();
+        }
+
+        const actualTitle = fillPolymerBox(titleBox, titleText);
+        const actualDesc = descBox !== titleBox ? fillPolymerBox(descBox, descText) : '';
+
+        const notForKids = dialog.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"] #radioContainer, tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], #not-made-for-kids');
+        if (notForKids) {
+          notForKids.click();
+        }
+
+        return { actualTitle, actualDesc };
+      })(${JSON.stringify(safeTitle)}, ${JSON.stringify(description)})`);
+
+      await sleep(800);
+
+      // Kiểm tra lại sau 800ms xem YouTube Upload Defaults có ghi đè lại "Original AI Video Production" không
+      const verifyMeta = await client.eval(`(() => {
+        const dialog = document.querySelector('ytcp-uploads-dialog') || document;
+        const allBoxes = Array.from(dialog.querySelectorAll('#textbox[contenteditable="true"], ytcp-social-suggestions-textbox #textbox'));
+        const titleContainer = dialog.querySelector('#title-textarea, ytcp-video-title');
+        const descContainer = dialog.querySelector('#description-textarea, ytcp-video-description');
+        const titleBox = (titleContainer && titleContainer.querySelector('#textbox')) || allBoxes[0];
+        const descBox = (descContainer && descContainer.querySelector('#textbox')) || allBoxes[1];
+        return {
+          title: titleBox ? (titleBox.innerText || '').trim() : '',
+          desc: descBox ? (descBox.innerText || '').trim() : ''
+        };
+      })()`);
+
+      const titleOk = verifyMeta.title === safeTitle.trim();
+      const descOk = !description || (verifyMeta.desc.length >= Math.min(20, description.length) && !verifyMeta.desc.includes('Original AI Video Production'));
+      if (titleOk && descOk) {
+        console.error(`    [✓] Đã xác nhận Tiêu đề (${verifyMeta.title.length} ký tự) & Mô tả (${verifyMeta.desc.length} ký tự) trên YouTube Studio!`);
+        break;
       }
-    })(${JSON.stringify(safeTitle)}, ${JSON.stringify(description)})`);
+      console.error(`    [!] Thử lại điền Tiêu đề/Mô tả (lần ${metaAttempt + 1}/4) — desc hiện tại: "${verifyMeta.desc.slice(0, 40)}"...`);
+      await sleep(1000);
+    }
 
     // 6. Tải thumbnail (nếu có)
     if (winThumbPath) {

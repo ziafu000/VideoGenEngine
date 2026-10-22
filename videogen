@@ -553,7 +553,7 @@ async function main() {
 
         const yt = sb.youtube || {};
         const title = yt.title || (sb.project && sb.project.title) || (sb.series_title ? `${sb.series_title} - ${sb.episode_title}` : sb.title) || 'Video Project';
-        const desc = yt.description || (sb.project && sb.project.series) || 'Original AI Video Production';
+        const desc = yt.description || sb.description || (sb.project && sb.project.series) || 'Original AI Video Production';
         const schedIdx = args.indexOf('--schedule');
         const schedArg = schedIdx !== -1 && args[schedIdx + 1] ? args[schedIdx + 1] : (yt.schedule || sb.schedule || null);
         const visibility = schedArg ? 'scheduled' : (yt.visibility || 'unlisted');
