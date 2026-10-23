@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 import sys
 import re
 import warnings
@@ -75,12 +76,15 @@ def get_f5_model(device=None):
     return _MODEL
 
 def to_win_path(p: Path) -> str:
-    """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary."""
+    """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary, or return direct path on native OS."""
+    resolved = str(p.resolve())
+    if sys.platform == "win32" or sys.platform == "darwin" or not shutil.which("wslpath"):
+        return os.path.normpath(resolved)
     try:
-        res = subprocess.run(["wslpath", "-w", str(p.resolve())], capture_output=True, text=True, check=True)
+        res = subprocess.run(["wslpath", "-w", resolved], capture_output=True, text=True, check=True)
         return res.stdout.strip()
     except Exception:
-        return str(p.resolve())
+        return resolved
 
 def trim_and_pad_audio(audio, sr, text, threshold_db=-40):
     """

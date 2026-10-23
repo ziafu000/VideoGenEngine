@@ -14,6 +14,14 @@ if (fs.existsSync(envPath)) {
 
 // Find available PowerShell executable on Windows/WSL
 function getPowerShellCmd() {
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('where.exe', ['pwsh.exe'], { stdio: 'ignore', timeout: 500 });
+      return 'pwsh.exe';
+    } catch {}
+    return 'powershell.exe';
+  }
+
   const stdPath = '/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe';
   if (fs.existsSync(stdPath)) return stdPath;
 
@@ -31,9 +39,17 @@ function getPowerShellCmd() {
   return 'powershell.exe';
 }
 
-// Dynamically detect Windows username without hardcoded assumptions
+// Dynamically detect OS / Windows username without hardcoded assumptions
 function getWinUser() {
   if (process.env.WIN_USERNAME) return process.env.WIN_USERNAME;
+  if (process.platform === 'win32') {
+    if (process.env.USERNAME) return process.env.USERNAME;
+    try { return os.userInfo().username; } catch {}
+  }
+  if (process.platform === 'darwin' || (process.platform === 'linux' && !fs.existsSync('/mnt/c/Windows'))) {
+    if (process.env.USER) return process.env.USER;
+    try { return os.userInfo().username; } catch {}
+  }
   const ps = getPowerShellCmd();
   try {
     const who = execFileSync(ps, ['-NoProfile', '-Command', '[System.Environment]::UserName'], {
@@ -43,11 +59,14 @@ function getWinUser() {
     }).trim();
     if (who && who.length > 0) return who;
   } catch {}
-  return process.env.USER || 'User';
+  return process.env.USER || process.env.USERNAME || 'User';
 }
 
 // Determine WSL guest IP on the default route interface
 function getWslGuestIp() {
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    return '';
+  }
   try {
     const routeOut = execFileSync('ip', ['route'], {
       encoding: 'utf8',
@@ -63,6 +82,9 @@ function getWslGuestIp() {
 }
 function getWinHost() {
   if (process.env.WIN_HOST) return process.env.WIN_HOST;
+  if (process.platform === 'win32' || process.platform === 'darwin' || !fs.existsSync('/mnt/c/Windows')) {
+    return '127.0.0.1';
+  }
   try {
     const routeOut = execFileSync('ip', ['route'], {
       encoding: 'utf8',
@@ -97,7 +119,11 @@ const ASSETS_DIR = path.join(PROJECT_DIR, 'assets');
   }
 });
 
-const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || `/mnt/c/Users/${WIN_USER}/Downloads`;
+const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || (
+  (process.platform === 'win32' || process.platform === 'darwin' || !fs.existsSync('/mnt/c/Users'))
+    ? path.join(os.homedir(), 'Downloads')
+    : `/mnt/c/Users/${WIN_USER}/Downloads`
+);
 const DEST_ORIGINAL = process.env.DEST_ORIGINAL || null;
 const DEST_FINAL = process.env.DEST_FINAL || null;
 // Dynamic channel lookup from gitignored environment variables (zero hardcoded channel IDs)
@@ -130,19 +156,49 @@ const FACEBOOK_BUSINESS_ID = process.env.FACEBOOK_BUSINESS_ID || null;
 const FACEBOOK_REELS_URL = process.env.FACEBOOK_REELS_URL ||
   (FACEBOOK_ASSET_ID ? `https://business.facebook.com/latest/reels_composer/?asset_id=${FACEBOOK_ASSET_ID}${FACEBOOK_BUSINESS_ID ? `&business_id=${FACEBOOK_BUSINESS_ID}` : ''}&ref=biz_web_home_create_reel&context_ref=HOME` : 'https://business.facebook.com/latest/reels_composer');
 const TTS_PROVIDER = process.env.TTS_PROVIDER || 'vieneu';
-const VIENEU_DEFAULT_VENV = path.join(os.homedir(), 'ai/vieneu/.venv/bin/python');
-const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync(VIENEU_DEFAULT_VENV) ? VIENEU_DEFAULT_VENV : 'python3');
+const VIENEU_DEFAULT_VENV = process.platform === 'win32'
+  ? path.join(os.homedir(), 'ai', 'vieneu', '.venv', 'Scripts', 'python.exe')
+  : path.join(os.homedir(), 'ai/vieneu/.venv/bin/python');
+const DEFAULT_PYTHON_CMD = process.platform === 'win32' ? 'python' : 'python3';
+const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync(VIENEU_DEFAULT_VENV) ? VIENEU_DEFAULT_VENV : DEFAULT_PYTHON_CMD);
 
 // Cache toWinPath results to reduce expensive wslpath subprocess invocations (PERF-04)
 const winPathCache = new Map();
 const MAX_WINPATH_CACHE = 1000;
 
-// Robust cross-platform path conversion (WSL to Windows)
+// Robust cross-platform path conversion (Native Windows / macOS / Linux / WSL)
 function toWinPath(p) {
   if (!p) return p;
+  const rawStr = String(p);
+  const rawMntMatch = rawStr.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
+  if (rawMntMatch && process.platform === 'win32') {
+    const drive = rawMntMatch[1].toUpperCase();
+    const rest = rawMntMatch[2].replace(/\//g, '\\');
+    return `${drive}:\\${rest}`;
+  }
+
   const abs = path.resolve(p);
   if (winPathCache.has(abs)) {
     return winPathCache.get(abs);
+  }
+
+  if (process.platform === 'win32') {
+    const winNorm = path.win32.normalize(abs);
+    if (winPathCache.size >= MAX_WINPATH_CACHE) {
+      const firstKey = winPathCache.keys().next().value;
+      winPathCache.delete(firstKey);
+    }
+    winPathCache.set(abs, winNorm);
+    return winNorm;
+  }
+
+  if (process.platform === 'darwin') {
+    if (winPathCache.size >= MAX_WINPATH_CACHE) {
+      const firstKey = winPathCache.keys().next().value;
+      winPathCache.delete(firstKey);
+    }
+    winPathCache.set(abs, abs);
+    return abs;
   }
 
   // Resolve symlinks if path or its parent directory is a symlink (WSL / Windows compatibility)
@@ -164,7 +220,7 @@ function toWinPath(p) {
     const drive = match[1].toUpperCase();
     const rest = match[2].replace(/\//g, '\\');
     result = `${drive}:\\${rest}`;
-  } else {
+  } else if (fs.existsSync('/mnt/c/Windows') || process.env.WSL_DISTRO_NAME) {
     // Linux internal path fallback (e.g. WSL home dir):
     // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
     let uncSuccess = false;
@@ -248,6 +304,7 @@ module.exports = {
   TTS_PROVIDER,
   VIENEU_PYTHON,
   getPowerShellCmd,
+  getWinHost,
   getWslGuestIp,
   toWinPath,
   sanitizeIdentifier,

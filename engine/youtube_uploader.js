@@ -61,7 +61,8 @@ function postPut(url, method = 'POST') {
 }
 
 async function getStudioTab() {
-  const tabs = await fetchJson(`${PROXY_BASE}/json/list`);
+  const proxyBase = config.CDP_URL;
+  const tabs = await fetchJson(`${proxyBase}/json/list`);
   let studioTab = tabs.find(t => {
     if (t.type !== 'page' || !t.url) return false;
     try {
@@ -72,12 +73,12 @@ async function getStudioTab() {
     }
   });
   if (!studioTab) {
-    studioTab = await postPut(`${PROXY_BASE}/json/new?${STUDIO_URL}`, 'PUT');
+    studioTab = await postPut(`${proxyBase}/json/new?${STUDIO_URL}`, 'PUT');
     await sleep(4000);
   }
   if (studioTab && studioTab.id) {
     try {
-      await postPut(`${PROXY_BASE}/json/activate/${studioTab.id}`, 'GET');
+      await postPut(`${proxyBase}/json/activate/${studioTab.id}`, 'GET');
     } catch {}
   }
   return studioTab;

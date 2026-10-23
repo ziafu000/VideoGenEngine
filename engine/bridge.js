@@ -1,26 +1,52 @@
-const { execFileSync } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const config = require('./config');
 const { sleep, listPages } = require('./cdp');
 
 async function isBridgeRunning() {
-  try {
-    const res = await fetch(`${config.CDP_URL}/json/version`, { signal: AbortSignal.timeout(2000) });
-    return res.ok;
-  } catch {
-    return false;
+  const candidateUrls = [config.CDP_URL];
+  if (process.platform === 'win32' || process.platform === 'darwin' || config.WIN_HOST === '127.0.0.1') {
+    for (const port of [9222, 9223]) {
+      const localUrl = `http://127.0.0.1:${port}`;
+      if (!candidateUrls.includes(localUrl)) {
+        candidateUrls.push(localUrl);
+      }
+    }
   }
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(`${url}/json/version`, { signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        if (config.CDP_URL !== url) {
+          config.CDP_URL = url;
+          try {
+            const parsed = new URL(url);
+            if (parsed.port) config.CDP_PORT = parseInt(parsed.port, 10);
+          } catch {}
+        }
+        return true;
+      }
+    } catch {}
+  }
+  return false;
 }
 
 function syncHardenedProxyScript() {
-  const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
   const winUser = String(config.WIN_USER || '').replace(/[^a-zA-Z0-9._ -]/g, '');
-  const winProxyPath = `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
+  if (process.platform === 'darwin') {
+    return { winUser, winProxyPath: null };
+  }
+  const proxyScriptSrc = path.join(__dirname, 'cdp_proxy.js');
+  const winProxyPath = process.platform === 'win32'
+    ? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Google', 'Chrome', 'cdp_proxy.js')
+    : `/mnt/c/Users/${winUser}/AppData/Local/Google/Chrome/cdp_proxy.js`;
   if (winUser && fs.existsSync(proxyScriptSrc)) {
     try {
       const destDir = path.dirname(winProxyPath);
-      if (fs.existsSync('/mnt/c/Users')) {
+      if (process.platform === 'win32' || fs.existsSync('/mnt/c/Users')) {
         if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
         fs.copyFileSync(proxyScriptSrc, winProxyPath);
       }
@@ -33,12 +59,12 @@ function syncHardenedProxyScript() {
 
 async function ensureBridge() {
   console.log(`[-] [1/3] Kiểm tra kết nối tới CDP bridge (${config.CDP_URL})...`);
-  const { winUser } = syncHardenedProxyScript();
   const running = await isBridgeRunning();
   if (running) {
     console.log(`    [✓] CDP bridge đã sẵn sàng tại ${config.CDP_URL}`);
   } else {
-    console.log('    [-] CDP bridge chưa chạy, đang tự động khởi động Chrome và proxy trên Windows...');
+    const { winUser } = syncHardenedProxyScript();
+    console.log('    [-] CDP bridge chưa chạy, đang tự động khởi động Chrome...');
 
     const safeQuote = (val) => String(val || '').replace(/["'`$;|&<>]/g, '');
     const chromeUserData = safeQuote(process.env.CHROME_USER_DATA_DIR);
@@ -46,9 +72,37 @@ async function ensureBridge() {
     const chromeFlags = ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1'];
     if (chromeUserData) chromeFlags.push(`--user-data-dir="${chromeUserData}"`);
     if (chromeProfile) chromeFlags.push(`--profile-directory="${chromeProfile}"`);
-    const psChromeArgList = chromeFlags.map(f => `'${f}'`).join(', ');
 
-    const psCmd = `
+    if (process.platform === 'darwin') {
+      const macChrome = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+      const defaultMacDataDir = chromeUserData || path.join(os.homedir(), 'Library', 'Application Support', 'Google', 'Chrome', 'AutomationProfile');
+      const macFlags = ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1', `--user-data-dir=${defaultMacDataDir}`];
+      if (chromeProfile) macFlags.push(`--profile-directory=${chromeProfile}`);
+      try {
+        if (fs.existsSync(macChrome)) {
+          const child = spawn(macChrome, macFlags, { detached: true, stdio: 'ignore' });
+          child.unref();
+        } else {
+          execFileSync('open', ['-na', 'Google Chrome', '--args', ...macFlags], { stdio: 'ignore' });
+        }
+      } catch (err) {
+        console.warn('    [!] Lỗi khi khởi động Google Chrome trên macOS:', err.message);
+      }
+    } else if (process.platform === 'linux' && !fs.existsSync('/mnt/c/Windows') && !process.env.WSL_DISTRO_NAME) {
+      const defaultLinuxDataDir = chromeUserData || path.join(os.homedir(), '.config', 'google-chrome-automation');
+      const linuxFlags = ['--remote-debugging-port=9222', '--remote-debugging-address=127.0.0.1', `--user-data-dir=${defaultLinuxDataDir}`];
+      if (chromeProfile) linuxFlags.push(`--profile-directory=${chromeProfile}`);
+      for (const bin of ['google-chrome', 'google-chrome-stable', 'chromium-browser', 'chromium']) {
+        try {
+          execFileSync('which', [bin], { stdio: 'ignore', timeout: 500 });
+          const child = spawn(bin, linuxFlags, { detached: true, stdio: 'ignore' });
+          child.unref();
+          break;
+        } catch {}
+      }
+    } else {
+      const psChromeArgList = chromeFlags.map(f => `'${f}'`).join(', ');
+      const psCmd = `
       $listening = Get-NetTCPConnection -LocalPort 9222 -State Listen -ErrorAction SilentlyContinue
       if (-not $listening) {
           $chromeLnk = if ($env:CHROME_SHORTCUT_PATH -and (Test-Path $env:CHROME_SHORTCUT_PATH)) { $env:CHROME_SHORTCUT_PATH } else { (Get-ChildItem -Path "C:\\Users\\${winUser}\\Desktop\\*Chrome*.lnk" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
@@ -95,11 +149,12 @@ async function ensureBridge() {
       }
     `;
 
-    const psExec = config.getPowerShellCmd();
-    try {
-      execFileSync(psExec, ['-NoProfile', '-Command', psCmd], { stdio: 'inherit' });
-    } catch (err) {
-      console.warn('    [!] Lỗi khi chạy powershell khởi động Chrome:', err.message);
+      const psExec = config.getPowerShellCmd();
+      try {
+        execFileSync(psExec, ['-NoProfile', '-Command', psCmd], { stdio: 'inherit' });
+      } catch (err) {
+        console.warn('    [!] Lỗi khi chạy powershell khởi động Chrome:', err.message);
+      }
     }
 
     console.log('    [-] Đang chờ CDP bridge phản hồi...');

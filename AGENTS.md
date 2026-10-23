@@ -5,6 +5,10 @@ This file provides comprehensive, self-contained instructions for coding agents 
 ---
 
 ## 1. Project Mission & Core Principles
+- **100% Native Cross-Platform Execution (WSL2 is Strictly Optional):** VideoGen is a **100% pure Node.js engine** that runs directly on **Windows Native (PowerShell / CMD)**, **macOS (`darwin`)**, **Linux Native**, and **WSL2**. **Coding agents MUST NEVER force or ask Windows/macOS users to install WSL2.**
+  - **Windows Native (PowerShell / CMD):** Run `node videogen <command>` (or `videogen <command>` after `npm link`). `engine/config.js` and `engine/bridge.js` natively detect `process.platform === 'win32'`, resolve standard Windows paths without `wslpath`, and connect directly to Chrome on `127.0.0.1:9222` (or `9223`).
+  - **macOS (`darwin`) & Linux Native:** Run `./videogen <command>` or `node videogen <command>`. Connects directly to local Chrome on `127.0.0.1:9222`.
+  - **WSL2 (Optional):** Supported seamlessly via automatic `wslpath` translation and TCP bridge (`9223 -> 9222`).
 - **Universal Declarative Video Engine:** VideoGen is a generic, modular, parameter-driven video production engine. Engine source code, CLI commands, and templates contain **zero hardcoded series titles, episode scripts, character names, or private channel branding**. Any video format—regardless of genre, duration, or platform—is defined purely through declarative parameters in storyboard JSON.
 - **Zero API Cost Rule:** Leverages the user's existing Google AI Pro (Google Flow) and local neural models (VieNeu-TTS v3 Turbo) / ElevenLabs via Chrome DevTools Protocol (CDP). Never call paid external API endpoints.
 - **The 6-Dimensional Parameter Matrix:**
@@ -79,14 +83,17 @@ projects/VideoGen/
 
 ## 3. Standard Operating Procedures (SOP)
 
-### 3.1. Browser Bridge Connection
+### 3.1. Browser Bridge Connection (Cross-Platform)
 Before any browser automation, ensure the CDP bridge is alive:
 ```bash
+# macOS / Linux / WSL2:
 ./videogen bridge [status]
+
+# Windows Native (PowerShell / CMD):
+node videogen bridge [status]
 ```
-- Windows Chrome runs on remote debugging port `127.0.0.1:9222`.
-- Proxy forwards port `9222` to port `9223` restricted to loopback (`127.0.0.1`, `::1`) and WSL (`172.16.0.0/12`).
-- In WSL/Linux environments, ensure Chrome shortcut on Windows Desktop or `CHROME_SHORTCUT_PATH` is configured.
+- **Windows Native (`win32`) & macOS (`darwin`) & Linux Native:** Connects directly to Chrome on `127.0.0.1:9222` (or `127.0.0.1:9223`). If Chrome is already open with `--remote-debugging-port=9222`, `engine/bridge.js` detects it immediately.
+- **WSL2 (Optional):** Windows Chrome runs on `127.0.0.1:9222` and `engine/cdp_proxy.js` forwards port `9223 -> 9222` restricted to loopback (`127.0.0.1`, `::1`) and WSL (`172.16.0.0/12`). In WSL environments, ensure a Chrome shortcut on Windows Desktop or `CHROME_SHORTCUT_PATH` is configured.
 
 ### 3.2. Scriptwriting & Storyboard Standards
 
@@ -163,8 +170,9 @@ When generating voice via `./videogen voice <storyboard.json>` with `voice.provi
    - Warmth EQ at **250 Hz (+1.2 dB)** (adds chest resonance).
    - Presence clarity at **3500 Hz (+1.5 dB)** (crisp articulate voice).
    - High-shelf air at **10000 Hz (+2.0 dB)** (restores broadcast brilliance).
-4. **Windows FFmpeg UNC Pathing in WSL2:**
-   - In WSL2 environments where FFmpeg is linked to Windows `ffmpeg.exe`, all paths passed to `ffmpeg` and `ffprobe` must be converted to Windows UNC paths (`//wsl.localhost/Ubuntu-24.04/...`) via `config.toWinPath()`.
+4. **Cross-Platform FFmpeg Path Resolution (`config.toWinPath` & `to_win_path`):**
+   - **Windows Native (`win32`) & macOS (`darwin`) & Linux Native:** Returns normalized native OS file paths directly (`path.win32.normalize(abs)` on Windows) without calling `wslpath`.
+   - **WSL2 (when linked to Windows `ffmpeg.exe`):** Automatically converts paths to Windows UNC paths (`//wsl.localhost/...`) via `config.toWinPath()`.
 
 #### C. Anti-Voice Doubling Rule (Strict MD5 Hash Check)
 - **ElevenLabs History Latency Caveat:** ElevenLabs History API has a 2–5s indexing delay on newly generated audio. Fetching `/v1/history` immediately may return the audio of the *previous* shot, resulting in identical duplicate voice clips across consecutive shots.

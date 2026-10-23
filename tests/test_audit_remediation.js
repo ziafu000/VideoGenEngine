@@ -437,6 +437,38 @@ function testA14_PathContainmentAndEscaping() {
 }
 
 // -------------------------------------------------------------
+// A15: Native Windows (win32) and macOS (darwin) cross-platform support
+// -------------------------------------------------------------
+function testA15_CrossPlatformWin32AndDarwinSupport() {
+  console.log('Testing A15: Cross-platform win32 and darwin support...');
+  const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  const origWinHost = process.env.WIN_HOST;
+  delete process.env.WIN_HOST;
+
+  try {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    assert.strictEqual(config.getWslGuestIp(), '');
+    assert.strictEqual(config.getWinHost(), '127.0.0.1');
+    const ps = config.getPowerShellCmd();
+    assert.ok(ps === 'powershell.exe' || ps === 'pwsh.exe', `Expected powershell.exe or pwsh.exe on win32, got ${ps}`);
+    assert.ok(!ps.startsWith('/mnt/c/'));
+    const winP = config.toWinPath('/tmp/unique_win32_test_path.mp4');
+    assert.ok(typeof winP === 'string' && winP.length > 0);
+
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+    assert.strictEqual(config.getWslGuestIp(), '');
+    assert.strictEqual(config.getWinHost(), '127.0.0.1');
+    const macP = config.toWinPath('/tmp/unique_darwin_test_path.mp4');
+    assert.strictEqual(macP, '/tmp/unique_darwin_test_path.mp4');
+  } finally {
+    if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
+    if (origWinHost !== undefined) process.env.WIN_HOST = origWinHost;
+  }
+
+  console.log('  [PASS] A15: Native win32 and darwin cross-platform helpers verified.');
+}
+
+// -------------------------------------------------------------
 // Run all tests
 // -------------------------------------------------------------
 (async () => {
@@ -455,6 +487,7 @@ function testA14_PathContainmentAndEscaping() {
     await testA12_CdpClientBounds();
     testA13_ToWinPathCaching();
     testA14_PathContainmentAndEscaping();
+    testA15_CrossPlatformWin32AndDarwinSupport();
 
     console.log('\n============================================================');
     console.log('🎉 ALL A01 - A14 REGRESSION TESTS PASSED SUCCESSFULLY!');
