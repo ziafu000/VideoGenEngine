@@ -39,21 +39,33 @@ async function runDoctor() {
   }
 
   // 3. Environment & User Detection
-  console.log(`  [✓] Windows User: ${config.WIN_USER} (Auto-detected)`);
-  console.log(`  [✓] Host IP (WSL -> Win): ${config.WIN_HOST}`);
+  const platformLabel = process.platform === 'win32'
+    ? 'Windows Native (win32)'
+    : process.platform === 'darwin'
+      ? 'macOS (darwin)'
+      : (fs.existsSync('/mnt/c/Windows') || process.env.WSL_DISTRO_NAME ? 'Linux WSL2' : 'Linux Native');
+  console.log(`  [✓] Platform: ${platformLabel}`);
+  console.log(`  [✓] OS / Windows User: ${config.WIN_USER} (Auto-detected)`);
+  console.log(`  [✓] Host IP (CDP Target): ${config.WIN_HOST}`);
   console.log(`  [✓] Downloads Path: ${config.WIN_DOWNLOADS_DIR}`);
   if (fs.existsSync(config.WIN_DOWNLOADS_DIR)) {
     console.log(`      └─ Trạng thái: Tồn tại & có thể truy cập`);
   } else {
-    console.log(`      └─ [!] Cảnh báo: Thư mục chưa tồn tại hoặc WSL chưa mount /mnt/c`);
+    console.log(`      └─ [!] Cảnh báo: Thư mục Downloads chưa tồn tại (${config.WIN_DOWNLOADS_DIR})`);
   }
 
-  // 4. PowerShell / Windows Shell Check
-  const psCmd = config.getPowerShellCmd();
-  console.log(`  [✓] Windows Shell Executable: ${psCmd}`);
+  // 4. PowerShell / OS Shell Check
+  if (process.platform === 'darwin') {
+    console.log(`  [✓] System Shell: ${process.env.SHELL || '/bin/zsh'}`);
+  } else {
+    const psCmd = config.getPowerShellCmd();
+    console.log(`  [✓] Shell / PowerShell Executable: ${psCmd}`);
+  }
 
   // 5. Chrome DevTools Protocol Bridge Check
   try {
+    const bridge = require('./bridge');
+    await bridge.isBridgeRunning();
     const res = await fetch(`${config.CDP_URL}/json/version`, { signal: AbortSignal.timeout(2000) });
     if (res.ok) {
       const data = await res.json();

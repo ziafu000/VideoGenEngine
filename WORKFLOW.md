@@ -51,12 +51,21 @@ VideoGen supports three high-performance voice generation engines:
 
 ---
 
-## 2. Environment Setup & Browser Bridge
+## 2. Environment Setup & Browser Bridge (Cross-Platform)
 
-To bypass Cloudflare / Google bot protections, the system attaches to the user's authentic Windows Chrome browser via remote debugging.
+VideoGen is a **100% pure Node.js engine** that runs natively across **Windows Native (PowerShell / CMD)**, **Linux / WSL2**, and **macOS (`darwin`)** (WSL2 is strictly optional). To bypass Cloudflare / Google bot protections, the system attaches to the user's authentic Chrome browser via remote debugging.
 
-### 2.0. Prerequisites & Tooling Requirements
-- **Runtime:** Node.js v20+ (Node.js v24 recommended) & FFmpeg with `libass` and `freetype` support.
+### 2.0. Prerequisites & Tooling Requirements (3 Supported Environments)
+- **Runtime:** Node.js v20+ (Node.js v24 recommended) & FFmpeg with `libass` and `freetype` support:
+  1. **Windows Native (PowerShell / CMD — No WSL required):**
+     - Node.js v20+ + FFmpeg for Windows in `PATH` (`winget install Gyan.FFmpeg`) + Chrome on port `9222`.
+     - Execute CLI commands directly with `node videogen <command>` (or `videogen <command>` after `npm link`).
+  2. **Linux Native / WSL2:**
+     - Node.js v20+ + `sudo apt-get install -y ffmpeg` + Chrome bridge (`9222` or `9223`).
+     - Execute CLI commands with `./videogen <command>`.
+  3. **macOS (`darwin`):**
+     - Node.js v20+ + `brew install ffmpeg` + Google Chrome on port `9222`.
+     - Execute CLI commands with `./videogen <command>` or `node videogen <command>`.
 - **Recommended Visual Studio Tools (`lavish-axi` & `quota-axi`):**
   Install the official productivity toolchain globally via npm:
   ```bash
@@ -67,13 +76,16 @@ To bypass Cloudflare / Google bot protections, the system attaches to the user's
   - *Standalone Fallback:* Users without `lavish-axi` can seamlessly view and interact with the review board via the standalone browser fallback (`file://.../.lavish/director_board.html`).
 
 ### 2.1. Port Architecture
-- **Windows Chrome:** Launched with `--remote-debugging-port=9222` and profile at `C:\Users\<YourUser>\AppData\Local\Google\Chrome\AutomationProfile`.
-- **CDP Proxy (`engine/cdp_proxy.js`):** Node.js TCP bridge on Windows forwarding `0.0.0.0:9223` -> `127.0.0.1:9222`.
-- **WSL Client:** Accesses CDP at `http://$WIN_HOST:9223` using `chrome-devtools-axi` or `engine/cdp.js`.
+- **Windows Native / macOS / Linux Native:** Connects directly to local Chrome launched with `--remote-debugging-port=9222` (`http://127.0.0.1:9222` or `http://127.0.0.1:9223`).
+- **WSL2 (Optional):** Windows Chrome runs on `127.0.0.1:9222`, and `engine/cdp_proxy.js` forwards `9223 -> 9222` so the WSL client accesses CDP at `http://$WIN_HOST:9223`.
 
 ### 2.2. Starting the Bridge
 ```bash
+# macOS / Linux / WSL2:
 ./videogen bridge
+
+# Windows Native (PowerShell / CMD):
+node videogen bridge
 ```
 Runs automatically at session start or whenever a browser disconnect is detected.
 

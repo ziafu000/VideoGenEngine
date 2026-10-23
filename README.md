@@ -183,15 +183,31 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
 
 ---
 
-## 🚀 Quick Start (3 Minutes)
+## 🚀 Quick Start (3 Minutes — Native Windows, macOS, Linux & WSL2)
 
-### 1. Prerequisites
-- **OS:** Linux or Windows with WSL2 (Ubuntu 22.04 / 24.04).
-- **Node.js:** v20+ (Node.js v24 recommended for native WebSocket/fetch).
-- **FFmpeg:** Installed with `libass` and `freetype` support:
-  ```bash
-  sudo apt-get update && sudo apt-get install -y ffmpeg
-  ```
+> 💡 **100% Pure Node.js Cross-Platform Engine:** VideoGen runs directly on **Windows Native (PowerShell / CMD)**, **macOS**, **Linux Native**, and **WSL2**. **WSL2 is completely optional** — Windows and macOS users do NOT need to install WSL2!
+
+### 1. Prerequisites (By Operating System)
+- **Node.js:** v20+ (Node.js v22/v24 recommended for native WebSocket/fetch).
+- **FFmpeg & Chrome Setup by Environment:**
+  1. **🪟 Windows Native (PowerShell / CMD — No WSL required):**
+     - Install Node.js v20+ and FFmpeg for Windows (ensure `ffmpeg` and `ffprobe` are in your Windows `PATH`, e.g., `winget install Gyan.FFmpeg`).
+     - Google Chrome installed with remote debugging on port `9222` (or `9223`).
+     - Run commands via `node videogen <command>` (or `videogen <command>` after `npm link`).
+  2. **🐧 Linux Native / WSL2 (Ubuntu 22.04 / 24.04):**
+     - Install FFmpeg with `libass` and `freetype` support:
+       ```bash
+       sudo apt-get update && sudo apt-get install -y ffmpeg
+       ```
+     - Google Chrome (local on Linux or bridged from Windows host on WSL2).
+     - Run commands via `./videogen <command>`.
+  3. **🍎 macOS (Darwin — Apple Silicon & Intel):**
+     - Install FFmpeg via Homebrew:
+       ```bash
+       brew install ffmpeg
+       ```
+     - Google Chrome installed in `/Applications/Google Chrome.app` (remote debugging port `9222`).
+     - Run commands via `./videogen <command>` or `node videogen <command>`.
 - **Recommended Tools (`lavish-axi` & `quota-axi`):**
   Install the official Axi productivity developer tools globally:
   ```bash
@@ -199,7 +215,7 @@ Building automated AI video pipelines traditionally relies on an expensive, frag
   ```
   - `lavish-axi`: Visual Web UI studio for interactive storyboard reviews, prompt inspection, and shot-by-shot debugging. (Users without `lavish-axi` can use the standalone HTML fallback via their system browser).
   - `quota-axi`: Automated API and account quota preflight telemetry.
-- **Google Chrome (Windows or Linux):** Logged into Google AI Pro (Google Flow) and ElevenLabs (if using ElevenLabs mode).
+- **Google Chrome (Windows, macOS, or Linux):** Logged into Google AI Pro (Google Flow) and ElevenLabs (if using ElevenLabs mode).
 - **Python 3.10+ (Recommended for Local Neural TTS):**
   ```bash
   pip install vieneu
@@ -213,7 +229,7 @@ git clone https://github.com/ziafu000/VideoGenEngine.git VideoGen
 cd VideoGen
 chmod +x ./videogen
 
-# Optional: Link globally so you can run 'videogen' from any directory
+# Optional: Link globally so you can run 'videogen' from any directory (works on Windows PowerShell, macOS & Linux)
 npm link
 
 # Optional: Copy environment configuration
@@ -221,23 +237,35 @@ cp .env.example .env
 ```
 
 ### 3. Launch Chrome Remote Debugging Bridge
-Start Windows Chrome with remote debugging enabled on port `9222`:
+Start Chrome with remote debugging enabled on port `9222`:
 
-**Option A — Automatic Launch via VideoGen:**
+**Option A — Automatic Launch via VideoGen (All Platforms):**
 ```bash
+# macOS / Linux / WSL2:
 ./videogen bridge
-```
-*(If the bridge is offline, VideoGen automatically triggers Windows Chrome and the CDP proxy on port 9223!)*
 
-**Option B — Manual Launch from Windows PowerShell:**
+# Windows Native (PowerShell / CMD):
+node videogen bridge
+```
+*(If Chrome is not yet running on port 9222/9223, VideoGen automatically launches Chrome with the automation profile!)*
+
+**Option B — Manual Launch by OS:**
 ```powershell
-# In Windows PowerShell:
+# Windows Native PowerShell:
 & "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="$env:LOCALAPPDATA\Google\Chrome\AutomationProfile"
 ```
-
-Verify connectivity from WSL/Linux terminal:
 ```bash
+# macOS Terminal:
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --remote-debugging-port=9222 --user-data-dir="$HOME/Library/Application Support/Google/Chrome/AutomationProfile"
+```
+
+Verify connectivity:
+```bash
+# macOS / Linux / WSL2:
 ./videogen bridge status
+
+# Windows Native:
+node videogen bridge status
 ```
 *Output:*
 ```

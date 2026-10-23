@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -13,12 +14,15 @@ os.environ["TORCH_HOME"] = os.path.join(CACHE_DIR, "torch")
 import torch
 
 def to_win_path(p: Path) -> str:
-    """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary."""
+    """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary, or return direct path on native OS."""
+    resolved = str(p.resolve())
+    if sys.platform == "win32" or sys.platform == "darwin" or not shutil.which("wslpath"):
+        return os.path.normpath(resolved)
     try:
-        res = subprocess.run(["wslpath", "-w", str(p.resolve())], capture_output=True, text=True, check=True)
+        res = subprocess.run(["wslpath", "-w", resolved], capture_output=True, text=True, check=True)
         return res.stdout.strip()
     except Exception:
-        return str(p.resolve())
+        return resolved
 
 def get_engine():
     from vieneu import Vieneu
