@@ -310,13 +310,14 @@ async function waitForRender(timeoutSec = 240, options = {}) {
         if (!tile0) return { hasPending: false, isReady: false };
 
         const text = tile0.innerText || '';
-        const m = text.match(/\\d+%/);
+        const m = text.match(/\\b(\\d{1,3})%/);
+        const pctNum = m ? parseInt(m[1], 10) : null;
         const realVideo = Array.from(tile0.querySelectorAll('video')).find(v => !v.closest('flow-pending-tile') && v.src && v.src.includes('flow-content.google'));
         const hasVideo = !!realVideo;
         const hasThumb = !!tile0.querySelector('img.thumbnail');
-        const hasPending = document.querySelectorAll('flow-pending-tile').length > 0 || tiles.some(t => /\\d+%/.test(t.innerText || ''));
+        const tile0Pending = tile0.querySelectorAll('flow-pending-tile').length > 0;
 
-        const isActivelyPending = hasPending || !!m;
+        const isActivelyPending = (tile0Pending || (pctNum !== null && pctNum < 100)) && !(hasVideo && pctNum === 100);
         const isReady = (hasVideo || hasThumb) && !isActivelyPending;
 
         const err = tile0.querySelector('.error-message, [role="alert"]');
