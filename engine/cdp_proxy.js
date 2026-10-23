@@ -50,8 +50,12 @@ function isAllowedClientIp(remoteAddress) {
  */
 function getBindAddresses() {
   if (process.env.CDP_PROXY_BIND) {
-    const custom = process.env.CDP_PROXY_BIND.trim();
-    if (isAllowedClientIp(custom)) return [custom];
+    const customList = process.env.CDP_PROXY_BIND.trim().split(/[,;\s]+/).map(h => h.trim()).filter(Boolean);
+    const valid = customList.filter(h => isAllowedClientIp(h));
+    if (valid.length > 0) {
+      if (!valid.includes('127.0.0.1')) valid.unshift('127.0.0.1');
+      return valid;
+    }
   }
 
   const hosts = new Set(['127.0.0.1']);

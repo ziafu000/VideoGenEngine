@@ -593,6 +593,7 @@ function getShotVoiceoverText(s, index, shots, allowNonAsciiFallback = true) {
     return (s.voice && s.voice.text)
       || (s.audio && s.audio.voiceover)
       || (s.audio && s.audio.sub_text)
+      || s.text
       || s.subtitles
       || null;
   }
@@ -601,6 +602,7 @@ function getShotVoiceoverText(s, index, shots, allowNonAsciiFallback = true) {
     || (s.audio && s.audio.sub_text)
     || s.vietnamese_subtitles
     || (s.audio && s.audio.voiceover)
+    || s.text
     || s.subtitles
     || null;
 }
@@ -683,29 +685,36 @@ function buildMasterClauseAudio(storyboardData, outDir, sbPath = null) {
     if (activeAudio && fs.statSync(activeAudio).size > 0) {
       clauseAudioFiles.push(activeAudio);
 
-      // Proportionally synchronize sub-cut durations to actual measured clause audio duration
+      // Proportionally synchronize sub-cut durations to actual measured clause audio duration (only for multi-cut or static cut explainers, preserving fixed video clip durations like 10s Shorts)
+      const isFixedVideoTimeline = Boolean(
+        (storyboardData.timeline && storyboardData.timeline.duration_per_shot_sec >= 8) ||
+        (group.subShots.length === 1 && group.primaryShot.flow_prompt && group.primaryShot.duration_sec >= 8)
+      );
       const measuredDur = probeAudioDuration(activeAudio);
       if (measuredDur > 0 && group.subShots.length > 0) {
-        const currentTotal = group.subShots.reduce((sum, sub) => sum + (Number(sub.duration) || 1.0), 0);
-        if (currentTotal > 0 && Math.abs(currentTotal - measuredDur) > 0.05) {
-          let allocated = 0;
-          for (let k = 0; k < group.subShots.length; k++) {
-            const sub = group.subShots[k];
-            if (k === group.subShots.length - 1) {
-              sub.duration = Math.max(0.2, Math.round((measuredDur - allocated) * 100) / 100);
-            } else {
-              const ratio = (Number(sub.duration) || 1.0) / currentTotal;
-              const scaled = Math.max(0.2, Math.round(measuredDur * ratio * 100) / 100);
-              sub.duration = scaled;
-              allocated += scaled;
+        if (!isFixedVideoTimeline) {
+          const currentTotal = group.subShots.reduce((sum, sub) => sum + (Number(sub.duration) || 1.0), 0);
+          if (currentTotal > 0 && Math.abs(currentTotal - measuredDur) > 0.05) {
+            let allocated = 0;
+            for (let k = 0; k < group.subShots.length; k++) {
+              const sub = group.subShots[k];
+              if (k === group.subShots.length - 1) {
+                sub.duration = Math.max(0.2, Math.round((measuredDur - allocated) * 100) / 100);
+              } else {
+                const ratio = (Number(sub.duration) || 1.0) / currentTotal;
+                const scaled = Math.max(0.2, Math.round(measuredDur * ratio * 100) / 100);
+                sub.duration = scaled;
+                allocated += scaled;
+              }
             }
+            durationsUpdated = true;
           }
-          durationsUpdated = true;
         }
         for (let k = 0; k < group.subShots.length; k++) {
           const sub = group.subShots[k];
           if (sub.audio) {
             sub.audio.file = activeAudio;
+            sub.audio.voice_duration = measuredDur;
           }
         }
       }
@@ -775,8 +784,12 @@ async function generateAllVoicesVieNeu(storyboardData, targetShotIds = null, sbP
   }
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
-  // Resolve voice profile name from storyboard or default
+  // Resolve voice profile name and settings from storyboard or default
   const profileName = storyboardData.voice_profile || (storyboardData.voice && storyboardData.voice.profile) || 'default';
+  const voiceName = (storyboardData.voice && storyboardData.voice.voice) || null;
+  const voiceTemp = (storyboardData.voice && storyboardData.voice.settings && typeof storyboardData.voice.settings.temperature === 'number')
+    ? storyboardData.voice.settings.temperature
+    : ((storyboardData.voice && typeof storyboardData.voice.temperature === 'number') ? storyboardData.voice.temperature : null);
 
   console.log(`\n=== BẮT ĐẦU TỔNG HỢP VOICE VIENEU (48 kHz): ${episodeName.toUpperCase()} ===`);
   console.log(`Profile: ${profileName} | Thư mục đích: ${outDir}`);
@@ -784,6 +797,7 @@ async function generateAllVoicesVieNeu(storyboardData, targetShotIds = null, sbP
   const pythonBin = config.VIENEU_PYTHON || 'python3';
   const runnerScript = path.join(__dirname, 'vieneu_engine.py');
 
+  const pendingItems = [];
   for (let i = 0; i < shots.length; i++) {
     const s = shots[i];
     const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
@@ -817,22 +831,41 @@ async function generateAllVoicesVieNeu(storyboardData, targetShotIds = null, sbP
       continue;
     }
 
-    console.log(`\n>>> [${i + 1}/${shots.length}] Tạo voice VieNeu cho ${shotId} (Profile: ${profileName})...`);
-    console.log(`    Text: "${voiceoverText.slice(0, 80)}${voiceoverText.length > 80 ? '...' : ''}"`);
+    pendingItems.push({
+      shotId,
+      clauseFile,
+      text: voiceoverText,
+      output: destFile,
+      voice: (s.voice && s.voice.voice) || voiceName || undefined,
+      temperature: voiceTemp !== null ? voiceTemp : undefined
+    });
+  }
 
+  if (pendingItems.length > 0) {
+    const batchJsonPath = path.join(outDir, `vieneu_batch_${process.pid}_${Date.now()}.json`);
+    fs.writeFileSync(batchJsonPath, JSON.stringify(pendingItems, null, 2), 'utf8');
+    console.log(`\n>>> Tổng hợp hàng loạt ${pendingItems.length} phân cảnh qua VieNeu-TTS v3 Turbo (1-Pass CUDA)...`);
+    const pyArgs = [
+      runnerScript,
+      '--batch-json', batchJsonPath,
+      '--profile', profileName
+    ];
+    if (voiceName) pyArgs.push('--voice', voiceName);
+    if (voiceTemp !== null) pyArgs.push('--temperature', String(voiceTemp));
     try {
-      execFileSync(pythonBin, [
-        runnerScript,
-        '--text', voiceoverText,
-        '--output', destFile,
-        '--profile', profileName
-      ], { stdio: 'inherit' });
-      if (clauseFile && fs.existsSync(destFile)) {
-        try { fs.copyFileSync(destFile, clauseFile); } catch {}
+      execFileSync(pythonBin, pyArgs, { stdio: 'inherit' });
+      for (const item of pendingItems) {
+        if (item.clauseFile && fs.existsSync(item.output)) {
+          try { fs.copyFileSync(item.output, item.clauseFile); } catch {}
+        }
       }
-      console.log(`    [✓] Hoàn thành voice clip: ${destFile}`);
     } catch (err) {
-      console.error(`    [!] Lỗi khi sinh voice cho ${shotId}:`, err.message);
+      console.error(`    [!] Lỗi khi sinh voice batch VieNeu:`, err.message);
+      throw err;
+    } finally {
+      try {
+        if (fs.existsSync(batchJsonPath)) fs.unlinkSync(batchJsonPath);
+      } catch {}
     }
   }
 

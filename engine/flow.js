@@ -12,6 +12,7 @@ async function getFlowClient(existingCdp = null) {
     return existingCdp;
   }
   const client = await getClientForPage('flow.google.com');
+  await client.send('Page.bringToFront').catch(() => {});
   const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
   if (client._downloadBehaviorDir !== winDownloads) {
     try {
@@ -101,16 +102,26 @@ async function getStatus(options = {}) {
 async function clearCharacters(options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
-    return await cdp.evaluate(`(() => {
-      // Dismiss any failed generation cards
-      const delBtns = Array.from(document.querySelectorAll('button')).filter(b => b.innerText && (b.innerText.includes('delete_forever') || b.innerText.includes('Xóa') || b.getAttribute('aria-label') === 'Xóa'));
-      delBtns.forEach(b => b.click());
+    return await cdp.evaluate(`(async () => {
+      // Dismiss any failed generation cards only (never delete valid tiles or assets)
+      const errTiles = Array.from(document.querySelectorAll('flow-error-tile'));
+      errTiles.forEach(t => {
+        const delBtns = Array.from(t.querySelectorAll('button')).filter(b => {
+          const txt = (b.innerText || b.textContent || '').trim();
+          const aria = (b.getAttribute('aria-label') || '').trim();
+          return txt.includes('delete_forever') || txt.includes('Xóa') || txt.includes('Xoá') || aria === 'Xóa' || aria === 'Xoá';
+        });
+        delBtns.forEach(b => b.click());
+      });
+      if (errTiles.length > 0) {
+        await new Promise(r => setTimeout(r, 600));
+      }
 
       // Dismiss any lingering snackbars / toasts
       const snackDismiss = Array.from(document.querySelectorAll('snack-bar-container button, .mat-mdc-snack-bar-container button')).find(b => b.innerText && (b.innerText.includes('Đóng') || b.innerText.includes('Close')));
       if (snackDismiss) snackDismiss.click();
 
-      const cancelButtons = Array.from(document.querySelectorAll('flow-ingredient-bar button, .ingredient-bar button, flow-ingredient-chip button, flow-ingredient-chip mat-icon')).filter(b => 
+      const cancelButtons = Array.from(document.querySelectorAll('flow-ingredient-bar button, .ingredient-bar button, flow-ingredient-chip button, flow-ingredient-chip mat-icon, flow-character-ingredient-chip button, flow-character-ingredient-chip mat-icon')).filter(b => 
         b.innerText && (b.innerText.includes('cancel') || b.innerText.includes('close'))
       );
       cancelButtons.forEach(b => b.click());
@@ -140,29 +151,50 @@ async function addCharacter(charName, options = {}) {
       if (!pm) return { error: 'Không tìm thấy ô nhập prompt .ProseMirror' };
 
       pm.focus();
+      const p = pm.querySelector('p') || pm;
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+
+      if (pm.querySelectorAll('.mention-chip').length > 0 && !p.innerText.endsWith(' ')) {
+        document.execCommand('insertText', false, ' ');
+      }
       document.execCommand('insertText', false, '@');
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 750));
 
       // Click tab 'Nhân vật' if available in overlay
       const navItems = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-list-item, .cdk-overlay-pane button, .cdk-overlay-pane span'));
       const charTab = navItems.find(i => (i.innerText || '').includes('Nhân vật'));
       if (charTab) {
         charTab.click();
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, 750));
       }
 
-      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item'));
-      const target = options.find(o => (o.innerText || '').toLowerCase().includes(${JSON.stringify(charName.toLowerCase())}));
+      const cleanName = ${JSON.stringify(charName.replace(/^@/, '').toLowerCase())};
+      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
+      const target = options.find(o => (o.innerText || '').trim().toLowerCase() === cleanName) ||
+                     options.find(o => (o.innerText || '').toLowerCase().includes(cleanName));
       if (!target) return { error: 'Không tìm thấy nhân vật ' + ${JSON.stringify(charName)} + ' trong menu' };
       target.click();
 
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise(r => setTimeout(r, 650));
       const insertBtn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Thêm vào câu lệnh'));
       if (insertBtn) insertBtn.click();
 
-      await new Promise(r => setTimeout(r, 400));
-      const chips = Array.from(document.querySelectorAll('.chip-container, flow-character-ingredient-chip, flow-ingredient-chip, .mention-chip')).map(c => c.innerText.trim());
-      return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips };
+      // Wait for overlay to close and mention-chip to settle in live ProseMirror (up to 2.0s)
+      for (let w = 0; w < 14; w++) {
+        await new Promise(r => setTimeout(r, 150));
+        const mChips = Array.from(document.querySelectorAll('.ProseMirror .mention-chip')).map(c => c.innerText.trim().toLowerCase());
+        if (mChips.includes(cleanName)) break;
+      }
+      await new Promise(r => setTimeout(r, 250));
+
+      const chips = Array.from(document.querySelectorAll('.ProseMirror .mention-chip')).map(c => c.innerText.trim());
+      const ingCount = document.querySelectorAll('flow-character-ingredient-chip').length;
+      return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips, ingCount };
     })()`);
     return res;
   } finally {
@@ -278,13 +310,15 @@ async function waitForRender(timeoutSec = 240, options = {}) {
         if (!tile0) return { hasPending: false, isReady: false };
 
         const text = tile0.innerText || '';
-        const m = text.match(/\\d+%/);
-        const hasVideo = !!tile0.querySelector('video');
+        const m = text.match(/\\b(\\d{1,3})%/);
+        const pctNum = m ? parseInt(m[1], 10) : null;
+        const realVideo = Array.from(tile0.querySelectorAll('video')).find(v => !v.closest('flow-pending-tile') && v.src && v.src.includes('flow-content.google'));
+        const hasVideo = !!realVideo;
         const hasThumb = !!tile0.querySelector('img.thumbnail');
-        const hasPending = !!tile0.querySelector('flow-pending-tile');
+        const tile0Pending = tile0.querySelectorAll('flow-pending-tile').length > 0;
 
-        const isActivelyPending = (hasPending || !!m) && !hasVideo;
-        const isReady = (hasVideo || (hasThumb && !hasPending)) && !isActivelyPending;
+        const isActivelyPending = (tile0Pending || (pctNum !== null && pctNum < 100)) && !(hasVideo && pctNum === 100);
+        const isReady = (hasVideo || hasThumb) && !isActivelyPending;
 
         const err = tile0.querySelector('.error-message, [role="alert"]');
         const refusal = tile0.innerText && (tile0.innerText.includes('Không thành công') || tile0.innerText.includes('vi phạm chính sách') || tile0.innerText.includes('policy') || tile0.innerText.includes('violate'))
@@ -361,21 +395,36 @@ async function downloadLatestDirect(targetFile, options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
     let videoSrc = null;
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 12; i++) {
+      const tileRect = await cdp.evaluate(`(() => {
+        const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+        const tile = tiles[0];
+        if (!tile || tile.querySelector('flow-pending-tile')) return null;
+        tile.scrollIntoView({ block: 'center' });
+        const r = tile.getBoundingClientRect();
+        return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+      })()`);
+      if (tileRect) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.max(10, tileRect.x - 15), y: Math.max(10, tileRect.y - 15) });
+        await sleep(100);
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tileRect.x, y: tileRect.y });
+        await sleep(500);
+      }
+
       videoSrc = await cdp.evaluate(`(() => {
         const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
-        const tile = tiles.find(t => !t.querySelector('flow-pending-tile')) || tiles[0];
-        if (!tile) return null;
+        const tile = tiles[0];
+        if (!tile || tile.querySelector('flow-pending-tile')) return null;
         tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
         tile.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
         const container = tile.querySelector('.container');
         if (container) container.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        const v = tile.querySelector('video');
-        return v && v.src && v.src.startsWith('http') ? v.src : null;
+        const v = Array.from(tile.querySelectorAll('video')).find(el => !el.closest('flow-pending-tile') && el.src && (el.src.includes('flow-content.google') || (!el.src.includes('/asb/') && el.src.startsWith('http'))));
+        return v ? v.src : null;
       })()`);
 
       if (videoSrc) break;
-      await sleep(800);
+      await sleep(700);
     }
 
     if (!videoSrc) {
@@ -488,6 +537,18 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
     await sleep(400);
 
     // 2. Click Tải xuống -> 1080p
+    const tileRect = await cdp.evaluate(`(() => {
+      const tile = document.querySelector('flow-video-tile');
+      if (!tile) return null;
+      tile.scrollIntoView({ block: 'center' });
+      const r = tile.getBoundingClientRect();
+      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
+    })()`);
+    if (tileRect) {
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tileRect.x, y: tileRect.y });
+      await sleep(450);
+    }
+
     const triggerRes = await cdp.evaluate(`(async () => {
       const tile = document.querySelector('flow-video-tile');
       if (!tile) return { error: 'Không tìm thấy thẻ video Flow' };
@@ -497,16 +558,17 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
 
       let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
       if (!dlBtn) {
-        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác');
+        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
         if (moreBtn) {
           moreBtn.click();
-          await new Promise(r => setTimeout(r, 400));
+          await new Promise(r => setTimeout(r, 500));
           const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
           dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
         }
       }
       if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trên thẻ video' };
 
+      dlBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
       dlBtn.click();
       await new Promise(r => setTimeout(r, 600));
 
@@ -740,9 +802,14 @@ async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', mode
   const settingsKey = `video:${ratio}:${duration}:${model}`;
   try {
     const triggerExists = await cdp.evaluate(`(() => {
-      return !!document.querySelector('.settings-trigger-button, button.prompt-settings-trigger');
+      if (document.querySelector('.settings-trigger-button, button.prompt-settings-trigger')) return true;
+      const createBtn = Array.from(document.querySelectorAll('button, a')).find(b => b.innerText && (b.innerText.includes('Start Creating') || b.innerText.includes('Dự án mới') || b.innerText.includes('New Project')));
+      if (createBtn) { createBtn.click(); return 'clicked_create'; }
+      return false;
     })()`);
-    if (!triggerExists) {
+    if (triggerExists === 'clicked_create') {
+      await sleep(3500);
+    } else if (!triggerExists) {
       throw new Error('[Flow Preflight Error] Không tìm thấy settings trigger button trên giao diện Flow (DOM rỗng hoặc chưa tải xong).');
     }
 
@@ -778,28 +845,69 @@ async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', mode
     }
     await sleep(600);
 
-    // Switch to Video mode
-    await cdp.evaluate(`(() => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+    // Switch to Video mode via native mouse click or fallback
+    const vidCoords = await cdp.evaluate(`(() => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
       const vidBtn = btns.find(b => (b.innerText || '').includes('Video') || (b.innerText || '').includes('videocam'));
-      if (vidBtn && !vidBtn.className.includes('checked') && !vidBtn.className.includes('selected')) vidBtn.click();
+      if (!vidBtn) return null;
+      const r = vidBtn.getBoundingClientRect();
+      return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
     })()`);
+    if (vidCoords && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(vidCoords.x, vidCoords.y);
+    } else {
+      await cdp.evaluate(`(() => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const vidBtn = btns.find(b => (b.innerText || '').includes('Video') || (b.innerText || '').includes('videocam'));
+        if (vidBtn) vidBtn.click();
+      })()`);
+    }
     await sleep(500);
 
     // Select Ratio (9:16 or 16:9)
-    await cdp.evaluate(`((targetRatio) => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
+    const ratioCoords = await cdp.evaluate(`((targetRatio) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
       const rBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
-      if (rBtn) rBtn.click();
+      if (!rBtn) return null;
+      const r = rBtn.getBoundingClientRect();
+      return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
     })(${JSON.stringify(ratio)})`);
+    if (ratioCoords && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(ratioCoords.x, ratioCoords.y);
+    } else {
+      await cdp.evaluate(`((targetRatio) => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const rBtn = btns.find(b => (b.innerText || '').includes(targetRatio));
+        if (rBtn) rBtn.click();
+      })(${JSON.stringify(ratio)})`);
+    }
     await sleep(500);
 
-    // Select Duration
-    await cdp.evaluate(`((targetDuration) => {
-      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane mat-button-toggle, .cdk-overlay-pane button, [role="radio"]'));
-      const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration));
-      if (dBtn) dBtn.click();
+    // Select Duration & Count x1
+    const durCoords = await cdp.evaluate(`((targetDuration) => {
+      const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+      const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration) || (b.innerText || '').includes('10s'));
+      const x1Btn = btns.find(b => (b.innerText || '').trim() === 'x1');
+      const getPt = (el) => {
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return (r.width > 0 && r.height > 0) ? { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) } : null;
+      };
+      return { dPt: getPt(dBtn), x1Pt: getPt(x1Btn) };
     })(${JSON.stringify(duration)})`);
+    if (durCoords && durCoords.dPt && typeof cdp.clickMouse === 'function') {
+      await cdp.clickMouse(durCoords.dPt.x, durCoords.dPt.y);
+      await sleep(300);
+      if (durCoords.x1Pt) await cdp.clickMouse(durCoords.x1Pt.x, durCoords.x1Pt.y);
+    } else {
+      await cdp.evaluate(`((targetDuration) => {
+        const btns = Array.from(document.querySelectorAll('.cdk-overlay-pane button, .cdk-overlay-pane [role="radio"]'));
+        const dBtn = btns.find(b => (b.innerText || '').includes(targetDuration) || (b.innerText || '').includes('10s'));
+        if (dBtn) dBtn.click();
+        const x1Btn = btns.find(b => (b.innerText || '').trim() === 'x1');
+        if (x1Btn) x1Btn.click();
+      })(${JSON.stringify(duration)})`);
+    }
     await sleep(500);
 
     // Close overlay
@@ -1030,7 +1138,7 @@ async function renderStoryboard(sb, options = {}) {
   } = options;
 
   const baseName = sbPath ? path.basename(sbPath, '.json') : 'storyboard';
-  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
+  const rawEpisodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || sb.project_name || baseName;
   const episodeName = config.sanitizeIdentifier(rawEpisodeName, 'storyboard');
   const epRenderDir = path.resolve(config.RENDERS_DIR, episodeName);
   if (!config.isPathContained(config.RENDERS_DIR, epRenderDir)) {
@@ -1112,9 +1220,6 @@ async function renderStoryboard(sb, options = {}) {
           await downloadLatest(outFile, { resolution, cdp: sharedCdp });
           try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
           await pruneFlowDomMemory(sharedCdp);
-          try {
-            fs.copyFileSync(outFile, path.join(config.RENDERS_DIR, `${shotId}.mp4`));
-          } catch {}
         }
       } catch (err) {
         console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);

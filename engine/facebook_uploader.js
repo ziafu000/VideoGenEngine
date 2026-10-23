@@ -94,7 +94,7 @@ function buildCaption(storyboard, customCaption = '') {
     ? `${storyboard.series_title} - ${storyboard.episode_title || ''}`.trim() 
     : (storyboard.episode_title || storyboard.project?.title || storyboard.title || ''));
 
-  const description = fb.description || yt.description || storyboard.project?.series || '';
+  const description = fb.description || yt.description || storyboard.description || storyboard.project?.series || '';
   const rawHashtags = fb.hashtags || (storyboard.hashtags) || ['Reels', 'Shorts', 'ViralVideo', 'Trending'];
   const hashtags = Array.isArray(rawHashtags)
     ? rawHashtags.map(h => (typeof h === 'string' && h.startsWith('#')) ? h : `#${h}`)
@@ -149,6 +149,12 @@ async function getFacebookTab() {
     }
     fbTab = await res.json();
     await sleep(4000);
+  }
+
+  if (fbTab && fbTab.id) {
+    try {
+      await fetch(`${config.CDP_URL}/json/activate/${fbTab.id}`);
+    } catch {}
   }
 
   return fbTab;
@@ -366,6 +372,8 @@ async function uploadReel({
   await client.ready;
 
   try {
+    await client.send('Page.bringToFront').catch(() => {});
+    await client.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
     await client.enableDialogHandling();
     await client.dismissModals();
 
@@ -484,11 +492,17 @@ async function uploadReel({
     let captionInserted = false;
 
     for (let cAttempt = 0; cAttempt < 15; cAttempt++) {
+      // Ép Chromium tính toán layout thực tế (tránh w=0 khi cửa sổ nền bị throttle)
+      await client.send('Page.bringToFront').catch(() => {});
+      await client.send('Emulation.setFocusEmulationEnabled', { enabled: true }).catch(() => {});
+      await client.send('Page.captureScreenshot', { format: 'jpeg', quality: 10 }).catch(() => {});
+
       // Tìm tọa độ click của ô editor
       const editorPoint = await client.evaluate(`(() => {
         const editor = document.querySelector('div.notranslate._5rpu') || document.querySelector('[role="textbox"]');
         if (!editor) return null;
         const r = editor.getBoundingClientRect();
+        if (r.width === 0) return null;
         return { x: r.x + 20, y: r.y + 15 };
       })()`);
 
@@ -550,6 +564,10 @@ async function uploadReel({
       await sleep(1000);
     }
 
+    if (!captionInserted) {
+      throw new Error('Không thể điền và xác nhận caption tại Bước 1 trên Meta Business Suite Reels Composer.');
+    }
+
     // 6. Điều hướng qua các bước: Bước 1 (Tạo) -> Bước 2 (Chỉnh sửa) -> Bước 3 (Chia sẻ)
     console.log(`[-] [5/6] Điều hướng qua các bước kiểm tra sang bước Chia sẻ / Xuất bản...`);
     for (let step = 1; step <= 2; step++) {
@@ -576,35 +594,6 @@ async function uploadReel({
 
     await sleep(2500);
     await dismissObstacles(client);
-
-    // Nếu ô caption chưa điền được ở Bước 1, điền ở Bước 3 (giao diện Facebook Reels thông thường)
-    if (!captionInserted) {
-      console.log(`    [-] Thử điền caption tại Bước 3...`);
-      const editorFocusedStep3 = await client.evaluate(`(() => {
-        const editor = document.querySelector('[role="textbox"]');
-        if (editor) {
-          editor.focus();
-          editor.click();
-          return true;
-        }
-        return false;
-      })()`);
-
-      if (editorFocusedStep3) {
-        const captionLines = finalCaption.split('\n');
-        for (let li = 0; li < captionLines.length; li++) {
-          if (captionLines[li].length > 0) {
-            await client.send('Input.insertText', { text: captionLines[li] });
-          }
-          if (li < captionLines.length - 1) {
-            await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-            await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-          }
-          await sleep(60);
-        }
-        console.log(`    [✓] Đã điền caption và hashtags tại Bước 3!`);
-      }
-    }
 
     // 7. Thực hiện Đăng (Publish), Lên lịch (Schedule) hoặc Lưu bản nháp (Draft)
     console.log(`[-] [6/6] Thiết lập chế độ xuất bản: ${postureLabel}...`);
@@ -637,88 +626,65 @@ async function uploadReel({
       })()`);
       await sleep(1500);
 
-      // Chọn ngày: Thay thế text trực tiếp vào ô input ngày kết hợp đồng bộ React Fiber (chuẩn và ổn định theo góp ý của Captain)
-      const targetDay = parseInt(schedData.day, 10);
-      let dateSetSuccess = false;
-
-      for (let dAttempt = 0; dAttempt < 3; dAttempt++) {
-        // 1. Focus và select toàn bộ text trong ô ngày
-        const focused = await client.evaluate(`(() => {
+      // Thiết lập Ngày & Giờ nguyên tử (atomic) thông qua GeoDateTimeInput.onChange
+      let dateTimeSetSuccess = false;
+      for (let dtAttempt = 0; dtAttempt < 5; dtAttempt++) {
+        const dtRes = await client.evaluate(`((sData) => {
           const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
             Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.getAttribute('aria-label') || '').includes('ngày'));
-          if (dateInput) {
-            dateInput.focus();
-            dateInput.select();
-            return true;
+          if (!dateInput) return { ok: false };
+          const fKey = Object.keys(dateInput).find(k => k.startsWith('__reactFiber'));
+          let f = fKey ? dateInput[fKey] : null;
+          while (f) {
+            const name = typeof f.type === 'string' ? f.type : (f.type?.displayName || f.type?.name || '');
+            if (name === 'GeoDateTimeInput' && f.memoizedProps?.value && typeof f.memoizedProps.onChange === 'function') {
+              const nextV = f.memoizedProps.value.set({
+                year: parseInt(sData.year, 10),
+                month: parseInt(sData.month, 10),
+                day: parseInt(sData.day, 10),
+                hour: parseInt(sData.hour, 10),
+                minute: parseInt(sData.min, 10),
+                second: 0
+              });
+              f.memoizedProps.onChange(nextV);
+              return { ok: true, nextV };
+            }
+            f = f.return;
           }
-          return false;
+          return { ok: false };
+        })(${JSON.stringify(schedData)})`);
+
+        await sleep(800);
+
+        const verifiedSchedDom = await client.evaluate(`(() => {
+          const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
+            Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.getAttribute('aria-label') || '').includes('ngày'));
+          const h = document.querySelector('input[aria-label*="giờ"], input[aria-label*="hour" i]');
+          const m = document.querySelector('input[aria-label*="phút"], input[aria-label*="minute" i]');
+          return {
+            date: dateInput ? dateInput.value : '',
+            hour: h ? parseInt(h.getAttribute('aria-valuenow'), 10) : null,
+            min: m ? parseInt(m.getAttribute('aria-valuenow'), 10) : null
+          };
         })()`);
 
-        if (focused) {
-          // 2. Kích hoạt đồng bộ trực tiếp vào React Fiber của GeoDatePicker
-          await client.evaluate(`((targetDate) => {
-            const parts = targetDate.split('/').map(x => parseInt(x, 10));
-            const day = parts[0], month = parts[1], year = parts[2];
-            const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
-              Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.getAttribute('aria-label') || '').includes('ngày'));
-            if (!dateInput) return;
-            const fKey = Object.keys(dateInput).find(k => k.startsWith('__reactFiber'));
-            let f = dateInput[fKey];
-            while (f) {
-              const name = typeof f.type === 'string' ? f.type : (f.type?.displayName || f.type?.name || '');
-              if (name === 'GeoDatePicker' && f.memoizedProps?.onChange) {
-                f.memoizedProps.onChange({ year, month, day });
-                break;
-              }
-              f = f.return;
-            }
-          })(${JSON.stringify(schedData.date)})`);
-          await sleep(300);
-
-          // 3. Nhập trực tiếp chuỗi ngày qua CDP Input.insertText + Enter để đồng bộ DOM
-          await client.send('Input.insertText', { text: schedData.date });
-          await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-          await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
-          await sleep(300);
-
-          // 4. Đồng bộ React property descriptor native setter + events (input, change, blur)
-          await client.evaluate(`((val) => {
-            const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
-              Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.getAttribute('aria-label') || '').includes('ngày'));
-            if (dateInput) {
-              const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-              if (setter) setter.call(dateInput, val);
-              dateInput.dispatchEvent(new Event('input', { bubbles: true }));
-              dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-              dateInput.dispatchEvent(new Event('blur', { bubbles: true }));
-            }
-          })(${JSON.stringify(schedData.date)})`);
-          await sleep(600);
-
-          // 5. Đối soát giá trị ngày đã nhận
-          const checkDate = await client.evaluate(`(() => {
-            const dateInput = document.querySelector('input[placeholder*="dd/mm/yyyy"]') ||
-              Array.from(document.querySelectorAll('input')).find(i => (i.placeholder || '').includes('dd/mm/yyyy') || (i.getAttribute('aria-label') || '').includes('ngày'));
-            return dateInput ? dateInput.value : '';
-          })()`);
-
-          if (checkDate.includes(String(targetDay))) {
-            console.log(`    [✓] Đã điền ngày thành công: "${checkDate}" (Mục tiêu: ${schedData.date})`);
-            dateSetSuccess = true;
-            break;
-          }
+        if (
+          dtRes.ok &&
+          verifiedSchedDom.hour === parseInt(schedData.hour, 10) &&
+          verifiedSchedDom.min === parseInt(schedData.min, 10) &&
+          verifiedSchedDom.date.includes(String(parseInt(schedData.day, 10))) &&
+          verifiedSchedDom.date.includes(String(parseInt(schedData.year, 10)))
+        ) {
+          console.log(`    [✓] Xác nhận DOM lịch đăng Facebook: Ngày="${verifiedSchedDom.date}", Giờ=${String(verifiedSchedDom.hour).padStart(2, '0')}:${String(verifiedSchedDom.min).padStart(2, '0')} (Mục tiêu: ${schedData.date} ${schedData.time})`);
+          dateTimeSetSuccess = true;
+          break;
         }
         await sleep(500);
       }
 
-      if (!dateSetSuccess) {
-        console.warn(`    [!] Chú ý: Chưa xác nhận được ngày ${schedData.date}, tiếp tục thiết lập giờ...`);
+      if (!dateTimeSetSuccess) {
+        throw new Error(`Không thể thiết lập và xác nhận lịch đăng ${schedData.date} ${schedData.time} trên Facebook Reels.`);
       }
-
-      // 4. Chỉ sau khi ngày đã chốt xong, tiến hành điều chỉnh Giờ và Phút bằng spinbox React Fiber onSpin
-      await setSpinboxValue(client, 'input[aria-label*="giờ"], input[aria-label*="hour" i]', schedData.hour);
-      await setSpinboxValue(client, 'input[aria-label*="phút"], input[aria-label*="minute" i]', schedData.min);
-      await sleep(1000);
     }
 
     // Bấm nút Submit (Đăng / Lên lịch / Lưu)
@@ -795,21 +761,22 @@ async function uploadReel({
 
       // Xử lý modal hoàn tất "Đã lên lịch đăng thước phim" / "Đang xử lý thước phim" với nút "Xong"
       const modalHandled = await client.evaluate(`(() => {
-        const dialogs = Array.from(document.querySelectorAll('[role="dialog"], div'));
-        const processingDialog = dialogs.find(d => {
-          const t = (d.innerText || '').toLowerCase();
-          return t.includes('đã lên lịch đăng thước phim') || t.includes('xử lý thước phim') || t.includes('đăng thước phim') || t.includes('lên lịch');
-        });
-        if (processingDialog) {
-          const btns = Array.from(processingDialog.querySelectorAll('button, div[role="button"]'));
+        const bodyText = (document.body.innerText || '').toLowerCase();
+        const hasCompletionModalText = bodyText.includes('đã lên lịch đăng thước phim') ||
+          bodyText.includes('theo lịch, video của bạn sẽ đăng vào') ||
+          bodyText.includes('đang xử lý thước phim') ||
+          bodyText.includes('đã đăng thước phim');
+        if (hasCompletionModalText) {
+          const btns = Array.from(document.querySelectorAll('button, div[role="button"]'));
           const xongBtn = btns.find(b => {
             const t = (b.innerText || '').trim();
-            return t === 'Xong' || t === 'Done' || t === 'Đóng' || t === 'Close';
+            return t === 'Xong' || t === 'Done';
           });
           if (xongBtn) {
             xongBtn.click();
-            return { closed: true, text: xongBtn.innerText?.trim() };
+            return { closed: true, text: xongBtn.innerText?.trim() || 'Xong' };
           }
+          return { closed: true, text: 'Đã lên lịch đăng thước phim' };
         }
         return null;
       })()`);
