@@ -174,9 +174,23 @@ async function addCharacter(charName, options = {}) {
       }
 
       const cleanName = ${JSON.stringify(charName.replace(/^@/, '').toLowerCase())};
-      const options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
-      const target = options.find(o => (o.innerText || '').trim().toLowerCase() === cleanName) ||
-                     options.find(o => (o.innerText || '').toLowerCase().includes(cleanName));
+      let options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
+      let target = options.find(o => (o.innerText || '').trim().toLowerCase() === cleanName) ||
+                   options.find(o => (o.innerText || '').toLowerCase().includes(cleanName));
+      if (!target) {
+        const searchInput = document.querySelector('.cdk-overlay-pane input[placeholder*="Tìm kiếm"], .cdk-overlay-pane input[placeholder*="Search"], .cdk-overlay-pane input');
+        if (searchInput) {
+          searchInput.focus();
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (setter) setter.call(searchInput, cleanName);
+          else searchInput.value = cleanName;
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 450));
+          options = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="option"], .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
+          target = options.find(o => (o.innerText || '').trim().toLowerCase() === cleanName) ||
+                   options.find(o => (o.innerText || '').toLowerCase().includes(cleanName));
+        }
+      }
       if (!target) return { error: 'Không tìm thấy nhân vật ' + ${JSON.stringify(charName)} + ' trong menu' };
       target.click();
 
@@ -801,6 +815,17 @@ async function ensureVideoSettings({ ratio = '9:16', duration = '10 giây', mode
   const cdp = await getFlowClient(existingCdp);
   const settingsKey = `video:${ratio}:${duration}:${model}`;
   try {
+    // Ensure 'Tất cả nội dung nghe nhìn' (All media) tab is selected so flow-video-tile elements render in viewport
+    await cdp.evaluate(`(() => {
+      const items = Array.from(document.querySelectorAll('flow-project-nav-list mat-list-item, .mdc-list-item'));
+      const allMedia = items.find(i => (i.innerText || '').includes('Tất cả nội dung') || (i.innerText || '').includes('All media'));
+      if (allMedia && !allMedia.classList.contains('mdc-list-item--activated')) {
+        allMedia.click();
+      }
+      const vp = document.querySelector('cdk-virtual-scroll-viewport');
+      if (vp) vp.scrollTop = 0;
+    })()`);
+
     const triggerExists = await cdp.evaluate(`(() => {
       if (document.querySelector('.settings-trigger-button, button.prompt-settings-trigger')) return true;
       const createBtn = Array.from(document.querySelectorAll('button, a')).find(b => b.innerText && (b.innerText.includes('Start Creating') || b.innerText.includes('Dự án mới') || b.innerText.includes('New Project')));
@@ -1151,12 +1176,18 @@ async function renderStoryboard(sb, options = {}) {
                       (sb.render_mode === 'image') ||
                       (sb.visual_engine === 'nano_banana_pro');
   const seenHashes = new Set();
+  const seenVideoHashes = new Set();
   if (fs.existsSync(epRenderDir)) {
-    const existingPngs = fs.readdirSync(epRenderDir).filter(f => f.endsWith('.png'));
-    for (const f of existingPngs) {
+    const existingFiles = fs.readdirSync(epRenderDir);
+    for (const f of existingFiles) {
       try {
-        const h = crypto.createHash('md5').update(fs.readFileSync(path.join(epRenderDir, f))).digest('hex');
-        seenHashes.add(h);
+        if (f.endsWith('.png')) {
+          const h = crypto.createHash('md5').update(fs.readFileSync(path.join(epRenderDir, f))).digest('hex');
+          seenHashes.add(h);
+        } else if (f.endsWith('.mp4')) {
+          const h = crypto.createHash('md5').update(fs.readFileSync(path.join(epRenderDir, f))).digest('hex');
+          seenVideoHashes.add(h);
+        }
       } catch {}
     }
   }
@@ -1202,24 +1233,57 @@ async function renderStoryboard(sb, options = {}) {
           await sleep(3500);
         } else {
           const isShorts = (sb.aspect_ratio === '9:16') || (sb.geometry && sb.geometry.aspect_ratio === '9:16') || (sb.format === 'shorts_40s') || (s.flow_prompt && s.flow_prompt.includes('9:16'));
-          await ensureVideoSettings({
-            ratio: isShorts ? '9:16' : '16:9',
-            duration: '10 giây',
-            model: 'Omni 1.1 Flash',
-            cdp: sharedCdp
-          });
-          await clearCharacters({ cdp: sharedCdp });
-          const chars = s.characters || [];
-          for (const c of chars) {
-            console.log(`    [-] Gắn nhân vật: @${c}`);
-            await addCharacter(c, { cdp: sharedCdp });
+          const maxAttempts = 3;
+          let activePrompt = promptText;
+          for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+              await ensureVideoSettings({
+                ratio: isShorts ? '9:16' : '16:9',
+                duration: '10 giây',
+                model: 'Omni 1.1 Flash',
+                cdp: sharedCdp
+              });
+              await clearCharacters({ cdp: sharedCdp });
+              const chars = s.characters || [];
+              for (const c of chars) {
+                console.log(`    [-] Gắn nhân vật: @${c}`);
+                await addCharacter(c, { cdp: sharedCdp });
+              }
+              console.log(`    [-] Gửi câu lệnh (lần ${attempt}/${maxAttempts}): "${activePrompt.slice(0, 50)}..."`);
+              await submitPrompt(activePrompt, { cdp: sharedCdp });
+              await waitForRender(240, { cdp: sharedCdp });
+              await downloadLatest(outFile, { resolution, cdp: sharedCdp });
+
+              if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
+                const vHash = crypto.createHash('md5').update(fs.readFileSync(outFile)).digest('hex');
+                if (seenVideoHashes.has(vHash) && attempt < maxAttempts) {
+                  console.warn(`    [!] Phát hiện video trùng MD5 (${vHash.slice(0, 8)}), tự động render lại ${shotId}...`);
+                  try { fs.unlinkSync(outFile); } catch {}
+                  await sleep(3000);
+                  continue;
+                }
+                seenVideoHashes.add(vHash);
+              }
+
+              try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
+              await pruneFlowDomMemory(sharedCdp);
+              break;
+            } catch (shotErr) {
+              console.warn(`    [!] Lỗi ở lần thử ${attempt}/${maxAttempts} cho ${shotId}: ${shotErr.message}`);
+              await clearCharacters({ cdp: sharedCdp }).catch(() => {});
+              if (attempt < maxAttempts) {
+                activePrompt = activePrompt
+                  .replace(/\bcollapsed\b/gi, 'abandoned')
+                  .replace(/\btilted in the mud trailing thick black smoke\b/gi, 'parked in the muddy field')
+                  .replace(/\bthick black smoke\b/gi, 'morning mist')
+                  .replace(/\bbarbed-wire\b/gi, 'wooden perimeter')
+                  .replace(/\bbombardment\b/gi, 'storm');
+                await sleep(4000);
+              } else {
+                throw shotErr;
+              }
+            }
           }
-          console.log(`    [-] Gửi câu lệnh: "${promptText.slice(0, 50)}..."`);
-          await submitPrompt(promptText, { cdp: sharedCdp });
-          await waitForRender(240, { cdp: sharedCdp });
-          await downloadLatest(outFile, { resolution, cdp: sharedCdp });
-          try { fs.writeFileSync(hashFile, contentHash, 'utf8'); } catch {}
-          await pruneFlowDomMemory(sharedCdp);
         }
       } catch (err) {
         console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
