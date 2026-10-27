@@ -31,39 +31,30 @@ def build_regional_clone_voice(engine, ref_audio_path: str, region: str = None, 
 
     norm_gender = (gender or "female").lower()
     if region.lower() in ("nam", "miền nam", "southern", "south"):
-        nam_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if v.get("region") == "Nam" and v.get("gender") == norm_gender]
-        bac_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if v.get("region") == "Bắc" and v.get("gender") == norm_gender]
-        nam_all_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if v.get("region") == "Nam"]
-        bac_all_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if v.get("region") == "Bắc"]
+        nam_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if isinstance(v, dict) and v.get("region") == "Nam" and v.get("gender") == norm_gender]
+        bac_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if isinstance(v, dict) and v.get("region") == "Bắc" and v.get("gender") == norm_gender]
 
-        if nam_g_list and bac_g_list and nam_all_list and bac_all_list:
+        if nam_g_list and bac_g_list:
             nam_g = np.mean(nam_g_list, axis=0)
             bac_g = np.mean(bac_g_list, axis=0)
             u1 = nam_g - bac_g
             u1 = u1 / (np.linalg.norm(u1) + 1e-8)
 
-            axis_all = np.mean(nam_all_list, axis=0) - np.mean(bac_all_list, axis=0)
-            axis_all = axis_all / (np.linalg.norm(axis_all) + 1e-8)
-            u2 = axis_all - np.dot(axis_all, u1) * u1
-            u2 = u2 / (np.linalg.norm(u2) + 1e-8)
-
             emb_raw_f = np.asarray(emb_raw, dtype=np.float32)
-            emb_id = emb_raw_f - np.dot(emb_raw_f, u1) * u1 - np.dot(emb_raw_f, u2) * u2
-            emb_reg = emb_id + 6.2 * u1 + np.dot(nam_g, u2) * u2
-            emb_reg = 0.55 * emb_reg + 0.45 * nam_g
-            emb_reg = emb_reg * (np.linalg.norm(nam_g) / (np.linalg.norm(emb_reg) + 1e-8))
+            emb_id = emb_raw_f - np.dot(emb_raw_f, u1) * u1
+            emb_reg = emb_id + 4.2 * u1
+            emb_reg = emb_reg * (np.linalg.norm(emb_raw_f) / (np.linalg.norm(emb_reg) + 1e-8))
 
-            anchor_name = "Thùy Dung" if norm_gender == "female" else "Minh Triết"
-            if anchor_name in presets and codes_raw is not None and len(codes_raw) > 30:
-                anchor_codes = np.array(presets[anchor_name]["codes"][:30], dtype=codes_raw.dtype)
-                ref_slice = codes_raw[25:65] if len(codes_raw) >= 65 else codes_raw[min(10, len(codes_raw) - 1):]
-                hybrid_codes = np.vstack([anchor_codes, ref_slice])
+            if codes_raw is not None and len(codes_raw) >= 90:
+                own_codes = codes_raw[15:90]
+            elif codes_raw is not None and len(codes_raw) > 20:
+                own_codes = codes_raw[15:]
             else:
-                hybrid_codes = codes_raw
+                own_codes = codes_raw
 
             return {
                 "speaker_emb": emb_reg.tolist(),
-                "codes": hybrid_codes.tolist() if hybrid_codes is not None else None
+                "codes": own_codes.tolist() if own_codes is not None else None
             }
 
     return {"speaker_emb": emb_raw.tolist(), "codes": codes_raw.tolist() if codes_raw is not None else None}
