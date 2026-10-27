@@ -101,6 +101,11 @@ def main():
     if apply_watermark is None:
         apply_watermark = False
 
+    if args.ref_audio and not os.path.exists(args.ref_audio):
+        candidate_ref = project_dir / args.ref_audio
+        if candidate_ref.exists():
+            args.ref_audio = str(candidate_ref.resolve())
+
     engine = get_engine()
 
     for idx, item in enumerate(items):
