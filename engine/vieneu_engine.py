@@ -11,7 +11,53 @@ CACHE_DIR = os.environ.get("VIENEU_CACHE_DIR", str(Path.home() / "ai" / "vieneu"
 os.environ["HF_HOME"] = CACHE_DIR
 os.environ["TORCH_HOME"] = os.path.join(CACHE_DIR, "torch")
 
+import numpy as np
 import torch
+
+def build_regional_clone_voice(engine, ref_audio_path: str, region: str = None, gender: str = "female"):
+    """Enroll reference audio and optionally project speaker embedding + hybrid acoustic prompt into target regional dialect subspace."""
+    emb_raw, codes_raw = engine._enroll_reference(ref_audio_path, denoise=True, use_ref_codes=True)
+    if not region:
+        return {"speaker_emb": emb_raw.tolist(), "codes": codes_raw.tolist() if codes_raw is not None else None}
+
+    import vieneu
+    presets_path = Path(vieneu.__file__).parent / "assets" / "voices_v3_turbo.json"
+    if not presets_path.exists():
+        return {"speaker_emb": emb_raw.tolist(), "codes": codes_raw.tolist() if codes_raw is not None else None}
+
+    with open(presets_path, "r", encoding="utf-8") as f:
+        raw_data = json.load(f)
+    presets = raw_data.get("presets", raw_data) if isinstance(raw_data, dict) else {}
+
+    norm_gender = (gender or "female").lower()
+    if region.lower() in ("nam", "miền nam", "southern", "south"):
+        nam_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if isinstance(v, dict) and v.get("region") == "Nam" and v.get("gender") == norm_gender]
+        bac_g_list = [np.array(v["speaker_emb"], dtype=np.float32) for v in presets.values() if isinstance(v, dict) and v.get("region") == "Bắc" and v.get("gender") == norm_gender]
+
+        if nam_g_list and bac_g_list:
+            nam_g = np.mean(nam_g_list, axis=0)
+            bac_g = np.mean(bac_g_list, axis=0)
+            u1 = nam_g - bac_g
+            u1 = u1 / (np.linalg.norm(u1) + 1e-8)
+
+            emb_raw_f = np.asarray(emb_raw, dtype=np.float32)
+            emb_id = emb_raw_f - np.dot(emb_raw_f, u1) * u1
+            emb_reg = emb_id + 4.2 * u1
+            emb_reg = emb_reg * (np.linalg.norm(emb_raw_f) / (np.linalg.norm(emb_reg) + 1e-8))
+
+            if codes_raw is not None and len(codes_raw) >= 90:
+                own_codes = codes_raw[15:90]
+            elif codes_raw is not None and len(codes_raw) > 20:
+                own_codes = codes_raw[15:]
+            else:
+                own_codes = codes_raw
+
+            return {
+                "speaker_emb": emb_reg.tolist(),
+                "codes": own_codes.tolist() if own_codes is not None else None
+            }
+
+    return {"speaker_emb": emb_raw.tolist(), "codes": codes_raw.tolist() if codes_raw is not None else None}
 
 def to_win_path(p: Path) -> str:
     """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary, or return direct path on native OS."""
@@ -37,6 +83,8 @@ def main():
     parser.add_argument("--profile", default=None, help="Profile name from assets/voice_profiles.json")
     parser.add_argument("--voice", default="Hải Đăng", help="Preset voice name")
     parser.add_argument("--ref-audio", default=None, help="Reference audio for voice cloning")
+    parser.add_argument("--region", default=None, help="Target dialect region for voice cloning (Nam/Bắc/Trung)")
+    parser.add_argument("--gender", default=None, help="Speaker gender for dialect subspace projection (female/male)")
     parser.add_argument("--temperature", type=float, default=None, help="Sampling temperature (default 0.4 for crisp diction)")
     parser.add_argument("--apply-watermark", action="store_true", default=None, help="Apply watermark (default False)")
     
@@ -75,6 +123,8 @@ def main():
     profile_name = args.profile or "default"
     temperature = args.temperature
     apply_watermark = args.apply_watermark
+    region = args.region
+    gender = args.gender
 
     if profile_name in profiles:
         resolved = profiles[profile_name]
@@ -83,6 +133,10 @@ def main():
             args.ref_audio = None
         elif resolved.get("mode") == "clone" and resolved.get("ref_audio"):
             args.ref_audio = resolved.get("ref_audio")
+        if region is None and "region" in resolved:
+            region = resolved["region"]
+        if gender is None and "gender" in resolved:
+            gender = resolved["gender"]
         if temperature is None and "temperature" in resolved:
             temperature = float(resolved["temperature"])
         if apply_watermark is None and "apply_watermark" in resolved:
@@ -101,7 +155,15 @@ def main():
     if apply_watermark is None:
         apply_watermark = False
 
+    if args.ref_audio and not os.path.exists(args.ref_audio):
+        candidate_ref = project_dir / args.ref_audio
+        if candidate_ref.exists():
+            args.ref_audio = str(candidate_ref.resolve())
+
     engine = get_engine()
+    cloned_voice_payload = None
+    if args.ref_audio and os.path.exists(args.ref_audio) and region:
+        cloned_voice_payload = build_regional_clone_voice(engine, args.ref_audio, region=region, gender=gender or "female")
 
     for idx, item in enumerate(items):
         item_text = item["text"]
@@ -115,7 +177,10 @@ def main():
             "temperature": item_temp,
             "apply_watermark": apply_watermark
         }
-        if args.ref_audio and os.path.exists(args.ref_audio):
+        if cloned_voice_payload is not None:
+            infer_kwargs["voice"] = cloned_voice_payload
+            infer_kwargs["use_ref_codes"] = True
+        elif args.ref_audio and os.path.exists(args.ref_audio):
             infer_kwargs["ref_audio"] = args.ref_audio
         else:
             infer_kwargs["voice"] = item_voice
