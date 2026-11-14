@@ -166,6 +166,21 @@ const VIENEU_PYTHON = process.env.VIENEU_PYTHON || (fs.existsSync(VIENEU_DEFAULT
 const winPathCache = new Map();
 const MAX_WINPATH_CACHE = 1000;
 
+const IS_FFMPEG_ELF = (() => {
+  if (process.platform === 'win32' || process.platform === 'darwin') return false;
+  try {
+    const ffBin = execFileSync('which', ['ffmpeg'], { encoding: 'utf8', timeout: 1000 }).trim();
+    if (ffBin && fs.existsSync(ffBin)) {
+      const fd = fs.openSync(fs.realpathSync(ffBin), 'r');
+      const buf = Buffer.alloc(4);
+      fs.readSync(fd, buf, 0, 4, 0);
+      fs.closeSync(fd);
+      return buf[0] === 0x7f && buf[1] === 0x45 && buf[2] === 0x4c && buf[3] === 0x46;
+    }
+  } catch {}
+  return false;
+})();
+
 // Robust cross-platform path conversion (Native Windows / macOS / Linux / WSL)
 function toWinPath(p) {
   if (!p) return p;
@@ -177,9 +192,12 @@ function toWinPath(p) {
     return `${drive}:\\${rest}`;
   }
 
+  const stack = new Error().stack || '';
+  const isBrowserCaller = /youtube_uploader|facebook_uploader|tiktok_uploader|board\.js/.test(stack);
   const abs = path.resolve(p);
-  if (winPathCache.has(abs)) {
-    return winPathCache.get(abs);
+  const cacheKey = `${isBrowserCaller ? 'W:' : 'F:'}${abs}`;
+  if (winPathCache.has(cacheKey)) {
+    return winPathCache.get(cacheKey);
   }
 
   if (process.platform === 'win32') {
@@ -188,7 +206,7 @@ function toWinPath(p) {
       const firstKey = winPathCache.keys().next().value;
       winPathCache.delete(firstKey);
     }
-    winPathCache.set(abs, winNorm);
+    winPathCache.set(cacheKey, winNorm);
     return winNorm;
   }
 
@@ -197,7 +215,7 @@ function toWinPath(p) {
       const firstKey = winPathCache.keys().next().value;
       winPathCache.delete(firstKey);
     }
-    winPathCache.set(abs, abs);
+    winPathCache.set(cacheKey, abs);
     return abs;
   }
 
@@ -216,11 +234,11 @@ function toWinPath(p) {
 
   let result = resolvedAbs;
   const match = resolvedAbs.match(/^\/mnt\/([a-zA-Z])\/(.*)/);
-  if (match) {
+  if (match && (!IS_FFMPEG_ELF || isBrowserCaller || !fs.existsSync(resolvedAbs))) {
     const drive = match[1].toUpperCase();
     const rest = match[2].replace(/\//g, '\\');
     result = `${drive}:\\${rest}`;
-  } else if (fs.existsSync('/mnt/c/Windows') || process.env.WSL_DISTRO_NAME) {
+  } else if (!match && (!IS_FFMPEG_ELF || isBrowserCaller) && (fs.existsSync('/mnt/c/Windows') || process.env.WSL_DISTRO_NAME)) {
     // Linux internal path fallback (e.g. WSL home dir):
     // Prefer direct WSL UNC path accessible by Windows apps (//wsl.localhost/...)
     let uncSuccess = false;
@@ -251,7 +269,7 @@ function toWinPath(p) {
     const firstKey = winPathCache.keys().next().value;
     winPathCache.delete(firstKey);
   }
-  winPathCache.set(abs, result);
+  winPathCache.set(cacheKey, result);
   return result;
 }
 
@@ -281,12 +299,67 @@ function isPathContained(baseDir, targetPath) {
 
 const CHROME_DEVTOOLS_AXI_SESSION = process.env.CHROME_DEVTOOLS_AXI_SESSION || null;
 
+// Convert a WSL drive mount path (/mnt/<drive>/...) to a Windows drive path (<DRIVE>:\\...).
+// Returns null when the path is not under a /mnt/<drive> mount.
+function mntToWinDrivePath(p) {
+  if (!p || typeof p !== 'string') return null;
+  const match = p.replace(/\\/g, '/').match(/^\/mnt\/([a-zA-Z])(?:\/(.*))?$/);
+  if (!match) return null;
+  const drive = match[1].toUpperCase();
+  const rest = (match[2] || '').replace(/\/+$/, '').replace(/\//g, '\\');
+  return `${drive}:\\${rest}`;
+}
+
+// Resolve where a Linux-internal file must be staged so Windows Chrome can read it.
+// The staging directory is the configured downloads dir (WIN_DOWNLOADS_DIR by default);
+// returns null when that directory is not on a Windows drive mount.
+function resolveUploadStaging(absPath, downloadsDir = WIN_DOWNLOADS_DIR) {
+  if (!absPath || !downloadsDir) return null;
+  const winDir = mntToWinDrivePath(path.posix.resolve(String(downloadsDir).replace(/\\/g, '/')));
+  if (!winDir) return null;
+  const destName = path.basename(absPath);
+  return {
+    copyTo: path.posix.join(String(downloadsDir).replace(/\\/g, '/'), destName),
+    winPath: winDir.endsWith('\\') ? `${winDir}${destName}` : `${winDir}\\${destName}`
+  };
+}
+
+// Convert a path so that Windows Chrome (via CDP DOM.setFileInputFiles) can always access it.
+// In WSL, files living on the Linux filesystem are staged into WIN_DOWNLOADS_DIR first.
+function toWinUploadPath(p, options = {}) {
+  if (!p) return p;
+  if (process.platform === 'win32' || process.platform === 'darwin') return toWinPath(p);
+  const abs = path.resolve(p);
+  const direct = mntToWinDrivePath(abs);
+  if (direct) return direct;
+
+  const isWsl = options.isWsl !== undefined
+    ? Boolean(options.isWsl)
+    : (fs.existsSync('/mnt/c/Windows') || Boolean(process.env.WSL_DISTRO_NAME));
+  if (isWsl) {
+    const staging = resolveUploadStaging(abs, options.downloadsDir || WIN_DOWNLOADS_DIR);
+    if (staging) {
+      try {
+        if (!fs.existsSync(staging.copyTo) || fs.statSync(staging.copyTo).size !== fs.statSync(abs).size) {
+          fs.mkdirSync(path.dirname(staging.copyTo), { recursive: true });
+          fs.copyFileSync(abs, staging.copyTo);
+        }
+        return staging.winPath;
+      } catch {}
+    }
+  }
+  return toWinPath(p);
+}
+
 module.exports = {
   WIN_USER,
   WIN_HOST,
   CDP_PORT,
   CDP_URL,
   CHROME_DEVTOOLS_AXI_SESSION,
+  toWinUploadPath,
+  mntToWinDrivePath,
+  resolveUploadStaging,
   PROJECT_DIR,
   RENDERS_DIR,
   AUDIO_DIR,

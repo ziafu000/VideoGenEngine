@@ -60,20 +60,38 @@ function postPut(url, method = 'POST') {
   });
 }
 
-async function getStudioTab() {
+async function getStudioTab(channel = null) {
   const proxyBase = config.CDP_URL;
   const tabs = await fetchJson(`${proxyBase}/json/list`);
-  let studioTab = tabs.find(t => {
-    if (t.type !== 'page' || !t.url) return false;
-    try {
-      const u = new URL(t.url);
-      return u.hostname === 'studio.youtube.com';
-    } catch {
-      return false;
-    }
-  });
+  const studioUrl = channel && config.resolveChannelUrl ? config.resolveChannelUrl(channel) : null;
+  const targetChannelMatch = studioUrl ? studioUrl.match(/channel\/([^\/\?]+)/) : null;
+  const targetCid = targetChannelMatch ? targetChannelMatch[1] : null;
+
+  let studioTab = null;
+  if (targetCid) {
+    studioTab = tabs.find(t => {
+      if (t.type !== 'page' || !t.url) return false;
+      try {
+        const u = new URL(t.url);
+        return u.hostname === 'studio.youtube.com' && t.url.includes(targetCid);
+      } catch {
+        return false;
+      }
+    });
+  }
   if (!studioTab) {
-    studioTab = await postPut(`${proxyBase}/json/new?${STUDIO_URL}`, 'PUT');
+    studioTab = tabs.find(t => {
+      if (t.type !== 'page' || !t.url) return false;
+      try {
+        const u = new URL(t.url);
+        return u.hostname === 'studio.youtube.com';
+      } catch {
+        return false;
+      }
+    });
+  }
+  if (!studioTab) {
+    studioTab = await postPut(`${proxyBase}/json/new?${studioUrl || STUDIO_URL}`, 'PUT');
     await sleep(4000);
   }
   if (studioTab && studioTab.id) {
@@ -170,8 +188,8 @@ async function cmdUpload(args) {
   const visibility = schedData ? 'scheduled' : ((args.visibility || 'unlisted').toLowerCase());
   const thumbnail = args.thumbnail && fs.existsSync(args.thumbnail) ? args.thumbnail : null;
 
-  const winVideoPath = config.toWinPath(videoFile);
-  const winThumbPath = thumbnail ? config.toWinPath(thumbnail) : null;
+  const winVideoPath = config.toWinUploadPath ? config.toWinUploadPath(videoFile) : config.toWinPath(videoFile);
+  const winThumbPath = thumbnail ? (config.toWinUploadPath ? config.toWinUploadPath(thumbnail) : config.toWinPath(thumbnail)) : null;
   const channel = args.channel || null;
 
   console.error(`[-] Chuẩn bị upload video lên YouTube Studio...`);
@@ -179,7 +197,7 @@ async function cmdUpload(args) {
   console.error(`  - Tiêu đề: ${title}`);
   console.error(`  - Chế độ: ${schedData ? `LÊN LỊCH (${schedData.formattedDate} lúc ${schedData.time})` : visibility.toUpperCase()}`);
 
-  const studioTab = await getStudioTab();
+  const studioTab = await getStudioTab(channel);
   let client = new CDPClient(studioTab.webSocketDebuggerUrl);
   await client.ready;
 
@@ -311,6 +329,23 @@ async function cmdUpload(args) {
     }
 
     await sleep(2500);
+
+    // 4b. Lấy trước video URL xem trước từ dialog (nơi URL luôn hiện rõ ràng nhất)
+    let preVideoUrl = null;
+    for (let urlCheck = 0; urlCheck < 5; urlCheck++) {
+      preVideoUrl = await client.eval(`(() => {
+        const dialog = document.querySelector('ytcp-uploads-dialog');
+        if (!dialog) return null;
+        const linkEl = dialog.querySelector('a.ytcp-video-info[href*="youtu.be"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"]');
+        return linkEl && linkEl.href ? linkEl.href : null;
+      })()`);
+      if (preVideoUrl) break;
+      await sleep(1000);
+    }
+    if (preVideoUrl) {
+      console.error(`    [✓] Đã nhận diện URL video xem trước: ${preVideoUrl}`);
+    }
+
     // Đảm bảo tiêu đề <= 100 ký tự theo giới hạn bắt buộc của YouTube
     const safeTitle = title.length > 100 ? title.slice(0, 97).trim() + '...' : title;
     console.error(`[-] Điền tiêu đề (${safeTitle.length}/100 ký tự) và mô tả video (${description.length} ký tự)...`);
@@ -526,12 +561,14 @@ async function cmdUpload(args) {
       await sleep(1000);
     }
 
-    // 9. Lấy đường link YouTube xem trước (chỉ lấy từ bước Chi tiết trong ytcp-uploads-dialog)
-    const videoUrl = await client.eval(`(() => {
+    // 9. Lấy đường link YouTube xem trước (ưu tiên preVideoUrl nếu có)
+    const videoUrl = preVideoUrl || (await client.eval(`(() => {
       const dialog = document.querySelector('ytcp-uploads-dialog');
       if (!dialog) return null;
-      const linkEl = dialog.querySelector('a.ytcp-video-info[href*="youtu.be"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"]');
-      return linkEl && linkEl.href ? linkEl.href : null;
+      const linkEl = dialog.querySelector('a.ytcp-video-info[href*="youtu.be"], a.ytcp-video-info[href*="youtube.com/shorts/"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"], a[href*="youtube.com/shorts/"]');
+      if (linkEl && linkEl.href) return linkEl.href;
+      const m = (dialog.innerText || '').match(/https?:\/\/(?:youtu\.be\/|youtube\.com\/shorts\/)[A-Za-z0-9_-]+/);
+      return m ? m[0] : null;
     })()`);
 
     // 9b. Chờ upload bytes truyền xong lên máy chủ YouTube
@@ -632,7 +669,7 @@ async function cmdUpload(args) {
             const upDialog = document.querySelector('ytcp-uploads-dialog');
             const upDialogOpen = upDialog && (upDialog.offsetParent !== null || upDialog.hasAttribute('opened'));
             if (shareDialog && (shareDialog.offsetParent !== null || shareDialog.innerText.includes('Đã lên lịch') || shareDialog.innerText.includes('Đã lưu') || shareDialog.innerText.includes('Scheduled'))) {
-              const link = shareDialog.querySelector('a[href*="youtu.be"], .share-url a');
+              const link = shareDialog.querySelector('a[href*="youtu.be"], a[href*="youtube.com/shorts/"], .share-url a');
               const shareUrl = link ? link.href : null;
               const closeBtn = shareDialog.querySelector('#close-button, ytcp-button#close-button');
               if (closeBtn) closeBtn.click();
