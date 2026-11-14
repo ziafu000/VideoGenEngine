@@ -1,0 +1,8 @@
+{
+  "name": "videogen-clip-motion-overlay",
+  "version": "1.0.0",
+  "entry": "index.html",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30
+}

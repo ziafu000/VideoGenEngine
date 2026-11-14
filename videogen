@@ -117,6 +117,10 @@ Lệnh điều phối:
       Tự động cắt các clip highlight 9:16 dọc theo kịch bản (Option B - Cinematic Blur Overlay)
       với font chữ lớn, viền neon và thanh kêu gọi CTA trọn bộ tập về kênh chính (0 Credit cost).
 
+  ./videogen podcast-short <clip_spec.json> [--style=both|clean|motion] [--voice=original|dub] [--out=file.mp4] [--out-dir=dir] [--work-dir=dir]
+      Cắt clip dọc 9:16 từ video nguồn theo tham số trong clip_spec.json: bản clean (crop 9:16 + phụ đề ASS)
+      và/hoặc bản motion (lớp overlay HyperFrames dựng từ spec.scenes). Mọi nội dung đều lấy từ spec.
+
   ./videogen tiktok <video_path> [thumbnail_path] ["caption"] [--schedule "DD/MM/YYYY HH:mm"]
       Tự động đăng hoặc lên lịch phát sóng clip Shorts lên TikTok Studio qua Chrome CDP kèm thumbnail và caption.
 
@@ -421,6 +425,36 @@ async function main() {
           storyboard: sb,
           masterVideoPath: masterVideo
         });
+        break;
+      }
+
+      case 'podcast-short':
+      case 'podcast': {
+        const specArg = args[1];
+        if (!specArg) {
+          console.error('[!] Vui lòng cung cấp file clip_spec.json: ./videogen podcast-short <clip_spec.json> [--style=both|clean|motion] [--voice=original|dub] [--out-dir=...]');
+          process.exit(1);
+        }
+        const getFlag = (name) => {
+          const eq = args.find(a => a.startsWith(`--${name}=`));
+          if (eq) return eq.slice(name.length + 3).replace(/^["']|["']$/g, '');
+          const idx = args.findIndex(a => a === `--${name}`);
+          if (idx !== -1 && args[idx + 1] && !args[idx + 1].startsWith('--')) {
+            return args[idx + 1].replace(/^["']|["']$/g, '');
+          }
+          return null;
+        };
+        const style = getFlag('style') || getFlag('mode') || null;
+        const podcastClipper = require('./engine/podcast_clipper');
+        const res = await podcastClipper.buildPodcastShorts(specArg, {
+          style,
+          voice: getFlag('voice'),
+          out: getFlag('out'),
+          outDir: getFlag('out-dir'),
+          workDir: getFlag('work-dir')
+        });
+        if (res.clean) console.log(`[✓] Bản clean 9:16: ${res.clean}`);
+        if (res.motion) console.log(`[✓] Bản motion 9:16: ${res.motion}`);
         break;
       }
 

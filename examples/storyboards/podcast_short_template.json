@@ -1,0 +1,81 @@
+{
+  "_comment": "Placeholder clip spec for ./videogen podcast-short <clip_spec.json>. Replace every YOUR_* value; remove any scene or subtitle you do not need. Supported scene types: comparison_bars, metric_counter, trend_line, pillar_cards, balance_scale, funnel, gauge, spectrum_slider, text_callout, step_flow.",
+  "project_id": "YOUR_PROJECT_ID",
+  "title": "YOUR_TITLE",
+  "language": "YOUR_LANGUAGE_CODE",
+  "locale": "YOUR_NUMBER_LOCALE",
+  "source_video": "renders/YOUR_SOURCE_VIDEO.mp4",
+  "source_start": 0.0,
+  "duration": 30.0,
+  "fps": 30,
+  "style": "both",
+  "voice_mode": "original",
+  "master_dub_audio": "audio/YOUR_VOICEOVER.wav",
+  "audio_mix": {
+    "voice_volume": 1.0,
+    "original_volume": 0.0,
+    "loudness_lufs": -14
+  },
+  "clean_output_filename": "YOUR_PROJECT_ID_clean_9x16.mp4",
+  "motion_output_filename": "YOUR_PROJECT_ID_motion_9x16.mp4",
+  "framing": {
+    "segments": [
+      { "start": 0.0, "end": 15.0, "crop": { "w": 608, "h": 1080, "x": 656, "y": 0 } },
+      { "start": 15.0, "end": 30.0, "crop": { "w": 540, "h": 960, "x": 690, "y": 60 } }
+    ]
+  },
+  "subtitle_style": {
+    "font_size": 54,
+    "y": 1255,
+    "highlight_color": "#F5C518"
+  },
+  "scenes": [
+    {
+      "type": "comparison_bars",
+      "start": 1.0,
+      "end": 6.0,
+      "title": "YOUR_TITLE",
+      "orientation": "horizontal",
+      "items": [
+        { "label": "YOUR_LABEL", "value": "YOUR_VALUE", "pct": 100 },
+        { "label": "YOUR_LABEL", "value": "YOUR_VALUE", "pct": 50 }
+      ]
+    },
+    {
+      "type": "metric_counter",
+      "start": 7.0,
+      "end": 12.0,
+      "label": "YOUR_LABEL",
+      "from": 0,
+      "to": 100,
+      "prefix": "",
+      "suffix": "",
+      "caption": "YOUR_CAPTION"
+    },
+    {
+      "type": "trend_line",
+      "start": 13.0,
+      "end": 20.0,
+      "points": [10, 20, 35, 50, 75, 100],
+      "start_label": "YOUR_LABEL",
+      "end_label": "YOUR_VALUE"
+    },
+    {
+      "type": "text_callout",
+      "start": 21.0,
+      "end": 28.0,
+      "lines": [
+        { "text": "YOUR_TEXT", "style": "strike" },
+        { "text": "YOUR_TEXT", "style": "emphasis" }
+      ]
+    }
+  ],
+  "subtitles": [
+    {
+      "start": 0.2,
+      "end": 3.0,
+      "lines": ["YOUR_SUBTITLE_LINE_1", "YOUR_SUBTITLE_LINE_2"],
+      "highlights": [{ "word": "YOUR_HIGHLIGHT_WORD" }]
+    }
+  ]
+}
