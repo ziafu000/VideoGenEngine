@@ -13,21 +13,6 @@ async function getFlowClient(existingCdp = null) {
   }
   const client = await getClientForPage('flow.google.com');
   await client.send('Page.bringToFront').catch(() => {});
-  const winDownloads = config.toWinPath(config.WIN_DOWNLOADS_DIR);
-  if (client._downloadBehaviorDir !== winDownloads) {
-    try {
-      await client.send('Page.setDownloadBehavior', {
-        behavior: 'allow',
-        downloadPath: winDownloads
-      });
-      await client.send('Browser.setDownloadBehavior', {
-        behavior: 'allow',
-        downloadPath: winDownloads,
-        eventsEnabled: true
-      });
-      client._downloadBehaviorDir = winDownloads;
-    } catch {}
-  }
   return client;
 }
 
@@ -234,6 +219,20 @@ async function submitPrompt(promptText, options = {}) {
 
   const cdp = await getFlowClient(options.cdp);
   try {
+    // Check if Google Flow is out of credits before submitting
+    const creditState = await cdp.evaluate(`(() => {
+      const warnBtn = document.querySelector('.prompt-warning-button');
+      const creditBanner = document.querySelector('.credit-banner, [class*="credit-banner"]');
+      return {
+        warnLabel: warnBtn ? (warnBtn.getAttribute('aria-label') || '') : '',
+        bannerText: creditBanner ? (creditBanner.innerText || '') : ''
+      };
+    })()`);
+    const creditCheck = detectInsufficientCredits(creditState);
+    if (creditCheck.outOfCredits) {
+      throw new Error(`[Google Flow] Insufficient credits: ${creditCheck.msg}`);
+    }
+
     const inputRes = await cdp.evaluate(`(() => {
       const pm = document.querySelector('.ProseMirror');
       if (!pm) return { error: 'Không tìm thấy ô nhập prompt .ProseMirror' };
@@ -259,7 +258,7 @@ async function submitPrompt(promptText, options = {}) {
       pm.dispatchEvent(new Event('change', { bubbles: true }));
       pm.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
 
-      const genBtn = document.querySelector('button.generate-icon-button, button[aria-label="Start generation"], button[aria-label="Bắt đầu tạo"]');
+      const genBtn = document.querySelector('button.generate-icon-button, button[aria-label="Start generation"], button[aria-label="Bắt đầu tạo"], button[aria-label="Tạo"]');
       return {
         ok: true,
         textEntered: pm.innerText.trim().slice(0, 60) + '...',
@@ -271,7 +270,7 @@ async function submitPrompt(promptText, options = {}) {
     await sleep(1000);
 
     const clickRes = await cdp.evaluate(`(() => {
-      const genBtn = document.querySelector('button.generate-icon-button, button[aria-label="Start generation"], button[aria-label="Bắt đầu tạo"]');
+      const genBtn = document.querySelector('button.generate-icon-button, button[aria-label="Start generation"], button[aria-label="Bắt đầu tạo"], button[aria-label="Tạo"]');
       if (genBtn && !genBtn.disabled) {
         genBtn.click();
         return { submitted: true };
@@ -326,9 +325,9 @@ async function waitForRender(timeoutSec = 240, options = {}) {
         const text = tile0.innerText || '';
         const m = text.match(/\\b(\\d{1,3})%/);
         const pctNum = m ? parseInt(m[1], 10) : null;
-        const realVideo = Array.from(tile0.querySelectorAll('video')).find(v => !v.closest('flow-pending-tile') && v.src && v.src.includes('flow-content.google'));
+        const realVideo = Array.from(tile0.querySelectorAll('video')).find(v => !v.closest('flow-pending-tile') && v.src && (v.src.includes('flow-content.google') || v.src.startsWith('http')));
         const hasVideo = !!realVideo;
-        const hasThumb = !!tile0.querySelector('img.thumbnail');
+        const hasThumb = !!tile0.querySelector('img.thumbnail, img');
         const tile0Pending = tile0.querySelectorAll('flow-pending-tile').length > 0;
 
         const isActivelyPending = (tile0Pending || (pctNum !== null && pctNum < 100)) && !(hasVideo && pctNum === 100);
@@ -365,6 +364,11 @@ async function waitForRender(timeoutSec = 240, options = {}) {
         return true;
       } else {
         process.stdout.write('.');
+        // Fail fast if pending tile hasn't appeared within 35s of submission
+        if (!hasSeenPending && (Date.now() - start) > 35000) {
+          process.stdout.write('\n');
+          throw new Error('Timeout 35s: Google Flow chưa kích hoạt render (không thấy pending tile)!');
+        }
       }
     }
 
@@ -407,7 +411,55 @@ async function downloadLatestDirect(targetFile, options = {}) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const cdp = await getFlowClient(options.cdp);
+  const beforeFile = getLatestMp4InDownloads();
+  const beforeMtime = beforeFile ? beforeFile.mtime : 0;
+
   try {
+    // 1. Try trigger 720p download via Flow menu (instant Direct CDN download)
+    const triggerRes = await cdp.evaluate(`(async () => {
+      const tile = document.querySelector('flow-video-tile');
+      if (!tile) return { error: 'Không tìm thấy thẻ video Flow' };
+
+      const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
+      if (!moreBtn) return { error: 'Không tìm thấy nút more_vert trên thẻ video' };
+      moreBtn.click();
+      await new Promise(r => setTimeout(r, 600));
+
+      const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+      const dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
+      if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trong menu' };
+      dlBtn.click();
+      await new Promise(r => setTimeout(r, 600));
+
+      const subItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+      const b720 = subItems.find(b => (b.innerText || '').includes('720p'));
+      if (!b720) return { error: 'Không tìm thấy mục 720p trong menu tải xuống' };
+
+      b720.click();
+      return { ok: true, text: b720.innerText };
+    })()`);
+
+    if (triggerRes && triggerRes.ok) {
+      console.log('    [-] Đã kích hoạt tải nhanh 720p từ Google Flow menu...');
+      const pollStart = Date.now();
+      const timeoutMs = 45000;
+      while ((Date.now() - pollStart) < timeoutMs) {
+        await sleep(500);
+        if (hasActiveCrdownload()) continue;
+        const current = getLatestMp4InDownloads();
+        if (current && current.mtime > beforeMtime && current.size > 100000) {
+          try {
+            if (fs.existsSync(targetFile)) fs.unlinkSync(targetFile);
+          } catch {}
+          fs.copyFileSync(current.file, targetFile);
+          try { fs.unlinkSync(current.file); } catch {}
+          console.log(`    [✓] Đã lưu video 720p thành công: ${targetFile} (${(fs.statSync(targetFile).size / 1024 / 1024).toFixed(2)} MB)`);
+          return targetFile;
+        }
+      }
+      console.warn('    [!] Timeout chờ file 720p trong Downloads, fallback qua video src URL...');
+    }
+
     let videoSrc = null;
     for (let i = 0; i < 12; i++) {
       const tileRect = await cdp.evaluate(`(() => {
@@ -433,7 +485,7 @@ async function downloadLatestDirect(targetFile, options = {}) {
         tile.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
         const container = tile.querySelector('.container');
         if (container) container.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-        const v = Array.from(tile.querySelectorAll('video')).find(el => !el.closest('flow-pending-tile') && el.src && (el.src.includes('flow-content.google') || (!el.src.includes('/asb/') && el.src.startsWith('http'))));
+        const v = Array.from(tile.querySelectorAll('video')).find(el => !el.closest('flow-pending-tile') && el.src && (el.src.includes('flow-content.google') || el.src.startsWith('http')));
         return v ? v.src : null;
       })()`);
 
@@ -545,68 +597,44 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
   const cdp = await getFlowClient(options.cdp);
 
   try {
-    // 1. Close overlays
-    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
-    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, unmodifiedText: '', text: '' });
-    await sleep(400);
-
     // 2. Click Tải xuống -> 1080p
-    const tileRect = await cdp.evaluate(`(() => {
-      const tile = document.querySelector('flow-video-tile');
-      if (!tile) return null;
-      tile.scrollIntoView({ block: 'center' });
-      const r = tile.getBoundingClientRect();
-      return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) };
-    })()`);
-    if (tileRect) {
-      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: tileRect.x, y: tileRect.y });
-      await sleep(450);
-    }
-
     const triggerRes = await cdp.evaluate(`(async () => {
       const tile = document.querySelector('flow-video-tile');
       if (!tile) return { error: 'Không tìm thấy thẻ video Flow' };
 
-      tile.scrollIntoView({ block: 'center' });
-      tile.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
+      if (!moreBtn) return { error: 'Không tìm thấy nút more_vert trên thẻ video' };
+      moreBtn.click();
+      await new Promise(r => setTimeout(r, 600));
 
-      let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
-      if (!dlBtn) {
-        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
-        if (moreBtn) {
-          moreBtn.click();
-          await new Promise(r => setTimeout(r, 500));
-          const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
-          dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
-        }
-      }
-      if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trên thẻ video' };
-
-      dlBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+      const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+      const dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
+      if (!dlBtn) return { error: 'Không tìm thấy nút Tải xuống trong menu' };
       dlBtn.click();
       await new Promise(r => setTimeout(r, 600));
 
-      const items = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
-      const b1080 = items.find(b => b.innerText && b.innerText.includes('1080p'));
+      const subItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+      const b1080 = subItems.find(b => (b.innerText || '').includes('1080p'));
       if (!b1080) return { error: 'Không tìm thấy mục 1080p trong menu tải xuống' };
 
       b1080.click();
-      await new Promise(r => setTimeout(r, 1000));
-
-      const snack = document.querySelector('snack-bar-container, .mat-mdc-snack-bar-container');
-      const toastText = snack ? snack.innerText.replace(/[\\r\\n]+/g, ' ') : null;
-
-      return { ok: true, toast: toastText };
+      return { ok: true, text: b1080.innerText };
     })()`);
 
     if (triggerRes && triggerRes.error) {
       throw new Error(triggerRes.error);
     }
 
-    if (triggerRes && triggerRes.toast) {
-      const jClass = classifyUpscaleToast(triggerRes.toast);
+    await sleep(800);
+    const toastRes = await cdp.evaluate(`(() => {
+      const snack = document.querySelector('snack-bar-container, .mat-mdc-snack-bar-container');
+      return snack ? snack.innerText : null;
+    })()`);
+
+    if (toastRes) {
+      const jClass = classifyUpscaleToast(toastRes);
       if (jClass.choice === 'error') {
-        throw new Error(`Google Flow Cloud Upscale báo lỗi: "${triggerRes.toast}"`);
+        throw new Error(`Google Flow Cloud Upscale báo lỗi: "${toastRes}"`);
       }
       if (jClass.choice === 'in_progress') {
         console.log(`    [-] [TypeSafe Jev: ${jClass.choice}] Google Flow đang xử lý tăng độ phân giải trên Cloud...`);
@@ -634,35 +662,36 @@ async function downloadCloud1080p(targetFile, timeoutSec = 240, options = {}) {
       const pollRes = await cdp.evaluate(`(async () => {
         const tile = document.querySelector('flow-video-tile');
         if (!tile) return null;
+        const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác' || (b.innerText || '').includes('more_vert'));
         let dlBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tải xuống');
-        if (!dlBtn) {
-          const moreBtn = Array.from(tile.querySelectorAll('button')).find(b => b.getAttribute('aria-label') === 'Tuỳ chọn khác');
-          if (moreBtn) {
-            moreBtn.click();
-            await new Promise(r => setTimeout(r, 400));
-            const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
-            dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
-          }
+        if (!dlBtn && moreBtn) {
+          moreBtn.click();
+          await new Promise(r => setTimeout(r, 600));
+          const menuItems = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
+          dlBtn = menuItems.find(i => (i.innerText || '').includes('Tải xuống'));
         }
         if (!dlBtn) return null;
         dlBtn.click();
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 600));
 
         const items = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="menuitem"]'));
         const b1080 = items.find(b => b.innerText && b.innerText.includes('1080p'));
         if (!b1080) return null;
         b1080.click();
-        await new Promise(r => setTimeout(r, 800));
-
-        const snack = document.querySelector('snack-bar-container, .mat-mdc-snack-bar-container');
-        return snack ? snack.innerText.replace(/[\\r\\n]+/g, ' ') : null;
+        return { ok: true };
       })()`);
 
-      if (pollRes) {
-        const jPoll = classifyUpscaleToast(pollRes);
+      await sleep(500);
+      const pollToast = await cdp.evaluate(`(() => {
+        const snack = document.querySelector('snack-bar-container, .mat-mdc-snack-bar-container');
+        return snack ? snack.innerText : null;
+      })()`);
+
+      if (pollToast) {
+        const jPoll = classifyUpscaleToast(pollToast);
         if (jPoll.choice === 'error') {
           process.stdout.write('\n');
-          throw new Error(`Google Flow Cloud Upscale báo lỗi khi thăm dò: "${pollRes}"`);
+          throw new Error(`Google Flow Cloud Upscale báo lỗi khi thăm dò: "${pollToast}"`);
         }
         if (jPoll.choice === 'in_progress') {
           process.stdout.write('*');
@@ -1079,7 +1108,7 @@ async function generateImage({ prompt, outputPath, seenHashes = null, timeoutSec
           const img = firstTile.querySelector('img');
           return {
             pending: false,
-            src: (img && img.src && img.src.includes('flow-content.google')) ? img.src : null
+            src: (img && img.src && (img.src.includes('flow-content.google') || img.src.startsWith('http'))) ? img.src : null
           };
         })()`);
 
@@ -1271,6 +1300,43 @@ async function renderStoryboard(sb, options = {}) {
             } catch (shotErr) {
               console.warn(`    [!] Lỗi ở lần thử ${attempt}/${maxAttempts} cho ${shotId}: ${shotErr.message}`);
               await clearCharacters({ cdp: sharedCdp }).catch(() => {});
+
+              const errKind = classifyFlowShotError(shotErr.message);
+              if (errKind === 'insufficient_credits') {
+                throw shotErr;
+              }
+
+              // Auto-recovery for Google Flow unusual activity / reCAPTCHA expiration error OR Timeout
+              const isUnusual = errKind === 'unusual_activity';
+              const isTimeout = errKind === 'timeout';
+
+              if (isUnusual || isTimeout) {
+                console.log(`    [-] Phát hiện lỗi Flow (${isUnusual ? 'hoạt động bất thường' : 'Timeout'}). Đang dọn dẹp thẻ lỗi và tải lại trang để làm mới phiên làm việc...`);
+                try {
+                  await sharedCdp.evaluate(`(() => {
+                    const tiles = Array.from(document.querySelectorAll('flow-video-tile'));
+                    for (const t of tiles) {
+                      if ((t.innerText || '').includes('hoạt động bất thường') || (t.innerText || '').includes('Không thành công')) {
+                        const delBtn = Array.from(t.querySelectorAll('button')).find(b => (b.innerText || '').includes('delete_forever') || b.getAttribute('aria-label') === 'Xóa' || b.getAttribute('aria-label') === 'Delete');
+                        if (delBtn) delBtn.click();
+                      }
+                    }
+                  })()`);
+                  await sleep(1000);
+                  // Confirm delete if modal appears
+                  await sharedCdp.evaluate(`(() => {
+                    const confirmBtn = Array.from(document.querySelectorAll('.cdk-overlay-pane button, [role="dialog"] button, [role="alertdialog"] button')).find(b => (b.innerText || '').includes('Xóa') || (b.innerText || '').includes('Delete'));
+                    if (confirmBtn) confirmBtn.click();
+                  })()`).catch(() => {});
+                } catch {}
+
+                console.log('    [-] Đang reload lại tab Google Flow (Page.reload) và chờ 18s...');
+                try {
+                  await sharedCdp.send('Page.reload');
+                } catch {}
+                await sleep(18000);
+              }
+
               if (attempt < maxAttempts) {
                 activePrompt = activePrompt
                   .replace(/\bcollapsed\b/gi, 'abandoned')
@@ -1297,7 +1363,36 @@ async function renderStoryboard(sb, options = {}) {
   console.log('\n✓ Hoàn tất lượt render Google Flow!');
 }
 
+// Pure helper: decide whether Flow UI signals (warning button aria-label / credit banner text) mean out of credits
+function detectInsufficientCredits(state = {}) {
+  const warnLabel = String((state && state.warnLabel) || '');
+  const bannerText = String((state && state.bannerText) || '');
+  const warnLower = warnLabel.toLowerCase();
+  const bannerLower = bannerText.toLowerCase();
+  const warnHit = warnLower.includes('tín dụng') || warnLower.includes('credit');
+  const bannerHit = bannerLower.includes('hết tín dụng') || bannerLower.includes('out of credits') ||
+    bannerLower.includes('not enough credits') || bannerLower.includes('insufficient credits');
+  if (warnHit || bannerHit) {
+    return { outOfCredits: true, msg: (warnHit ? warnLabel : bannerText).replace(/[\r\n]+/g, ' ').trim() };
+  }
+  return { outOfCredits: false, msg: '' };
+}
+
+// Pure helper: classify a shot render error to decide between abort, session recovery, or plain retry
+function classifyFlowShotError(message) {
+  const msg = String(message || '');
+  const lower = msg.toLowerCase();
+  if (lower.includes('insufficient credits') || lower.includes('tín dụng')) return 'insufficient_credits';
+  if (lower.includes('hoạt động bất thường') || lower.includes('unusual activity') || lower.includes('tiện ích trình duyệt')) {
+    return 'unusual_activity';
+  }
+  if (lower.includes('timeout')) return 'timeout';
+  return 'other';
+}
+
 module.exports = {
+  detectInsufficientCredits,
+  classifyFlowShotError,
   getFlowClient,
   pruneFlowDomMemory,
   getStatus,
