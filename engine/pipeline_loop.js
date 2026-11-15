@@ -113,10 +113,18 @@ function discoverStoryboards(customDir = null) {
   if (files.length === 0 && !customDir) {
     const examplesDir = path.join(config.PROJECT_DIR, 'examples', 'storyboards');
     if (fs.existsSync(examplesDir)) {
+      // Only storyboard templates (with a `shots` array); other example specs (e.g. 9:16 clip specs) are skipped.
       files = fs.readdirSync(examplesDir)
         .filter(f => f.endsWith('.json') && !f.startsWith('.'))
         .sort()
-        .map(f => path.join(examplesDir, f));
+        .map(f => path.join(examplesDir, f))
+        .filter(f => {
+          try {
+            return Array.isArray(JSON.parse(fs.readFileSync(f, 'utf8')).shots);
+          } catch {
+            return false;
+          }
+        });
     }
   }
 

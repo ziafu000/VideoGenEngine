@@ -59,11 +59,37 @@ def build_regional_clone_voice(engine, ref_audio_path: str, region: str = None, 
 
     return {"speaker_emb": emb_raw.tolist(), "codes": codes_raw.tolist() if codes_raw is not None else None}
 
+def _is_ffmpeg_elf() -> bool:
+    ff = shutil.which("ffmpeg")
+    if not ff:
+        return False
+    try:
+        with open(os.path.realpath(ff), "rb") as f:
+            return f.read(4) == b"\x7fELF"
+    except Exception:
+        return False
+
+_FFMPEG_ELF = _is_ffmpeg_elf()
+
 def to_win_path(p: Path) -> str:
-    """Convert WSL / Linux Path to Windows path for Windows FFmpeg binary, or return direct path on native OS."""
+    """Convert WSL / Linux Path to Windows path ONLY if ffmpeg is a Windows binary (.exe), or return direct path on native OS/Linux."""
     resolved = str(p.resolve())
-    if sys.platform == "win32" or sys.platform == "darwin" or not shutil.which("wslpath"):
+    if _FFMPEG_ELF or sys.platform == "win32" or sys.platform == "darwin" or not shutil.which("wslpath"):
         return os.path.normpath(resolved)
+    
+    # Check if ffmpeg in PATH is actually a Windows executable
+    ffmpeg_bin = shutil.which("ffmpeg")
+    is_win_ffmpeg = False
+    if ffmpeg_bin:
+        try:
+            with open(ffmpeg_bin, "rb") as f:
+                if f.read(2) == b"MZ":
+                    is_win_ffmpeg = True
+        except Exception:
+            pass
+    if not is_win_ffmpeg:
+        return resolved
+
     try:
         res = subprocess.run(["wslpath", "-w", resolved], capture_output=True, text=True, check=True)
         return res.stdout.strip()

@@ -128,22 +128,20 @@ async function ensureBridge() {
           $env:CDP_ALLOWED_CLIENTS = "$wslHostIp,127.0.0.1"
       }
 
-      $proxyConns = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
+      $proxyConns = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue
       $hasHostBind = $false
       foreach ($conn in $proxyConns) {
           if ($conn.LocalAddress -eq '0.0.0.0' -or $conn.LocalAddress -eq '::') {
-              Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
+              Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'cdp_proxy' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
           } elseif ($wslHostIp -and $conn.LocalAddress -eq $wslHostIp) {
               $hasHostBind = $true
           }
       }
       if ($wslHostIp -and -not $hasHostBind -and $proxyConns) {
-          foreach ($conn in $proxyConns) {
-              Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
-          }
+          Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Where-Object { $_.CommandLine -match 'cdp_proxy' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
           Start-Sleep -Milliseconds 300
       }
-      $proxyListening = Get-NetTCPConnection -LocalPort 9223 -State Listen -ErrorAction SilentlyContinue
+      $proxyListening = Get-NetTCPConnection -LocalPort 9223 -ErrorAction SilentlyContinue | Where-Object { -not $wslHostIp -or $_.LocalAddress -eq $wslHostIp }
       if (-not $proxyListening) {
           Start-Process node -ArgumentList "C:\\Users\\${winUser}\\AppData\\Local\\Google\\Chrome\\cdp_proxy.js" -WindowStyle Hidden
       }

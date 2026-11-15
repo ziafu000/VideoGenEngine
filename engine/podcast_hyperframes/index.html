@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="/*BEGIN_LANG*/en/*END_LANG*/">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VideoGen: 9:16 Clip Motion Overlay</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #0C0D0F;
+      color: #F3EFE6;
+      font-family: 'Be Vietnam Pro', sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    #root {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background-color: #0C0D0F;
+    }
+
+    /* Fullscreen 9:16 source video layer */
+    #source-stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    #source-video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Full-canvas overlay layer (100% transparent background) */
+    #motion-canvas {
+      position: absolute;
+      inset: 0;
+      background: transparent;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    /* Minimalist motion layer: 100% transparent background with strong text/SVG drop-shadow */
+    .scene-layer {
+      position: absolute;
+      left: 72px;
+      right: 72px;
+      top: 96px;
+      max-height: 340px;
+      background: transparent;
+      text-shadow: 0px 2px 6px rgba(0, 0, 0, 0.95), 0px 0px 3px rgba(0, 0, 0, 0.95);
+      filter: drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.95)) drop-shadow(0px 4px 12px rgba(0, 0, 0, 0.9));
+    }
+
+    .scene-layer.pos-center { top: 760px; }
+    .scene-layer.pos-bottom { top: auto; bottom: 120px; }
+
+    .sc-title { font-size: 30px; font-weight: 800; margin-bottom: 14px; letter-spacing: 0.02em; }
+
+    .num-mono {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .tc-stack { display: flex; flex-direction: column; gap: 22px; }
+    .tc-line { font-size: 34px; font-weight: 800; }
+    .tc-emphasis { font-size: 44px; }
+    .tc-strike { text-decoration: line-through; opacity: 0.85; }
+
+    .mc-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .mc-label { font-size: 28px; font-weight: 800; }
+    .mc-num { font-size: 76px; font-weight: 800; line-height: 1.05; white-space: nowrap; }
+    .mc-caption { font-size: 24px; font-weight: 700; color: #F3EFE6; }
+
+    .sf-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .sf-card { flex: 1; min-width: 0; padding: 18px 20px; border: 4px solid #F3EFE6; border-radius: 18px; background: rgba(12, 13, 15, 0.28); text-align: center; }
+    .sf-title { font-size: 30px; font-weight: 800; line-height: 1.25; }
+    .sf-sub { font-size: 24px; font-weight: 700; color: #A8A396; margin-top: 6px; }
+    .sf-arrow { font-size: 48px; font-weight: 800; color: #F5C518; }
+
+    .sp-row { margin-bottom: 22px; }
+    .sp-meta { display: flex; justify-content: space-between; font-size: 28px; font-weight: 800; margin-bottom: 10px; }
+    .sp-track { width: 100%; height: 10px; background: rgba(243, 239, 230, 0.2); }
+    .sp-fill { height: 100%; transform-origin: left center; }
+
+    .bar-stage { display: flex; justify-content: center; align-items: flex-end; gap: 140px; }
+    .bar-col { width: 260px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .bar-val { font-size: 38px; font-weight: 800; }
+    .bar-wrap { height: 170px; width: 100%; display: flex; align-items: flex-end; justify-content: center; }
+    .bar { width: 110px; transform-origin: bottom center; }
+    .bar-name { font-size: 26px; font-weight: 800; }
+
+    .pl-row { display: flex; justify-content: space-around; align-items: flex-start; }
+    .pl-item { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .pl-name { font-size: 28px; font-weight: 800; text-align: center; }
+
+    /* Subtitle zone (vertical position comes from subtitle_style.y in the clip spec) */
+    #subtitle-zone {
+      position: absolute;
+      left: 54px;
+      right: 54px;
+      top: /*BEGIN_SUB_TOP*/1145/*END_SUB_TOP*/px;
+      height: 220px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+    }
+
+    .sub-group {
+      position: absolute;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 6px;
+    }
+
+    .sub-line {
+      font-family: 'Be Vietnam Pro', sans-serif;
+      font-size: /*BEGIN_SUB_SIZE*/50/*END_SUB_SIZE*/px;
+      font-weight: 800;
+      line-height: 1.32;
+      color: #FFFFFF;
+      letter-spacing: -0.01em;
+      -webkit-text-stroke: 9px #000000;
+      paint-order: stroke fill;
+      filter: drop-shadow(0px 4px 10px rgba(0, 0, 0, 0.85));
+    }
+
+    .hl {
+      color: #F5C518;
+    }
+  </style>
+</head>
+<body>
+  <div id="root" data-composition-id="main" data-start="0" data-duration="/*BEGIN_DURATION*/30/*END_DURATION*/" data-width="1080" data-height="1920">
+    <audio id="master-audio" src="assets/master_audio.wav" data-start="0"></audio>
+
+    <div id="source-stage">
+      <video id="source-video" src="assets/source_9x16.mp4" data-start="0" muted playsinline></video>
+    </div>
+
+    <div id="motion-canvas">
+      <!--BEGIN_WIDGETS-->
+      <!--END_WIDGETS-->
+    </div>
+
+    <div id="subtitle-zone">
+      <!--BEGIN_CAPTIONS-->
+      <!--END_CAPTIONS-->
+    </div>
+  </div>
+
+  <script>
+    const SPEC = /*BEGIN_SPEC*/{}/*END_SPEC*/;
+
+    (function buildTimeline() {
+      const tl = gsap.timeline({ paused: true });
+      const totalDur = Number(SPEC.duration || 30);
+      const scenes = Array.isArray(SPEC.scenes) ? SPEC.scenes : [];
+
+      gsap.set(['.scene-layer', '.sub-group'], { autoAlpha: 0 });
+      gsap.set('#source-video', { opacity: 1.0 });
+
+      scenes.forEach((sc, idx) => {
+        const root = document.getElementById('scene-' + idx);
+        if (!root) return;
+        const s = Number(sc.start || 0.5);
+        const e = Number(sc.end || (s + 6.0));
+        const dur = Math.max(0.8, e - s);
+
+        tl.fromTo(root, { autoAlpha: 0, y: 16 }, { autoAlpha: 1, y: 0, duration: 0.38, ease: 'power3.out' }, s);
+
+        const items = root.querySelectorAll('.anim-item');
+        if (items.length > 0) {
+          gsap.set(items, { autoAlpha: 0, y: 12 });
+          items.forEach((el, i) => {
+            tl.to(el, { autoAlpha: 1, y: 0, duration: 0.36, ease: 'power2.out' }, s + 0.12 + i * 0.22);
+          });
+        }
+
+        root.querySelectorAll('.anim-bar-x').forEach((bar, i) => {
+          gsap.set(bar, { scaleX: 0 });
+          const bd = Number(bar.getAttribute('data-dur') || 0);
+          tl.to(bar, { scaleX: 1, duration: bd || 0.85, ease: bd ? 'power2.out' : 'power3.out' }, s + (bd ? 0.3 : 0.25 + i * 0.25));
+        });
+
+        root.querySelectorAll('.anim-bar-y').forEach((bar) => {
+          gsap.set(bar, { scaleY: 0 });
+          tl.to(bar, { scaleY: 1, duration: 1.1, ease: 'power3.out' }, s + 0.35);
+        });
+
+        root.querySelectorAll('.anim-draw').forEach((pathEl) => {
+          gsap.set(pathEl, { strokeDashoffset: 1100 });
+          tl.to(pathEl, { strokeDashoffset: 0, duration: Math.min(3.8, dur * 0.65), ease: 'power2.inOut' }, s + 0.25);
+        });
+
+        root.querySelectorAll('.anim-counter').forEach((cntEl) => {
+          const fromVal = Number(cntEl.getAttribute('data-from') || 0);
+          const toVal = Number(cntEl.getAttribute('data-to') || 100);
+          const pfx = cntEl.getAttribute('data-prefix') || '';
+          const sfx = cntEl.getAttribute('data-suffix') || '';
+          const decimals = Number(cntEl.getAttribute('data-decimals') || 0);
+          const locale = cntEl.getAttribute('data-locale') || 'en-US';
+          const fmt = (v) => {
+            try {
+              return Number(v).toLocaleString(locale, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+            } catch (e) {
+              return Number(v).toFixed(decimals);
+            }
+          };
+          const proxy = { val: fromVal };
+          tl.to(proxy, {
+            val: toVal,
+            duration: Number(cntEl.getAttribute('data-dur') || 0) || Math.min(3.6, dur * 0.62),
+            ease: 'power2.out',
+            onUpdate: function() {
+              cntEl.textContent = pfx + fmt(proxy.val) + sfx;
+            }
+          }, s + 0.3);
+        });
+
+        root.querySelectorAll('.anim-pointer').forEach((ptrEl) => {
+          const fx = Number(ptrEl.getAttribute('data-from-x') || 200);
+          const tx = Number(ptrEl.getAttribute('data-to-x') || 0);
+          gsap.set(ptrEl, { x: fx });
+          tl.to(ptrEl, { x: tx, duration: Math.min(3.5, dur * 0.55), ease: 'power2.inOut' }, s + 1.2);
+        });
+
+        tl.to(root, { autoAlpha: 0, duration: 0.28, ease: 'power2.in' }, e - 0.28);
+      });
+
+      const subs = SPEC.subtitles || [];
+      subs.forEach((sub, idx) => {
+        const el = document.getElementById('sub-' + idx);
+        if (!el) return;
+        const s = Number(sub.start);
+        const e = Number(sub.end);
+        tl.fromTo(el, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: 0.14, ease: 'power2.out' }, s);
+        tl.to(el, { autoAlpha: 0, duration: 0.10, ease: 'power1.in' }, Math.max(s + 0.15, e - 0.10));
+      });
+
+      tl.set({}, {}, totalDur);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines['main'] = tl;
+    })();
+  </script>
+</body>
+</html>

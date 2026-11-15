@@ -300,8 +300,19 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen upload <sb> [--schedule "DD/MM/YYYY HH:mm"]` | **YouTube** | Uploads and schedules master video directly to YouTube Studio via CDP with Jev verification. |
 | `./videogen facebook <sb> [video] [--draft] [--schedule "DD/MM/YYYY HH:mm"]` | **Facebook Reels** | Uploads and schedules master 9:16 video to Facebook Reels via CDP (0 API cost). Use `--draft` for review. |
 | `./videogen tiktok <sb | video.mp4> [thumbnail.jpg] ["caption"] [--schedule "DD/MM/YYYY HH:mm"]` | **TikTok Studio** | Uploads and schedules 9:16 Shorts to TikTok Studio via CDP (0 API cost). |
+| `./videogen podcast-short <clip_spec.json> [--style=both\|clean\|motion] [--voice=original\|dub] [--out-dir=dir]` | **9:16 Clip & Motion Overlay** | Cuts a 1080×1920 clip from a source video using the spec's framing crops, then renders a clean variant (ASS subtitles) and/or a HyperFrames motion-overlay variant. All overlay text, numbers, colors and timing come from `spec.scenes`; no scenes are added when it is empty. See below. |
 | **`./videogen run <sb> [--720p]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
 | **`./videogen loop [sbs...] [--draft] [--no-upload] [--720p]`** | **Batch Production Loop** | **Automates continuous batch production across multiple storyboards or all `storyboards/*.json`.** |
+
+### 9:16 Clip & Motion Overlay (`./videogen podcast-short`)
+
+A parameter-driven compositor that turns any source video into a vertical 9:16 clip. Copy the placeholder spec in `examples/storyboards/podcast_short_template.json` and replace every `YOUR_*` value.
+
+- **Framing:** `framing.segments` (`[{ start, end, crop: { w, h, x, y } }]`) or one `framing.crop`. Without either, a centered full-height 9:16 crop is used.
+- **Audio:** `voice_mode: "original"` (default) normalizes the source audio. `voice_mode: "dub"` uses a voiceover file you have already rendered (`master_dub_audio`), optionally mixed with the source at `audio_mix.original_volume`.
+- **Subtitles:** `subtitles: [{ start, end, lines: [...], highlights: [{ word, color }] }]`, positioned through `subtitle_style` (`y`, `font_size`, `highlight_color`).
+- **Overlay scenes (`--style=motion`, rendered with `npx hyperframes`):** `scenes: [{ type, start, end, position, title, ... }]` with these types: `comparison_bars`, `metric_counter`, `trend_line`, `pillar_cards`, `balance_scale`, `funnel`, `gauge`, `spectrum_slider`, `text_callout`, `step_flow`. Each field a component draws must be set in the spec. Unknown types are skipped.
+- **Outputs:** `output/clips_9x16/` (or `--out-dir`), with HyperFrames QA snapshots in `snapshots/`.
 
 ---
 
@@ -461,6 +472,8 @@ VideoGen/
 │   ├── subtitles.js          # Subtitle generator (Dual-Zone ASS & Shorts ASS)
 │   ├── compositor.js         # FFmpeg concatenation, audio padding/ducking, hardsub
 │   ├── shorts.js             # Vertical 9:16 Shorts highlight extractor (Option B Cinematic Blur)
+│   ├── podcast_clipper.js    # Parameter-driven 9:16 clip compositor (clean + HyperFrames motion overlay)
+│   ├── podcast_hyperframes/  # HyperFrames page template & generic overlay components (components/*.js)
 │   ├── archive.js            # Storage archival & local working tree purge
 │   ├── doctor.js             # System health diagnostics, quota preflight & zero-leak audit
 │   ├── jev.js                # TypeSafe Jev System One AI decider wrapper
@@ -478,7 +491,8 @@ VideoGen/
 │   ├── pronunciation_dict.example.json # Example pronunciation dictionary for phonetics
 │   ├── voice_profiles.example.json     # Example voice profiles configuration
 │   └── storyboards/
-│       └── universal_template.json     # Universal declarative storyboard schema template
+│       ├── universal_template.json     # Universal declarative storyboard schema template
+│       └── podcast_short_template.json # Placeholder clip spec for ./videogen podcast-short
 ├── storyboards/              # Private Declarative Storyboards (Gitignored, 100% Private IP)
 ├── assets/                   # Private Channel Branding & SFX Assets (Gitignored, 100% Private IP)
 ├── skills/                   # Prompt & Scriptwriting Playbooks (Permanent Director Cognitive Core)
@@ -503,6 +517,7 @@ npm test
 *Test Suites Included:*
 - `tests/test_facebook_uploader.js` — Unit tests for caption building, storyboard metadata extraction, and Meta Business Suite CDP status.
 - `tests/test_tiktok_uploader.js` — Unit tests for TikTok Studio module exports, parameter validation, and modal clearance.
+- `tests/test_clip_motion_and_flow_helpers.js` — Unit tests for the generic overlay components (empty-by-default scenes, custom scene rendering, escaping), the 9:16 framing/subtitle helpers, Flow credit/error helpers, and WSL upload path staging.
 - `tests/test_pipeline_loop.js` — Full integration tests for storyboard discovery, multi-clip FFmpeg composition, dynamic audio padding, and batch queue error handling.
 
 ---
