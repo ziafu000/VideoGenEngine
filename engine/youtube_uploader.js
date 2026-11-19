@@ -567,9 +567,9 @@ async function cmdUpload(args) {
       if (!dialog) return null;
       const linkEl = dialog.querySelector('a.ytcp-video-info[href*="youtu.be"], a.ytcp-video-info[href*="youtube.com/shorts/"], a.style-scope.ytcp-video-info, .video-url-fadeable a, a[href*="youtu.be"], a[href*="youtube.com/shorts/"]');
       if (linkEl && linkEl.href) return linkEl.href;
-      const m = (dialog.innerText || '').match(/https?:\/\/(?:youtu\.be\/|youtube\.com\/shorts\/)[A-Za-z0-9_-]+/);
+      const m = (dialog.innerText || '').match(/https?:\\/\\/(?:youtu\\.be\\/|youtube\\.com\\/shorts\\/)[A-Za-z0-9_-]+/);
       return m ? m[0] : null;
-    })()`);
+    })()`));
 
     // 9b. Chờ upload bytes truyền xong lên máy chủ YouTube
     console.error(`[-] Đang chờ máy chủ YouTube tiếp nhận toàn bộ dữ liệu video...`);
@@ -665,10 +665,10 @@ async function cmdUpload(args) {
                 return { state: 'PRECHECK_CLICKED' };
               }
             }
-            const shareDialog = document.querySelector('ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog');
+            const shareDialog = Array.from(document.querySelectorAll('ytcp-video-share-dialog, ytcp-uploads-still-processing-dialog')).find(d => d.offsetParent !== null);
             const upDialog = document.querySelector('ytcp-uploads-dialog');
             const upDialogOpen = upDialog && (upDialog.offsetParent !== null || upDialog.hasAttribute('opened'));
-            if (shareDialog && (shareDialog.offsetParent !== null || shareDialog.innerText.includes('Đã lên lịch') || shareDialog.innerText.includes('Đã lưu') || shareDialog.innerText.includes('Scheduled'))) {
+            if (shareDialog && (shareDialog.innerText.includes('Đã lên lịch') || shareDialog.innerText.includes('Đã lưu') || shareDialog.innerText.includes('Scheduled'))) {
               const link = shareDialog.querySelector('a[href*="youtu.be"], a[href*="youtube.com/shorts/"], .share-url a');
               const shareUrl = link ? link.href : null;
               const closeBtn = shareDialog.querySelector('#close-button, ytcp-button#close-button');
@@ -697,7 +697,7 @@ async function cmdUpload(args) {
         continue;
       }
 
-      if (checkState.url) finalUrl = checkState.url;
+      if (!finalUrl && checkState.url) finalUrl = checkState.url;
       if (checkState.state === 'QUOTA_LIMIT') {
         throw new Error(checkState.error);
       }
