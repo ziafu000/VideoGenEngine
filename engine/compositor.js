@@ -43,6 +43,535 @@ function hasAudioStream(filePath) {
   }
 }
 
+function probeVideoStream(filePath, execFn = execFileSync) {
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { valid: false, reason: 'file_not_found' };
+  }
+  const size = fs.statSync(filePath).size;
+  if (size < 1024) {
+    return { valid: false, reason: 'file_too_small', size };
+  }
+  try {
+    const winPath = config.toWinPath(filePath);
+    const raw = execFn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_type,codec_name,width,height',
+      '-show_entries', 'format=duration',
+      '-of', 'json',
+      winPath
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 });
+    const parsed = JSON.parse(raw || '{}');
+    const vStream = (parsed.streams || []).find(s => s.codec_type === 'video');
+    const duration = parseFloat(parsed.format && parsed.format.duration);
+    if (!vStream || !Number.isFinite(duration) || duration <= 0) {
+      return { valid: false, reason: 'missing_video_stream_or_duration' };
+    }
+    return {
+      valid: true,
+      codec: vStream.codec_name || 'unknown',
+      width: Number(vStream.width) || 0,
+      height: Number(vStream.height) || 0,
+      duration,
+      size
+    };
+  } catch (err) {
+    return { valid: false, reason: err.message || 'ffprobe_failed' };
+  }
+}
+
+/**
+ * Detect whether a storyboard uses Silent-Cinema / Music-Driven mode (no TTS voiceover).
+ */
+function isSilentCinemaStoryboard(sb) {
+  if (!sb || typeof sb !== 'object') return false;
+  if (sb.mode === 'cinema_silent') return true;
+  if (sb.tts === false) return true;
+  if (sb.project && (sb.project.mode === 'cinema_silent' || sb.project.tts === false)) return true;
+  return false;
+}
+
+/**
+ * Locate a verified Unicode-capable TTF font (supports full Vietnamese UTF-8 diacritics).
+ */
+function resolveUnicodeFont(options = {}) {
+  const style = options.style || 'regular';
+  const preferredPath = options.preferredPath || null;
+  const existsFn = typeof options.existsFn === 'function' ? options.existsFn : (p) => fs.existsSync(p);
+
+  const byStyle = {
+    bold: [
+      '/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf',
+      '/mnt/c/Windows/Fonts/timesbd.ttf',
+      '/mnt/c/Windows/Fonts/georgiab.ttf',
+      '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+      '/mnt/c/Windows/Fonts/segoeuib.ttf',
+      'C:\\Windows\\Fonts\\timesbd.ttf',
+      '/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf'
+    ],
+    italic: [
+      '/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf',
+      '/mnt/c/Windows/Fonts/timesi.ttf',
+      '/mnt/c/Windows/Fonts/georgiai.ttf',
+      '/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      'C:\\Windows\\Fonts\\timesi.ttf',
+      '/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf'
+    ],
+    regular: [
+      '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf',
+      '/mnt/c/Windows/Fonts/times.ttf',
+      '/mnt/c/Windows/Fonts/georgia.ttf',
+      '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+      '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+      '/mnt/c/Windows/Fonts/segoeui.ttf',
+      'C:\\Windows\\Fonts\\times.ttf',
+      '/System/Library/Fonts/Supplemental/Times New Roman.ttf'
+    ]
+  };
+
+  const candidates = [];
+  if (preferredPath) candidates.push(preferredPath);
+  candidates.push(...(byStyle[style] || byStyle.regular));
+  if (style !== 'regular') candidates.push(...byStyle.regular);
+
+  for (const c of candidates) {
+    try {
+      if (c && existsFn(c)) return c;
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Word-wrap card text cleanly so long quotes fit within frame safe margins.
+ */
+function wrapCardText(text, maxCharsPerLine = 48) {
+  if (!text) return '';
+  const paragraphs = String(text).split(/\r?\n/);
+  const wrapped = [];
+  for (const para of paragraphs) {
+    const words = para.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      wrapped.push('');
+      continue;
+    }
+    let current = words[0];
+    for (let i = 1; i < words.length; i++) {
+      if (current.length + 1 + words[i].length <= maxCharsPerLine) {
+        current += ' ' + words[i];
+      } else {
+        wrapped.push(current);
+        current = words[i];
+      }
+    }
+    wrapped.push(current);
+  }
+  return wrapped.join('\n');
+}
+
+function escapeFilterFilePath(filePath) {
+  return config.toWinPath(filePath)
+    .replace(/\\/g, '/')
+    .replace(/:/g, '\\:')
+    .replace(/'/g, "'\\''");
+}
+
+function buildFadeAlphaExpr(start, end, fade) {
+  const s = Number(start);
+  const e = Number(end);
+  const f = Math.max(0.05, Math.min(Number(fade) || 0.8, Math.max(0.1, (e - s) / 2)));
+  const fadeInEnd = (s + f).toFixed(3);
+  const fadeOutStart = (e - f).toFixed(3);
+  const sStr = s.toFixed(3);
+  const eStr = e.toFixed(3);
+  const fStr = f.toFixed(3);
+  return `if(lt(t\\,${sStr})\\,0\\,if(lt(t\\,${fadeInEnd})\\,(t-${sStr})/${fStr}\\,if(lt(t\\,${fadeOutStart})\\,1\\,if(lt(t\\,${eStr})\\,(${eStr}-t)/${fStr}\\,0))))`;
+}
+
+/**
+ * Pure builder for the Silent-Cinema FFmpeg filter_complex graph:
+ * - Normalizes every clip to uniform resolution/fps/yuv420p
+ * - Joins clips via configurable xfade cross-dissolve (default 0.35s) + acrossfade, or clean concat when xfadeDuration === 0
+ * - Mixes diegetic Flow SFX with continuous BGM + smooth fade-in/out matched to exact total video duration
+ * - Optionally overlays Unicode-safe title_card and closing_card with smooth fade-in/out
+ */
+function buildSilentCinemaFilterGraph({
+  clips,
+  width = 1920,
+  height = 1080,
+  fps = 30,
+  xfadeDuration = 0.35,
+  sfxVolume = 0.35,
+  hasBgm = false,
+  bgmVolume = 0.85,
+  bgmFadeIn = 1.5,
+  bgmFadeOut = 3.0,
+  titleCard = null,
+  closingCard = null
+}) {
+  if (!Array.isArray(clips) || clips.length === 0) {
+    throw new Error('buildSilentCinemaFilterGraph: clips array must be non-empty');
+  }
+
+  const filterParts = [];
+  const safeDurations = clips.map(c => Math.max(0.1, Number(c.duration) || 10.0));
+  const minClipDur = Math.min(...safeDurations);
+  const effectiveXfade = (clips.length > 1 && Number(xfadeDuration) > 0)
+    ? Math.min(Number(xfadeDuration), Math.max(0.05, minClipDur / 2 - 0.05))
+    : 0;
+
+  // 1. Normalize video & audio streams for every clip
+  for (let i = 0; i < clips.length; i++) {
+    const dur = safeDurations[i];
+    filterParts.push(
+      `[${i}:v]scale=${width}:${height}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${fps},format=yuv420p,setsar=1,setpts=PTS-STARTPTS[v${i}]`
+    );
+    if (clips[i].hasAudio) {
+      filterParts.push(
+        `[${i}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${i}]`
+      );
+    } else {
+      filterParts.push(
+        `anullsrc=r=48000:cl=stereo:d=${dur.toFixed(3)},aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo[a${i}]`
+      );
+    }
+  }
+
+  // 2. Join clips with xfade/acrossfade or clean concat
+  const xfadeOffsets = [];
+  let totalDuration = safeDurations[0];
+  let currentVideoLabel = '[v0]';
+  let currentAudioLabel = '[a0]';
+
+  if (clips.length > 1) {
+    if (effectiveXfade > 0) {
+      let runningDur = safeDurations[0];
+      for (let i = 1; i < clips.length; i++) {
+        const offset = Math.max(0.05, runningDur - effectiveXfade);
+        xfadeOffsets.push(Number(offset.toFixed(3)));
+        const nextV = i === clips.length - 1 ? '[v_joined]' : `[vx${i}]`;
+        const nextA = i === clips.length - 1 ? '[a_sfx_raw]' : `[ax${i}]`;
+        filterParts.push(
+          `${currentVideoLabel}[v${i}]xfade=transition=fade:duration=${effectiveXfade.toFixed(3)}:offset=${offset.toFixed(3)}${nextV}`
+        );
+        filterParts.push(
+          `${currentAudioLabel}[a${i}]acrossfade=d=${effectiveXfade.toFixed(3)}:c1=tri:c2=tri${nextA}`
+        );
+        currentVideoLabel = nextV;
+        currentAudioLabel = nextA;
+        runningDur = offset + safeDurations[i];
+      }
+      totalDuration = runningDur;
+    } else {
+      const concatPairs = [];
+      for (let i = 0; i < clips.length; i++) {
+        concatPairs.push(`[v${i}][a${i}]`);
+      }
+      filterParts.push(`${concatPairs.join('')}concat=n=${clips.length}:v=1:a=1[v_joined][a_sfx_raw]`);
+      currentVideoLabel = '[v_joined]';
+      currentAudioLabel = '[a_sfx_raw]';
+      totalDuration = safeDurations.reduce((sum, d) => sum + d, 0);
+    }
+  }
+
+  // 3. Optional Opening Title Card & Closing Quote Card (UTF-8 safe via textfile + verified Unicode font)
+  let overlayStep = 0;
+  const pushDrawtext = ({ textFile, fontPath, fontSize, yExpr, start, end, fade, box = false, lineSpacing = 14 }) => {
+    const outLabel = `[vo${++overlayStep}]`;
+    const escapedTextFile = escapeFilterFilePath(textFile);
+    const fontOpt = fontPath ? `fontfile='${escapeFilterFilePath(fontPath)}':` : '';
+    const alphaExpr = buildFadeAlphaExpr(start, end, fade);
+    const boxOpt = box ? `:box=1:boxcolor=black@0.42:boxborderw=26` : '';
+    filterParts.push(
+      `${currentVideoLabel}drawtext=${fontOpt}textfile='${escapedTextFile}':` +
+      `fontcolor=0xFFFDF5:fontsize=${fontSize}:line_spacing=${lineSpacing}:` +
+      `x=(w-text_w)/2:y=${yExpr}:` +
+      `shadowcolor=black@0.85:shadowx=2:shadowy=2${boxOpt}:` +
+      `alpha='${alphaExpr}'${outLabel}`
+    );
+    currentVideoLabel = outLabel;
+  };
+
+  if (titleCard && titleCard.titleTextFile) {
+    const tStart = typeof titleCard.start === 'number' ? titleCard.start : 1.0;
+    const tEnd = typeof titleCard.end === 'number' ? titleCard.end : Math.min(totalDuration, tStart + 4.0);
+    const tFade = typeof titleCard.fade === 'number' ? titleCard.fade : 0.8;
+    const hasSub = Boolean(titleCard.subtitleTextFile);
+    const titleSize = Number(titleCard.font_size || titleCard.fontSize) || Math.round(height * 0.068);
+    const subSize = Number(titleCard.subtitle_font_size || titleCard.subtitleFontSize) || Math.round(height * 0.032);
+
+    pushDrawtext({
+      textFile: titleCard.titleTextFile,
+      fontPath: titleCard.fontPath,
+      fontSize: titleSize,
+      yExpr: hasSub ? '(h*0.41-text_h/2)' : '(h*0.48-text_h/2)',
+      start: tStart,
+      end: tEnd,
+      fade: tFade,
+      box: false
+    });
+
+    if (hasSub) {
+      pushDrawtext({
+        textFile: titleCard.subtitleTextFile,
+        fontPath: titleCard.italicFontPath || titleCard.fontPath,
+        fontSize: subSize,
+        yExpr: '(h*0.52-text_h/2)',
+        start: tStart + 0.2,
+        end: tEnd,
+        fade: tFade,
+        box: false
+      });
+    }
+  }
+
+  if (closingCard && closingCard.textFile) {
+    const defaultDur = typeof closingCard.duration === 'number' ? closingCard.duration : 6.0;
+    const cEnd = typeof closingCard.end === 'number'
+      ? Math.min(totalDuration, closingCard.end)
+      : Math.max(0.5, totalDuration - 0.3);
+    const cStart = typeof closingCard.start === 'number'
+      ? Math.max(0, closingCard.start)
+      : Math.max(0, cEnd - defaultDur);
+    const cFade = typeof closingCard.fade === 'number' ? closingCard.fade : 1.0;
+    const closeSize = Number(closingCard.font_size || closingCard.fontSize) || Math.round(height * 0.034);
+    const yExpr = closingCard.position === 'center' ? '(h*0.48-text_h/2)' : '(h*0.77-text_h/2)';
+
+    pushDrawtext({
+      textFile: closingCard.textFile,
+      fontPath: closingCard.italicFontPath || closingCard.fontPath,
+      fontSize: closeSize,
+      yExpr,
+      start: cStart,
+      end: cEnd,
+      fade: cFade,
+      box: closingCard.box !== false,
+      lineSpacing: 16
+    });
+  }
+
+  const finalVideoLabel = '[v_out]';
+  filterParts.push(`${currentVideoLabel}format=yuv420p${finalVideoLabel}`);
+
+  // 4. Audio mixing: Flow diegetic SFX + continuous BGM with smooth fade-in/out
+  const bgmInputIdx = clips.length;
+  const effectiveSfxVol = Number.isFinite(Number(sfxVolume)) ? Number(sfxVolume) : 0.35;
+  const effectiveBgmVol = Number.isFinite(Number(bgmVolume)) ? Number(bgmVolume) : 0.85;
+  const finalAudioLabel = '[a_out]';
+
+  if (hasBgm && effectiveBgmVol > 0) {
+    const fadeInDur = Math.max(0.1, Math.min(Number(bgmFadeIn) || 1.5, totalDuration / 3));
+    const fadeOutDur = Math.max(0.1, Math.min(Number(bgmFadeOut) || 3.0, totalDuration / 3));
+    const fadeOutStart = Math.max(0, totalDuration - fadeOutDur);
+    filterParts.push(`${currentAudioLabel}volume=${effectiveSfxVol}[a_sfx]`);
+    filterParts.push(
+      `[${bgmInputIdx}:a]aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,` +
+      `atrim=0:${totalDuration.toFixed(3)},asetpts=PTS-STARTPTS,` +
+      `volume=${effectiveBgmVol},afade=t=in:st=0:d=${fadeInDur.toFixed(3)},afade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutDur.toFixed(3)}[a_bgm]`
+    );
+    filterParts.push(
+      `[a_sfx][a_bgm]amix=inputs=2:duration=first:dropout_transition=2:normalize=0,alimiter=limit=0.95${finalAudioLabel}`
+    );
+  } else {
+    filterParts.push(`${currentAudioLabel}volume=${effectiveSfxVol}${finalAudioLabel}`);
+  }
+
+  return {
+    filterComplex: filterParts.join(';'),
+    videoOutputLabel: finalVideoLabel,
+    audioOutputLabel: finalAudioLabel,
+    totalDuration: Number(totalDuration.toFixed(3)),
+    effectiveXfade,
+    xfadeOffsets
+  };
+}
+
+/**
+ * Assemble Silent-Cinema / Music-Driven master video in a single high-quality H.264 pass.
+ */
+async function compositeSilentCinema({
+  videoFiles,
+  outputVideoPath,
+  width = 1920,
+  height = 1080,
+  fps = 30,
+  xfadeDuration = 0.35,
+  sfxVolume = 0.35,
+  bgmPath = null,
+  bgmVolume = 0.85,
+  bgmStartSec = 0,
+  bgmFadeIn = 1.5,
+  bgmFadeOut = 3.0,
+  titleCard = null,
+  closingCard = null
+}) {
+  if (!Array.isArray(videoFiles) || videoFiles.length === 0) {
+    throw new Error('compositeSilentCinema: Không có video clips để ghép!');
+  }
+
+  const assembleBase = path.join(config.PROJECT_DIR, 'renders', 'temp_assemble');
+  if (!fs.existsSync(assembleBase)) fs.mkdirSync(assembleBase, { recursive: true });
+  const tempDir = fs.mkdtempSync(path.join(assembleBase, 'cinema_'));
+
+  try {
+    // MD5 duplicate video guard
+    const seenVideoHashes = new Map();
+    const clips = [];
+    for (let i = 0; i < videoFiles.length; i++) {
+      const vf = videoFiles[i];
+      if (!vf || !fs.existsSync(vf)) {
+        throw new Error(`Không tìm thấy clip thứ ${i + 1}: ${vf}`);
+      }
+      const probe = probeVideoStream(vf);
+      if (!probe.valid) {
+        throw new Error(`Clip thứ ${i + 1} (${path.basename(vf)}) không hợp lệ qua ffprobe: ${probe.reason}`);
+      }
+      const vHash = crypto.createHash('md5').update(fs.readFileSync(vf)).digest('hex');
+      if (seenVideoHashes.has(vHash)) {
+        const prevIdx = seenVideoHashes.get(vHash);
+        throw new Error(`PHÁT HIỆN LỖI LẶP VIDEO (Video Doubling): Phân cảnh ${i + 1} (${path.basename(vf)}) trùng md5 100% với Phân cảnh ${prevIdx + 1}! MD5: ${vHash}.`);
+      }
+      seenVideoHashes.set(vHash, i);
+      clips.push({
+        videoFile: vf,
+        duration: probe.duration,
+        hasAudio: hasAudioStream(vf)
+      });
+    }
+
+    const boldFont = resolveUnicodeFont({ style: 'bold' });
+    const italicFont = resolveUnicodeFont({ style: 'italic' });
+    const regularFont = resolveUnicodeFont({ style: 'regular' });
+
+    let resolvedTitleCard = null;
+    if (titleCard && titleCard.title) {
+      const titleTextFile = path.join(tempDir, 'title_main.txt');
+      fs.writeFileSync(titleTextFile, String(titleCard.title).trim(), 'utf8');
+      let subtitleTextFile = null;
+      if (titleCard.subtitle) {
+        subtitleTextFile = path.join(tempDir, 'title_sub.txt');
+        fs.writeFileSync(subtitleTextFile, String(titleCard.subtitle).trim(), 'utf8');
+      }
+      resolvedTitleCard = {
+        ...titleCard,
+        titleTextFile,
+        subtitleTextFile,
+        fontPath: titleCard.font_path || boldFont || regularFont,
+        italicFontPath: titleCard.subtitle_font_path || italicFont || regularFont
+      };
+    }
+
+    let resolvedClosingCard = null;
+    if (closingCard && closingCard.text) {
+      const closeTextFile = path.join(tempDir, 'closing_quote.txt');
+      const wrapped = wrapCardText(closingCard.text, closingCard.max_chars_per_line || 48);
+      fs.writeFileSync(closeTextFile, wrapped, 'utf8');
+      resolvedClosingCard = {
+        ...closingCard,
+        textFile: closeTextFile,
+        fontPath: closingCard.font_path || regularFont,
+        italicFontPath: closingCard.font_path || italicFont || regularFont
+      };
+    }
+
+    const effectiveBgm = (bgmPath && bgmPath !== 'none' && bgmVolume > 0 && fs.existsSync(bgmPath)) ? bgmPath : null;
+
+    const graph = buildSilentCinemaFilterGraph({
+      clips,
+      width,
+      height,
+      fps,
+      xfadeDuration,
+      sfxVolume,
+      hasBgm: Boolean(effectiveBgm),
+      bgmVolume,
+      bgmFadeIn,
+      bgmFadeOut,
+      titleCard: resolvedTitleCard,
+      closingCard: resolvedClosingCard
+    });
+
+    const outDir = path.dirname(outputVideoPath);
+    if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
+    const winOutputVideoPath = config.toWinPath(outputVideoPath);
+
+    console.log(`\n=== CHẾ ĐỘ DỰNG ĐIỆN ẢNH KHÔNG LỜI THOẠI (SILENT CINEMA / MUSIC-DRIVEN) ===`);
+    console.log(`Số clips: ${clips.length} | Chuẩn hóa: ${width}x${height} @ ${fps}fps | Xfade: ${graph.effectiveXfade}s`);
+    console.log(`Hòa âm: Flow SFX (${(sfxVolume * 100).toFixed(0)}%) + BGM (${effectiveBgm ? `${(bgmVolume * 100).toFixed(0)}% — ${path.basename(effectiveBgm)}` : 'TẮT'})`);
+    console.log(`Dự kiến tổng thời lượng: ${graph.totalDuration.toFixed(2)}s`);
+
+    const ffmpegArgs = ['-nostdin', '-y'];
+    for (const vf of videoFiles) {
+      ffmpegArgs.push('-i', config.toWinPath(vf));
+    }
+    if (effectiveBgm) {
+      if (Number(bgmStartSec) > 0) {
+        ffmpegArgs.push('-ss', String(bgmStartSec));
+      }
+      ffmpegArgs.push('-stream_loop', '-1', '-i', config.toWinPath(effectiveBgm));
+    }
+
+    ffmpegArgs.push(
+      '-filter_complex', graph.filterComplex,
+      '-map', graph.videoOutputLabel,
+      '-map', graph.audioOutputLabel,
+      '-c:v', 'libx264',
+      '-preset', 'medium',
+      '-crf', '17',
+      '-pix_fmt', 'yuv420p',
+      '-r', String(fps),
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-movflags', '+faststart',
+      winOutputVideoPath
+    );
+
+    try {
+      execFileSync('ffmpeg', ffmpegArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (err) {
+      console.error(`[!] Lỗi ffmpeg xuất silent-cinema master:`, err.stderr ? err.stderr.toString() : err.message);
+      throw err;
+    }
+
+    const verification = probeVideoStream(outputVideoPath);
+    if (!verification.valid) {
+      throw new Error(`Master video xuất ra không vượt qua kiểm định ffprobe: ${verification.reason}`);
+    }
+
+    const finalSize = (fs.statSync(outputVideoPath).size / 1024 / 1024).toFixed(2);
+    console.log(`\n============================================================`);
+    console.log(`✓ XUẤT THÀNH PHẨM SILENT-CINEMA MASTER THÀNH CÔNG:`);
+    console.log(`  File: ${outputVideoPath}`);
+    console.log(`  Độ phân giải: ${verification.width}x${verification.height} | Thời lượng: ${verification.duration.toFixed(2)}s | Dung lượng: ${finalSize} MB`);
+    console.log(`============================================================`);
+
+    return {
+      outputVideoPath,
+      duration: verification.duration,
+      width: verification.width,
+      height: verification.height,
+      sizeMB: finalSize,
+      timelines: clips,
+      xfadeOffsets: graph.xfadeOffsets
+    };
+  } finally {
+    try {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+      if (fs.existsSync(assembleBase) && fs.readdirSync(assembleBase).length === 0) {
+        fs.rmdirSync(assembleBase);
+      }
+    } catch {}
+  }
+}
+
 /**
  * Composite entire project in a single H.264 encoding pass:
  * Video clips concat + Voiceover padding/concat + Ambient mixing + Subtitle burn + Deterministic scratch cleanup
@@ -614,6 +1143,63 @@ async function assembleStoryboard(sb, options = {}) {
     });
   }
 
+  // 1b. Silent-Cinema / Music-Driven Assembly mode (mode === "cinema_silent" or tts === false)
+  if (isSilentCinemaStoryboard(sb)) {
+    const cinemaVideoFiles = [];
+    for (let i = 0; i < shots.length; i++) {
+      const s = shots[i];
+      const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      let vFile = path.join(epRenderDir, `${shotId}.mp4`);
+      if (!fs.existsSync(vFile)) {
+        vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
+      }
+      if (!fs.existsSync(vFile)) {
+        throw new Error(`Thiếu video clip cho ${shotId} tại ${epRenderDir}. Vui lòng chạy ./videogen render trước.`);
+      }
+      cinemaVideoFiles.push(vFile);
+    }
+
+    const audioMix = sb.audio_mix || {};
+    const sfxVol = typeof audioMix.sfx_volume === 'number'
+      ? audioMix.sfx_volume
+      : (typeof sb.sfx_volume === 'number' ? sb.sfx_volume : 0.35);
+    const bgmVol = typeof audioMix.bgm_volume === 'number'
+      ? audioMix.bgm_volume
+      : (typeof sb.bgm_volume === 'number' ? sb.bgm_volume : 0.85);
+    const rawBgmPath = audioMix.bgm_path || sb.bgm_path || sb.bgm || null;
+    const resolvedBgmPath = rawBgmPath && rawBgmPath !== 'none'
+      ? (path.isAbsolute(rawBgmPath) ? rawBgmPath : path.resolve(config.PROJECT_DIR, rawBgmPath))
+      : null;
+
+    const outputRes = sb.output_resolution || (sb.geometry && sb.geometry.output_resolution) || null;
+    const isVert = isShorts || sb.ratio === '9:16';
+    const targetW = (outputRes && Number(outputRes.width)) || (isVert ? 1080 : 1920);
+    const targetH = (outputRes && Number(outputRes.height)) || (isVert ? 1920 : 1080);
+    const targetFps = Number(sb.fps || (sb.geometry && sb.geometry.fps)) || 30;
+    const xfadeDuration = typeof sb.xfade_duration === 'number' ? sb.xfade_duration : 0.35;
+
+    const rawTitle = (sb.project && sb.project.id) || sb.project_name || sb.series_id || episodeName || 'master';
+    const safeTitle = config.sanitizeIdentifier(rawTitle, 'master');
+    const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_Master.mp4`);
+
+    return await compositeSilentCinema({
+      videoFiles: cinemaVideoFiles,
+      outputVideoPath: masterOutput,
+      width: targetW,
+      height: targetH,
+      fps: targetFps,
+      xfadeDuration,
+      sfxVolume: sfxVol,
+      bgmPath: resolvedBgmPath,
+      bgmVolume: bgmVol,
+      bgmStartSec: typeof audioMix.bgm_start_sec === 'number' ? audioMix.bgm_start_sec : (typeof sb.bgm_start_sec === 'number' ? sb.bgm_start_sec : 0),
+      bgmFadeIn: typeof audioMix.bgm_fade_in === 'number' ? audioMix.bgm_fade_in : 1.5,
+      bgmFadeOut: typeof audioMix.bgm_fade_out === 'number' ? audioMix.bgm_fade_out : 3.0,
+      titleCard: sb.title_card || null,
+      closingCard: sb.closing_card || null
+    });
+  }
+
   // 2. Video Clips Concat mode
   const videoFiles = [];
   const audioFiles = [];
@@ -743,6 +1329,12 @@ async function assembleStoryboard(sb, options = {}) {
 module.exports = {
   getDuration,
   hasAudioStream,
+  probeVideoStream,
+  isSilentCinemaStoryboard,
+  resolveUnicodeFont,
+  wrapCardText,
+  buildSilentCinemaFilterGraph,
+  compositeSilentCinema,
   compositeVideo,
   assembleStaticCuts,
   assembleStoryboard,

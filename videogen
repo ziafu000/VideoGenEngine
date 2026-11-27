@@ -85,9 +85,15 @@ Lệnh điều phối:
   ./videogen doctor (hoặc check)
       Kiểm định sức khỏe hệ thống, bảo mật IP/Gitignore, FFmpeg, và kết nối Chrome CDP.
 
-  ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p]
-      Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
-      kiểm duyệt Jev, render và tải video về renders/.
+  ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p] [--force]
+      Tự động điều khiển Google Flow: cấu hình (hỗ trợ Video -> Thành phần / Ingredients),
+      gắn chip nhân vật chính xác, kiểm duyệt Jev, render và tải video về renders/.
+      Tự động bỏ qua các shot đã tồn tại và đạt kiểm định ffprobe (dùng --force để render lại).
+
+  ./videogen character <storyboard.json> [--force]
+      Tự động tạo bộ tài sản nhân vật (Character Assets) trên tuyến /character của Google Flow
+      từ mảng "characters" trong storyboard bằng Nano Banana Pro (chân dung + cơ thể nếu có).
+      Tự động bỏ qua nhân vật đã tồn tại trùng tên chính xác trong dự án (dùng --force để tạo lại).
 
       ⚠️  QUAN TRỌNG: Trước khi chạy lệnh này, hãy hỏi người dùng chọn chế độ tải:
         [1] 1080p Full HD (Cloud AI Super-Resolution) — Mặc định, chất lượng cao nhất.
@@ -254,19 +260,34 @@ async function main() {
         break;
       }
 
+      case 'character':
+      case 'characters': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen character <storyboard.json> [--force]');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+        const { data: sb } = loadStoryboard(sbArg);
+        const force = args.includes('--force');
+        await flow.createCharacterAssets(sb, { force });
+        break;
+      }
+
       case 'render': {
         const sbArg = args[1];
         if (!sbArg) {
-          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...] [--720p]');
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...] [--720p] [--force]');
           process.exit(1);
         }
         await bridge.ensureBridge();
         const { data: sb } = loadStoryboard(sbArg);
         const is720p = args.includes('--720p');
-        const resolution = is720p ? '720p' : ((sb.project && sb.project.resolution) || '1080p');
+        const force = args.includes('--force');
+        const resolution = is720p ? '720p' : (sb.resolution || (sb.project && sb.project.resolution) || '1080p');
         const targetShots = args.slice(2).filter(a => !a.startsWith('--'));
 
-        await flow.renderStoryboard(sb, { resolution, targetShots, sbPath: sbArg });
+        await flow.renderStoryboard(sb, { resolution, targetShots, sbPath: sbArg, force });
         break;
       }
 
@@ -694,7 +715,8 @@ async function main() {
         const skipRender = args.includes('--skip-render') || args.includes('--no-render');
         const skipVoice = args.includes('--skip-voice') || args.includes('--no-voice');
         const is720p = args.includes('--720p');
-        const resolution = is720p ? '720p' : '1080p';
+        const force = args.includes('--force');
+        const resolution = is720p ? '720p' : null;
         const platformArg = args.find(a => a.startsWith('--platform='));
         const targetPlatform = platformArg ? platformArg.split('=')[1] : 'both';
         const channelArg = args.find(a => a.startsWith('--channel='));
@@ -711,6 +733,7 @@ async function main() {
           skipRender,
           skipVoice,
           resolution,
+          force,
           targetPlatform,
           channel
         });
