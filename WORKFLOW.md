@@ -176,7 +176,7 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 | `flow_project_url` | Optional Google Flow project URL to open automatically before rendering or character creation |
 | `flow_mode` | Optional: `"ingredients"` enables Google Flow Video → Ingredients (`Thành phần`) mode with exact character chip matching |
 | `characters` | Optional array of character asset definitions (`name`, `portrait_prompt`, optional `body_prompt`, `description`, `reference_character`) created on Flow `/character` via `./videogen character` |
-| `mode` / `tts` | Set `mode: "cinema_silent"` or `tts: false` (top-level or under `project`) for silent-cinema mode: skips TTS, assembles with `xfade_duration` (default `0.35s`), mixes Flow SFX + BGM, and renders optional Unicode `title_card` / `closing_card` overlays |
+| `mode` / `tts` | Set `mode: "cinema_silent"` or `tts: false` (top-level or under `project`) for silent-cinema mode: skips TTS, assembles with `xfade_duration` (default `0.35s`), mixes Flow SFX + BGM, and renders optional Unicode `title_card` (supporting optional transparent PNG `logo_path`, `logo_height`, `logo_gap`, and translucent `scrim` / `scrim_opacity`) and `closing_card` overlays |
 | `voice_profiles` | Map of character name → ElevenLabs slider calibration presets |
 | `shots[].characters` | Array of character names to attach as `@Character` chips |
 | `shots[].dialogue_tier` | `"A"` = bottom-center subtitle, `"B"` = top-center HUD subtitle |

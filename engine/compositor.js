@@ -103,6 +103,55 @@ function probeVideoStream(filePath, optionsOrExecFn = {}) {
   }
 }
 
+function probeImageStream(filePath, optionsOrExecFn = {}) {
+  const opts = typeof optionsOrExecFn === 'function'
+    ? { execFn: optionsOrExecFn }
+    : (optionsOrExecFn || {});
+  const execFn = typeof opts.execFn === 'function' ? opts.execFn : execFileSync;
+
+  if (!filePath || !fs.existsSync(filePath)) {
+    return { valid: false, reason: 'file_not_found' };
+  }
+  const size = fs.statSync(filePath).size;
+  if (size < 32) {
+    return { valid: false, reason: 'file_too_small', size };
+  }
+
+  try {
+    const winPath = config.toWinPath(filePath);
+    const raw = execFn('ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height',
+      '-of', 'json',
+      winPath
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 });
+    const parsed = JSON.parse(raw || '{}');
+    const vStream = (parsed.streams || []).find(s => s.codec_type === 'video');
+    if (!vStream) {
+      return { valid: false, reason: 'no_image_stream', size };
+    }
+    const width = Number(vStream.width) || 0;
+    const height = Number(vStream.height) || 0;
+    if (width <= 0 || height <= 0) {
+      return { valid: false, reason: 'invalid_dimensions', size };
+    }
+    const pixFmt = String(vStream.pix_fmt || '').toLowerCase();
+    const hasAlpha = /(rgba|bgra|argb|abgr|yuva|gbrap|^ya\d|pal8)/.test(pixFmt);
+    return {
+      valid: true,
+      codec: vStream.codec_name || 'unknown',
+      pixFmt,
+      width,
+      height,
+      hasAlpha,
+      size
+    };
+  } catch (err) {
+    return { valid: false, reason: `ffprobe_failed: ${err.message}`, size };
+  }
+}
+
 function safeCopyAlias(srcPath, destPath, options = {}) {
   const platform = options.platform || process.platform;
   const existsFn = typeof options.existsFn === 'function' ? options.existsFn : fs.existsSync;
@@ -255,7 +304,7 @@ function buildFadeAlphaExpr(start, end, fade) {
  * - Normalizes every clip to uniform resolution/fps/yuv420p
  * - Joins clips via configurable xfade cross-dissolve (default 0.35s) + acrossfade, or clean concat when xfadeDuration === 0
  * - Mixes diegetic Flow SFX with continuous BGM + smooth fade-in/out matched to exact total video duration
- * - Optionally overlays Unicode-safe title_card and closing_card with smooth fade-in/out
+ * - Optionally overlays Unicode-safe title_card (with optional transparent PNG logo and translucent scrim) and closing_card with smooth fade-in/out
  */
 function buildSilentCinemaFilterGraph({
   clips,
@@ -355,36 +404,152 @@ function buildSilentCinemaFilterGraph({
     currentVideoLabel = outLabel;
   };
 
-  if (titleCard && titleCard.titleTextFile) {
+  const hasLogoInput = Boolean(
+    titleCard && (titleCard.hasLogo || titleCard.logoPath || titleCard.logo_path || typeof titleCard.logoInputIdx === 'number')
+  );
+  const resolvedLogoInputIdx = hasLogoInput
+    ? (typeof titleCard.logoInputIdx === 'number' ? titleCard.logoInputIdx : (hasBgm ? clips.length + 1 : clips.length))
+    : -1;
+
+  if (titleCard && (titleCard.titleTextFile || hasLogoInput)) {
     const tStart = typeof titleCard.start === 'number' ? titleCard.start : 1.0;
     const tEnd = typeof titleCard.end === 'number' ? titleCard.end : Math.min(totalDuration, tStart + 4.0);
     const tFade = typeof titleCard.fade === 'number' ? titleCard.fade : 0.8;
+    const effectiveFade = Math.max(0.05, Math.min(tFade, Math.max(0.1, (tEnd - tStart) / 2)));
+    const fadeOutStart = Math.max(tStart, tEnd - effectiveFade);
+    const overlayEnd = Number((tEnd + 0.25).toFixed(3));
+    const hasTitle = Boolean(titleCard.titleTextFile);
     const hasSub = Boolean(titleCard.subtitleTextFile);
     const titleSize = Number(titleCard.font_size || titleCard.fontSize) || Math.round(height * 0.068);
     const subSize = Number(titleCard.subtitle_font_size || titleCard.subtitleFontSize) || Math.round(height * 0.032);
+    const subGap = Math.round(subSize * 0.85);
 
-    pushDrawtext({
-      textFile: titleCard.titleTextFile,
-      fontPath: titleCard.fontPath,
-      fontSize: titleSize,
-      yExpr: hasSub ? '(h*0.41-text_h/2)' : '(h*0.48-text_h/2)',
-      start: tStart,
-      end: tEnd,
-      fade: tFade,
-      box: false
-    });
+    const rawLogoHeight = Number(titleCard.logo_height !== undefined ? titleCard.logo_height : titleCard.logoHeight);
+    const logoHeight = Math.max(
+      16,
+      Math.min(
+        Math.round(height * 0.45),
+        Number.isFinite(rawLogoHeight) && rawLogoHeight > 0 ? Math.round(rawLogoHeight) : 130
+      )
+    );
+    const rawLogoGap = Number(titleCard.logo_gap !== undefined ? titleCard.logo_gap : titleCard.logoGap);
+    const logoGap = Number.isFinite(rawLogoGap) && rawLogoGap >= 0 ? Math.round(rawLogoGap) : 22;
 
-    if (hasSub) {
+    let logoY = Math.round(height * 0.30);
+    let titleYExpr = hasSub ? '(h*0.41-text_h/2)' : '(h*0.48-text_h/2)';
+    let subYExpr = '(h*0.52-text_h/2)';
+    let textTopY = Math.round((hasSub ? height * 0.41 : height * 0.48) - titleSize / 2);
+    let textBottomY = hasSub
+      ? Math.round(height * 0.52 + subSize / 2)
+      : Math.round(height * 0.48 + titleSize / 2);
+
+    if (hasLogoInput) {
+      const textBlockH = hasTitle ? (titleSize + (hasSub ? subGap + subSize : 0)) : 0;
+      const totalBlockH = logoHeight + (hasTitle ? logoGap + textBlockH : 0);
+      const blockCenterY = Math.round(height * 0.48);
+      logoY = Math.max(Math.round(height * 0.06), Math.round(blockCenterY - totalBlockH / 2));
+      if (hasTitle) {
+        const titleTopY = logoY + logoHeight + logoGap;
+        const titleCenterY = titleTopY + Math.round(titleSize / 2);
+        titleYExpr = `(${titleCenterY}-text_h/2)`;
+        textTopY = titleTopY;
+        if (hasSub) {
+          const subTopY = titleTopY + titleSize + subGap;
+          const subCenterY = subTopY + Math.round(subSize / 2);
+          subYExpr = `(${subCenterY}-text_h/2)`;
+          textBottomY = subTopY + subSize;
+        } else {
+          textBottomY = titleTopY + titleSize;
+        }
+      }
+    }
+
+    // Subtle soft dark translucent scrim behind opening title text for crisp legibility over bright backgrounds
+    const enableScrim = hasTitle && titleCard.scrim !== false;
+    if (enableScrim) {
+      const rawScrimOpacity = Number(
+        titleCard.scrim_opacity !== undefined ? titleCard.scrim_opacity : titleCard.scrimOpacity
+      );
+      const scrimOpacity = Number.isFinite(rawScrimOpacity)
+        ? Math.max(0, Math.min(0.85, rawScrimOpacity))
+        : 0.42;
+
+      if (scrimOpacity > 0) {
+        const scrimCoreW = Math.max(64, Math.round(width * 0.60));
+        const scrimCoreH = Math.max(36, (textBottomY - textTopY) + Math.round(height * 0.08));
+        const blurSigma = Math.max(6, Math.round(height * 0.032));
+        const blurPad = blurSigma * 3;
+        const scrimTotalW = Math.min(width, scrimCoreW + blurPad * 2);
+        const scrimTotalH = Math.min(height, scrimCoreH + blurPad * 2);
+        const safeBlurSigma = Math.max(2, Math.min(blurSigma, Math.floor(Math.min(scrimTotalW, scrimTotalH) / 6)));
+        const coreWClamped = Math.max(16, Math.min(scrimCoreW, scrimTotalW - 4));
+        const coreHClamped = Math.max(16, Math.min(scrimCoreH, scrimTotalH - 4));
+        const padX = Math.max(0, Math.floor((scrimTotalW - coreWClamped) / 2));
+        const padY = Math.max(0, Math.floor((scrimTotalH - coreHClamped) / 2));
+        const textMidY = Math.round((textTopY + textBottomY) / 2);
+        const scrimOverlayX = Math.max(0, Math.floor((width - scrimTotalW) / 2));
+        const scrimOverlayY = Math.max(0, Math.min(height - scrimTotalH, Math.round(textMidY - scrimTotalH / 2)));
+
+        const scrimLabel = '[title_scrim]';
+        const outLabel = `[vo${++overlayStep}]`;
+        filterParts.push(
+          `color=c=black:s=${coreWClamped}x${coreHClamped}:r=1:d=1,format=rgba,` +
+          `colorchannelmixer=aa=${scrimOpacity.toFixed(2)},` +
+          `pad=${scrimTotalW}:${scrimTotalH}:${padX}:${padY}:black@0,` +
+          `gblur=sigma=${safeBlurSigma}:planes=0xF,` +
+          `loop=loop=-1:size=1:start=0,settb=1/1000000,setpts=N/(${fps}*TB),trim=0:${overlayEnd},` +
+          `fade=t=in:st=${tStart.toFixed(3)}:d=${effectiveFade.toFixed(3)}:alpha=1,` +
+          `fade=t=out:st=${fadeOutStart.toFixed(3)}:d=${effectiveFade.toFixed(3)}:alpha=1${scrimLabel}`
+        );
+        filterParts.push(
+          `${currentVideoLabel}${scrimLabel}overlay=x=${scrimOverlayX}:y=${scrimOverlayY}:format=auto:eof_action=pass:enable='between(t,${tStart.toFixed(3)},${tEnd.toFixed(3)})'${outLabel}`
+        );
+        currentVideoLabel = outLabel;
+      }
+    }
+
+    // Optional transparent PNG logo overlay centered cleanly above the opening title text
+    if (hasLogoInput) {
+      const maxLogoW = Math.max(32, Math.round(width * 0.8));
+      const logoLabel = '[title_logo]';
+      const outLabel = `[vo${++overlayStep}]`;
+      filterParts.push(
+        `[${resolvedLogoInputIdx}:v]format=rgba,` +
+        `scale=${maxLogoW}:${logoHeight}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+        `fps=${fps},trim=0:${overlayEnd},setpts=PTS-STARTPTS,` +
+        `fade=t=in:st=${tStart.toFixed(3)}:d=${effectiveFade.toFixed(3)}:alpha=1,` +
+        `fade=t=out:st=${fadeOutStart.toFixed(3)}:d=${effectiveFade.toFixed(3)}:alpha=1${logoLabel}`
+      );
+      filterParts.push(
+        `${currentVideoLabel}${logoLabel}overlay=x=(W-w)/2:y=${logoY}:format=auto:eof_action=pass:enable='between(t,${tStart.toFixed(3)},${tEnd.toFixed(3)})'${outLabel}`
+      );
+      currentVideoLabel = outLabel;
+    }
+
+    if (hasTitle) {
       pushDrawtext({
-        textFile: titleCard.subtitleTextFile,
-        fontPath: titleCard.italicFontPath || titleCard.fontPath,
-        fontSize: subSize,
-        yExpr: '(h*0.52-text_h/2)',
-        start: tStart + 0.2,
+        textFile: titleCard.titleTextFile,
+        fontPath: titleCard.fontPath,
+        fontSize: titleSize,
+        yExpr: titleYExpr,
+        start: tStart,
         end: tEnd,
         fade: tFade,
         box: false
       });
+
+      if (hasSub) {
+        pushDrawtext({
+          textFile: titleCard.subtitleTextFile,
+          fontPath: titleCard.italicFontPath || titleCard.fontPath,
+          fontSize: subSize,
+          yExpr: subYExpr,
+          start: tStart + 0.2,
+          end: tEnd,
+          fade: tFade,
+          box: false
+        });
+      }
     }
   }
 
@@ -506,21 +671,46 @@ async function compositeSilentCinema({
     const italicFont = resolveUnicodeFont({ style: 'italic' });
     const regularFont = resolveUnicodeFont({ style: 'regular' });
 
+    const effectiveBgm = (bgmPath && bgmPath !== 'none' && bgmVolume > 0 && fs.existsSync(bgmPath)) ? bgmPath : null;
+
+    let resolvedLogoPath = null;
+    if (titleCard && (titleCard.logo_path || titleCard.logoPath)) {
+      const rawLogo = String(titleCard.logo_path || titleCard.logoPath).trim();
+      if (rawLogo) {
+        const candidateLogo = path.isAbsolute(rawLogo) ? rawLogo : path.resolve(config.PROJECT_DIR, rawLogo);
+        const logoProbe = probeImageStream(candidateLogo);
+        if (logoProbe.valid) {
+          resolvedLogoPath = candidateLogo;
+        } else {
+          console.warn(`[!] Cảnh báo: Bỏ qua title_card.logo_path không hợp lệ (${rawLogo}): ${logoProbe.reason}`);
+        }
+      }
+    }
+
     let resolvedTitleCard = null;
-    if (titleCard && titleCard.title) {
-      const titleTextFile = path.join(tempDir, 'title_main.txt');
-      fs.writeFileSync(titleTextFile, String(titleCard.title).trim(), 'utf8');
+    if (titleCard && (titleCard.title || resolvedLogoPath)) {
+      let titleTextFile = null;
+      if (titleCard.title) {
+        titleTextFile = path.join(tempDir, 'title_main.txt');
+        fs.writeFileSync(titleTextFile, String(titleCard.title).trim(), 'utf8');
+      }
       let subtitleTextFile = null;
       if (titleCard.subtitle) {
         subtitleTextFile = path.join(tempDir, 'title_sub.txt');
         fs.writeFileSync(subtitleTextFile, String(titleCard.subtitle).trim(), 'utf8');
       }
+      const { logo_path: _lp, logoPath: _lpc, ...restTitleCard } = titleCard;
       resolvedTitleCard = {
-        ...titleCard,
+        ...restTitleCard,
         titleTextFile,
         subtitleTextFile,
         fontPath: titleCard.font_path || boldFont || regularFont,
-        italicFontPath: titleCard.subtitle_font_path || italicFont || regularFont
+        italicFontPath: titleCard.subtitle_font_path || italicFont || regularFont,
+        ...(resolvedLogoPath ? {
+          hasLogo: true,
+          logoPath: resolvedLogoPath,
+          logoInputIdx: effectiveBgm ? clips.length + 1 : clips.length
+        } : {})
       };
     }
 
@@ -536,8 +726,6 @@ async function compositeSilentCinema({
         italicFontPath: closingCard.font_path || italicFont || regularFont
       };
     }
-
-    const effectiveBgm = (bgmPath && bgmPath !== 'none' && bgmVolume > 0 && fs.existsSync(bgmPath)) ? bgmPath : null;
 
     const graph = buildSilentCinemaFilterGraph({
       clips,
@@ -560,6 +748,9 @@ async function compositeSilentCinema({
 
     console.log(`\n=== CHẾ ĐỘ DỰNG ĐIỆN ẢNH KHÔNG LỜI THOẠI (SILENT CINEMA / MUSIC-DRIVEN) ===`);
     console.log(`Số clips: ${clips.length} | Chuẩn hóa: ${width}x${height} @ ${fps}fps | Xfade: ${graph.effectiveXfade}s`);
+    if (resolvedLogoPath) {
+      console.log(`Logo mở đầu: ${path.basename(resolvedLogoPath)}`);
+    }
     console.log(`Hòa âm: Flow SFX (${(sfxVolume * 100).toFixed(0)}%) + BGM (${effectiveBgm ? `${(bgmVolume * 100).toFixed(0)}% — ${path.basename(effectiveBgm)}` : 'TẮT'})`);
     console.log(`Dự kiến tổng thời lượng: ${graph.totalDuration.toFixed(2)}s`);
 
@@ -572,6 +763,9 @@ async function compositeSilentCinema({
         ffmpegArgs.push('-ss', String(bgmStartSec));
       }
       ffmpegArgs.push('-stream_loop', '-1', '-i', config.toWinPath(effectiveBgm));
+    }
+    if (resolvedLogoPath) {
+      ffmpegArgs.push('-loop', '1', '-i', config.toWinPath(resolvedLogoPath));
     }
 
     ffmpegArgs.push(
@@ -1391,6 +1585,7 @@ module.exports = {
   getDuration,
   hasAudioStream,
   probeVideoStream,
+  probeImageStream,
   safeCopyAlias,
   isSilentCinemaStoryboard,
   resolveUnicodeFont,

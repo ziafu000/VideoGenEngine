@@ -293,7 +293,7 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen render <sb> [shots...] [--720p] [--force]` | **Render Video** | Controls Google Flow: configures settings (including Video → Ingredients / `flow_mode: "ingredients"`), attaches exact `@Character` chips, submits prompts, and downloads 1080p (or `--720p`). Skips existing `ffprobe`-valid clips unless `--force` is set. |
 | `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue via local VieNeu-TTS 48 kHz (default) or ElevenLabs CDP (`--provider elevenlabs`). |
 | `./videogen subs <sb>` | **Subtitles** | Generates Cinema Dual-Zone ASS subtitles or dynamic Shorts subtitles. |
-| `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. For silent-cinema storyboards (`mode: "cinema_silent"` or `tts: false`), assembles with optional `xfade_duration`, BGM/SFX mix, and Unicode `title_card`/`closing_card` overlays. |
+| `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. For silent-cinema storyboards (`mode: "cinema_silent"` or `tts: false`), assembles with optional `xfade_duration`, BGM/SFX mix, and Unicode `title_card` (with optional transparent PNG logo and translucent scrim)/`closing_card` overlays. |
 | `./videogen verify <video> [ts...]` | **Visual QA** | Extracts high-res keyframes at specified timestamps for visual inspection. |
 | `./videogen shorts <sb> [video]` | **Shorts Clips** | Automatically extracts and renders viral 9:16 vertical teaser clips with **Option B (Cinematic Blur Overlay)** and high-impact CTA banners (0 Credit cost). |
 | `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Google Flow image mode, upscales to 1080p, and syncs to drive. |
@@ -520,6 +520,7 @@ npm test
 - `tests/test_tiktok_uploader.js` — Unit tests for TikTok Studio module exports, parameter validation, and modal clearance.
 - `tests/test_clip_motion_and_flow_helpers.js` — Unit tests for the generic overlay components (empty-by-default scenes, custom scene rendering, escaping), the 9:16 framing/subtitle helpers, Flow credit/error helpers, and WSL upload path staging.
 - `tests/test_ingredients_and_cinema_mode.js` — Unit and synthetic FFmpeg integration tests for exact ingredient matching, Flow `/character` route/config resolution, download directory & `ffprobe` validation, silent-cinema filter graph & Unicode title/closing card assembly, and CLI `character` behavior.
+- `tests/test_title_card_logo.js` — Unit and synthetic FFmpeg integration tests for `probeImageStream`, transparent PNG logo overlay, translucent scrim, and clean fallbacks in silent-cinema `title_card`.
 - `tests/test_pipeline_loop.js` — Full integration tests for storyboard discovery, multi-clip FFmpeg composition, dynamic audio padding, and batch queue error handling.
 
 ---
