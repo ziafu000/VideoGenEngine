@@ -172,7 +172,11 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 | :--- | :--- |
 | `project.aspect_ratio` | `"16:9"` for series/long-form, `"9:16"` for Shorts |
 | `project.model` | `"Omni 1.1 Flash"` (default) or `"Veo 3.1"` variants |
-| `project.resolution` | Optional: `"1080p"` or `"720p"` — overrides CLI flag if set |
+| `project.resolution` / `resolution` | Optional: `"1080p"` or `"720p"` — used unless overridden by CLI `--720p` |
+| `flow_project_url` | Optional Google Flow project URL to open automatically before rendering or character creation |
+| `flow_mode` | Optional: `"ingredients"` enables Google Flow Video → Ingredients (`Thành phần`) mode with exact character chip matching |
+| `characters` | Optional array of character asset definitions (`name`, `portrait_prompt`, optional `body_prompt`, `description`, `reference_character`) created on Flow `/character` via `./videogen character` |
+| `mode` / `tts` | Set `mode: "cinema_silent"` or `tts: false` (top-level or under `project`) for silent-cinema mode: skips TTS, assembles with `xfade_duration` (default `0.35s`), mixes Flow SFX + BGM, and renders optional Unicode `title_card` / `closing_card` overlays |
 | `voice_profiles` | Map of character name → ElevenLabs slider calibration presets |
 | `shots[].characters` | Array of character names to attach as `@Character` chips |
 | `shots[].dialogue_tier` | `"A"` = bottom-center subtitle, `"B"` = top-center HUD subtitle |
@@ -182,21 +186,7 @@ The storyboard JSON file is the **Single Source of Truth** (SSOT) for every prod
 
 ## 5. VideoGen Unified Engine v2.0 & CLI Reference (`./videogen`)
 
-| Command | Function | Description |
-| :--- | :--- | :--- |
-| `./videogen doctor` | System Preflight & Quota | Verifies Node.js, FFmpeg, CDP bridge, ElevenLabs quota preflight via `quota-axi`, and Zero-Leak IP security. |
-| `./videogen bridge [status]` | Bridge Health | Auto-starts Windows Chrome & CDP proxy; verifies tab connections. |
-| `./videogen board <sb> [--open]` | Director's Visual Board | Generates interactive HTML review board in `.lavish/` with shot cards, narration density, prompts, and render previews for `lavish-axi` review. |
-| `./videogen render <sb> [shots...] [--720p]` | Render Google Flow | Configures settings, attaches `@Character` chips, runs Jev pre-flight, renders, downloads 1080p (or `--720p`). |
-| `./videogen voice <sb> [shots...]` | Voiceover ElevenLabs | Reads `voice_profiles`, auto-calibrates Radix UI sliders, downloads MP3s. |
-| `./videogen subs <sb>` | Subtitle Generation | Generates cinema Dual-Zone ASS (Mode 2) or Bouncy Neon (Shorts). |
-| `./videogen assemble <sb>` | Post-Production | Stitches clips, pads audio, mixes multi-track, burns hardsubs. |
-| `./videogen verify <video> [ts...]` | Visual QA | Extracts keyframes at specified timestamps for quality inspection. |
-| `./videogen thumb <sb> [prompt]` | Thumbnails | Generates 4 cinematic 16:9 thumbnails, upscales to 1080p. |
-| `./videogen archive <sb>` | Archival | Migrates materials to `DEST_ORIGINAL`, master to `DEST_FINAL`, purges temp dirs. |
-| `./videogen upload <sb>` | YouTube Upload | Uploads master video to YouTube Studio as Unlisted via CDP. |
-| `./videogen facebook <sb> [video] [--draft]` | Facebook Reels Upload | Uploads 9:16 Shorts to Facebook Reels via Chrome CDP (Publish or Draft). |
-| **`./videogen run <sb> [--720p]`** | **Full A→Z Pipeline** | **Executes the complete autonomous pipeline end-to-end.** |
+See the authoritative [CLI Command Reference in README.md](README.md#-cli-command-reference-videogen) (or run `./videogen --help`) for the full list of commands and flags.
 
 ---
 
