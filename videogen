@@ -62,6 +62,29 @@ function loadStoryboard(storyboardPath) {
   process.exit(1);
 }
 
+function findMasterVideoForStoryboard(sb, sbArg) {
+  const baseName = path.basename(sbArg || '', '.json');
+  const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || sb.project_name || baseName;
+  const safeTitle = config.sanitizeIdentifier(
+    (sb.project && sb.project.id) || sb.project_name || sb.series_id || baseName || 'master',
+    'master'
+  );
+  const names = Array.from(new Set([episodeName, safeTitle, baseName].filter(Boolean)));
+  const candidates = [];
+  for (const name of names) {
+    candidates.push(
+      path.join(config.OUTPUT_DIR, `${name}_master_1080p.mp4`),
+      path.join(config.OUTPUT_DIR, `${name}_master_720p.mp4`),
+      path.join(config.OUTPUT_DIR, `${name}_Master.mp4`),
+      path.join(config.OUTPUT_DIR, `${name}_master.mp4`)
+    );
+  }
+  if (baseName) {
+    candidates.push(path.join(config.OUTPUT_DIR, `${baseName}.mp4`));
+  }
+  return candidates.find(c => fs.existsSync(c)) || null;
+}
+
 function printHelp() {
   console.log(`
 ==============================================================================
@@ -85,9 +108,15 @@ Lệnh điều phối:
   ./videogen doctor (hoặc check)
       Kiểm định sức khỏe hệ thống, bảo mật IP/Gitignore, FFmpeg, và kết nối Chrome CDP.
 
-  ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p]
-      Tự động điều khiển Google Flow: cấu hình, gắn chip nhân vật (@),
-      kiểm duyệt Jev, render và tải video về renders/.
+  ./videogen render <storyboard.json> [shot_01 shot_02...] [--720p] [--force]
+      Tự động điều khiển Google Flow: cấu hình (hỗ trợ Video -> Thành phần / Ingredients),
+      gắn chip nhân vật chính xác, kiểm duyệt Jev, render và tải video về renders/.
+      Tự động bỏ qua các shot đã tồn tại và đạt kiểm định ffprobe (dùng --force để render lại).
+
+  ./videogen character <storyboard.json> [--force]
+      Tự động tạo bộ tài sản nhân vật (Character Assets) trên tuyến /character của Google Flow
+      từ mảng "characters" trong storyboard bằng Nano Banana Pro (chân dung + cơ thể nếu có).
+      Tự động bỏ qua nhân vật đã tồn tại trùng tên chính xác trong dự án (dùng --force để tạo lại).
 
       ⚠️  QUAN TRỌNG: Trước khi chạy lệnh này, hãy hỏi người dùng chọn chế độ tải:
         [1] 1080p Full HD (Cloud AI Super-Resolution) — Mặc định, chất lượng cao nhất.
@@ -254,19 +283,34 @@ async function main() {
         break;
       }
 
+      case 'character':
+      case 'characters': {
+        const sbArg = args[1];
+        if (!sbArg) {
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen character <storyboard.json> [--force]');
+          process.exit(1);
+        }
+        await bridge.ensureBridge();
+        const { data: sb } = loadStoryboard(sbArg);
+        const force = args.includes('--force');
+        await flow.createCharacterAssets(sb, { force });
+        break;
+      }
+
       case 'render': {
         const sbArg = args[1];
         if (!sbArg) {
-          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...] [--720p]');
+          console.error('[!] Vui lòng cung cấp đường dẫn storyboard: ./videogen render <storyboard.json> [shots...] [--720p] [--force]');
           process.exit(1);
         }
         await bridge.ensureBridge();
         const { data: sb } = loadStoryboard(sbArg);
         const is720p = args.includes('--720p');
-        const resolution = is720p ? '720p' : ((sb.project && sb.project.resolution) || '1080p');
+        const force = args.includes('--force');
+        const resolution = is720p ? '720p' : (sb.resolution || (sb.project && sb.project.resolution) || '1080p');
         const targetShots = args.slice(2).filter(a => !a.startsWith('--'));
 
-        await flow.renderStoryboard(sb, { resolution, targetShots, sbPath: sbArg });
+        await flow.renderStoryboard(sb, { resolution, targetShots, sbPath: sbArg, force });
         break;
       }
 
@@ -480,10 +524,8 @@ async function main() {
         if (targetArg.endsWith('.json')) {
           storyboardPath = targetArg;
           const { data: sb } = loadStoryboard(targetArg);
-          const baseName = path.basename(targetArg, '.json');
-          const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
-          const candidateMaster = path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`);
-          if (fs.existsSync(candidateMaster)) {
+          const candidateMaster = findMasterVideoForStoryboard(sb, targetArg);
+          if (candidateMaster) {
             videoArg = candidateMaster;
           }
           autoCaption = sb.tiktok?.caption || (sb.youtube ? `${sb.youtube.title}\n\n#Shorts #Viral` : sb.episode_title);
@@ -564,20 +606,7 @@ async function main() {
         
         const baseName = path.basename(sbArg || '', '.json');
         const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
-        const candidates = [
-          path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`),
-          path.join(config.OUTPUT_DIR, `${episodeName}_master_720p.mp4`),
-          path.join(config.OUTPUT_DIR, `${episodeName}_master.mp4`),
-          path.join(config.OUTPUT_DIR, `${baseName}_master_1080p.mp4`),
-          path.join(config.OUTPUT_DIR, `${baseName}.mp4`)
-        ];
-        let latestMaster = null;
-        for (const c of candidates) {
-          if (fs.existsSync(c)) {
-            latestMaster = c;
-            break;
-          }
-        }
+        const latestMaster = findMasterVideoForStoryboard(sb, sbArg || '');
 
         if (!latestMaster || !fs.existsSync(latestMaster)) {
           console.error(`[!] Không tìm thấy video thành phẩm của tập "${episodeName}" trong output/ để tải lên!`);
@@ -645,18 +674,7 @@ async function main() {
         if (!videoToUpload) {
           const baseName = path.basename(sbArg, '.json');
           const episodeName = sb.series_id || (sb.project && sb.project.id ? sb.project.id : '') || baseName;
-          const candidates = [
-            path.join(config.OUTPUT_DIR, `${episodeName}_master_1080p.mp4`),
-            path.join(config.OUTPUT_DIR, `${episodeName}_master_720p.mp4`),
-            path.join(config.OUTPUT_DIR, `${baseName}_master_1080p.mp4`),
-            path.join(config.OUTPUT_DIR, `${baseName}.mp4`)
-          ];
-          for (const c of candidates) {
-            if (fs.existsSync(c)) {
-              videoToUpload = c;
-              break;
-            }
-          }
+          videoToUpload = findMasterVideoForStoryboard(sb, sbArg);
 
           if (!videoToUpload) {
             console.error(`[!] Không tìm thấy file video phù hợp của tập "${episodeName}" trong output/!`);
@@ -694,13 +712,20 @@ async function main() {
         const skipRender = args.includes('--skip-render') || args.includes('--no-render');
         const skipVoice = args.includes('--skip-voice') || args.includes('--no-voice');
         const is720p = args.includes('--720p');
-        const resolution = is720p ? '720p' : '1080p';
+        const force = args.includes('--force');
+        const resolution = is720p ? '720p' : null;
         const platformArg = args.find(a => a.startsWith('--platform='));
         const targetPlatform = platformArg ? platformArg.split('=')[1] : 'both';
         const channelArg = args.find(a => a.startsWith('--channel='));
         const channel = channelArg ? channelArg.split('=')[1] : null;
 
-        if (!skipRender || !skipVoice || !noUpload) {
+        let isSilentCinema = false;
+        try {
+          isSilentCinema = compositor.isSilentCinemaStoryboard(loadStoryboard(sbArg).data);
+        } catch {}
+        const effectiveSkipVoice = skipVoice || isSilentCinema;
+
+        if (!skipRender || !effectiveSkipVoice || !noUpload) {
           await bridge.ensureBridge();
         }
 
@@ -711,6 +736,7 @@ async function main() {
           skipRender,
           skipVoice,
           resolution,
+          force,
           targetPlatform,
           channel
         });
@@ -731,7 +757,8 @@ async function main() {
         const skipRender = args.includes('--skip-render') || args.includes('--no-render');
         const skipVoice = args.includes('--skip-voice') || args.includes('--no-voice');
         const is720p = args.includes('--720p');
-        const resolution = is720p ? '720p' : '1080p';
+        const force = args.includes('--force');
+        const resolution = is720p ? '720p' : null;
         const platformArg = args.find(a => a.startsWith('--platform='));
         const targetPlatform = platformArg ? platformArg.split('=')[1] : 'both';
         const channelArg = args.find(a => a.startsWith('--channel='));
@@ -740,7 +767,17 @@ async function main() {
         // Storyboard paths are non-flag arguments after 'loop'
         const sbArgs = args.slice(1).filter(a => !a.startsWith('--'));
 
-        if (!skipRender || !skipVoice || !noUpload) {
+        let allSilentCinema = false;
+        if (sbArgs.length > 0) {
+          try {
+            allSilentCinema = sbArgs.every(p => compositor.isSilentCinemaStoryboard(loadStoryboard(p).data));
+          } catch {
+            allSilentCinema = false;
+          }
+        }
+        const effectiveSkipVoice = skipVoice || allSilentCinema;
+
+        if (!skipRender || !effectiveSkipVoice || !noUpload) {
           await bridge.ensureBridge();
         }
 
@@ -751,6 +788,7 @@ async function main() {
           skipRender,
           skipVoice,
           resolution,
+          force,
           targetPlatform,
           channel
         });

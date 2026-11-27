@@ -150,16 +150,21 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     draft = false,
     visibility = null,
     noUpload = false,
-    resolution = '1080p',
+    resolution: requestedResolution = null,
     targetPlatform = 'all',
     skipBridge = false,
     skipRender = false,
     skipVoice = false,
+    skipCharacters = false,
+    force = false,
     channel = null,
     audioMix = null
   } = options;
 
   const { path: resolvedPath, data: sb } = resolveStoryboard(sbPath);
+  const isSilentCinema = compositor.isSilentCinemaStoryboard(sb);
+  const effectiveSkipVoice = Boolean(skipVoice || isSilentCinema);
+  const resolution = requestedResolution || sb.resolution || (sb.project && sb.project.resolution) || '1080p';
   const baseName = path.basename(resolvedPath, '.json');
   const rawEpisodeName = sb.series_id ||
     (sb.project && sb.project.id ? sb.project.id : '') ||
@@ -184,11 +189,11 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
   console.log(`\n============================================================`);
   console.log(`🎬 BẮT ĐẦU SẢN XUẤT TẬP: ${episodeTitle}`);
   console.log(`   Storyboard: ${resolvedPath}`);
-  console.log(`   Độ phân giải: ${resolution.toUpperCase()} | Upload: ${noUpload ? 'BỎ QUA (--no-upload)' : (draft ? 'DRAFT / PRIVATE' : (visibility ? visibility.toUpperCase() : 'METADATA PRECEDENCE'))}`);
+  console.log(`   Chế độ: ${isSilentCinema ? 'SILENT CINEMA (Không TTS)' : 'STANDARD'} | Độ phân giải: ${resolution.toUpperCase()} | Upload: ${noUpload ? 'BỎ QUA (--no-upload)' : (draft ? 'DRAFT / PRIVATE' : (visibility ? visibility.toUpperCase() : 'METADATA PRECEDENCE'))}`);
   console.log(`============================================================`);
 
   // Ensure bridge connection if browser actions are needed
-  if (!skipBridge && (!skipRender || !skipVoice || !noUpload)) {
+  if (!skipBridge && (!skipRender || !effectiveSkipVoice || !noUpload)) {
     try {
       await bridge.ensureBridge();
     } catch (err) {
@@ -196,156 +201,145 @@ async function runPipelineForStoryboard(sbPath, options = {}) {
     }
   }
 
-  // 1. RENDER GOOGLE FLOW (Bỏ qua các shot đã có file render hợp lệ)
+  // 0. OPTIONAL CHARACTER ASSETS CREATION (if storyboard.characters is defined)
+  if (!skipRender && !skipCharacters && Array.isArray(sb.characters) && sb.characters.length > 0 && typeof flow.createCharacterAssets === 'function') {
+    console.log(`\n[-] [0/4] Kiểm tra & tạo tài sản nhân vật (${sb.characters.length} nhân vật) trên Google Flow...`);
+    await flow.createCharacterAssets(sb, { force });
+  }
+
+  // 1. RENDER GOOGLE FLOW (Bỏ qua các shot đã có file render hợp lệ qua ffprobe)
   const shots = sb.shots || [];
   const renderResults = [];
 
   if (!skipRender && shots.length > 0) {
     console.log(`\n[-] [1/4] Kiểm tra & render video cảnh quay trên Google Flow [${resolution.toUpperCase()}]...`);
+    await flow.renderStoryboard(sb, { resolution, sbPath: resolvedPath, force });
     for (let i = 0; i < shots.length; i++) {
       const s = shots[i];
       const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
       const outFile = path.join(epRenderDir, `${shotId}.mp4`);
-
-      // Kiểm tra file có sẵn trong thư mục riêng của tập (tuyệt đối không lấy từ root renders/ để tránh trùng clip giữa các tập)
-      if (fs.existsSync(outFile) && fs.statSync(outFile).size > 1000) {
-        const sizeMb = (fs.statSync(outFile).size / 1024 / 1024).toFixed(2);
-        console.log(`    [✓] [${i + 1}/${shots.length}] ${shotId}: Đã có sẵn trong ${episodeName} (${sizeMb} MB), bỏ qua render.`);
-        renderResults.push({ shotId, status: 'cached', file: outFile });
-        continue;
-      }
-
-      const prompt = s.flow_prompt || s.prompt;
-      if (!prompt) {
-        console.warn(`    [!] [${i + 1}/${shots.length}] ${shotId}: Không có prompt, bỏ qua.`);
-        renderResults.push({ shotId, status: 'skipped_no_prompt' });
-        continue;
-      }
-
-      console.log(`    >>> [${i + 1}/${shots.length}] Gửi render ${shotId}...`);
-      const isShorts = (sb.aspect_ratio === '9:16') || (sb.geometry && sb.geometry.aspect_ratio === '9:16') || (sb.format === 'shorts_40s');
-      await flow.ensureVideoSettings({
-        ratio: isShorts ? '9:16' : '16:9',
-        duration: '10 giây',
-        model: 'Omni 1.1 Flash'
+      renderResults.push({
+        shotId,
+        status: fs.existsSync(outFile) ? 'rendered' : 'missing',
+        file: outFile
       });
-      await flow.clearCharacters();
-      for (const charName of (s.characters || [])) {
-        console.log(`        [-] Gắn chip nhân vật: @${charName}`);
-        await flow.addCharacter(charName);
-      }
-      await flow.submitPrompt(prompt);
-      await flow.waitForRender(240);
-      await flow.downloadLatest(outFile, { resolution });
-
-      renderResults.push({ shotId, status: 'rendered', file: outFile });
     }
   } else {
     console.log(`\n[-] [1/4] Bỏ qua bước Google Flow render.`);
   }
 
-  // 2. TẠO LỜI THOẠI ELEVENLABS (Bỏ qua các shot đã có file audio)
+  // 2. TẠO LỜI THOẠI TTS (Tự động bỏ qua khi chế độ cinema_silent / tts: false)
   let voiceDir = epAudioDir;
-  if (!skipVoice) {
-    console.log(`\n[-] [2/4] Tạo giọng đọc thuyết minh qua ElevenLabs...`);
+  if (!effectiveSkipVoice) {
+    console.log(`\n[-] [2/4] Tạo giọng đọc thuyết minh...`);
     try {
       voiceDir = await tts.generateAllVoices(sb, [], resolvedPath);
     } catch (err) {
-      console.warn(`    [!] Cảnh báo tạo voice ElevenLabs: ${err.message}. Tiếp tục với audio hiện có.`);
+      console.warn(`    [!] Cảnh báo tạo voice: ${err.message}. Tiếp tục với audio hiện có.`);
     }
   } else {
-    console.log(`\n[-] [2/4] Bỏ qua bước ElevenLabs voice synthesis.`);
+    console.log(`\n[-] [2/4] Bỏ qua bước voice synthesis${isSilentCinema ? ' (Chế độ Silent-Cinema / tts: false)' : ''}.`);
   }
 
   // 3. HẬU KỲ & HÒA ÂM MASTER VIDEO
   console.log(`\n[-] [3/4] Hòa âm đa tầng & ghép nối master video...`);
-  const videoFiles = [];
-  const audioFiles = [];
-  const timelines = [];
-  const delays = [];
+  let masterOutput;
+  let compositeRes;
 
-  let countVoices = 0;
-  for (let i = 0; i < shots.length; i++) {
-    const s = shots[i];
-    const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
-    let vFile = path.join(epRenderDir, `${shotId}.mp4`);
-    if (!fs.existsSync(vFile)) {
-      vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
-    }
+  if (isSilentCinema) {
+    const sbWithMix = audioMix ? { ...sb, audio_mix: { ...(sb.audio_mix || {}), ...audioMix } } : sb;
+    compositeRes = await compositor.assembleStoryboard(sbWithMix, { noSubs: true, sbPath: resolvedPath });
+    masterOutput = compositeRes.outputVideoPath;
+    console.log(`[✓] Silent-Cinema master video hoàn tất: ${masterOutput} (${compositeRes.duration.toFixed(2)}s)`);
+  } else {
+    const videoFiles = [];
+    const audioFiles = [];
+    const timelines = [];
+    const delays = [];
 
-    let aFile = path.join(voiceDir, `voice_${shotId}.mp3`);
-    if (!fs.existsSync(aFile)) {
-      aFile = path.join(epAudioDir, `voice_${shotId}.mp3`);
-    }
-    if (!fs.existsSync(aFile)) {
-      aFile = path.join(config.AUDIO_DIR, baseName, `voice_${shotId}.mp3`);
-    }
-
-    if (fs.existsSync(vFile)) {
-      videoFiles.push(vFile);
-
-      const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
-      const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
-
-      if (hasAudioFile) {
-        countVoices++;
-        audioFiles.push(aFile);
-      } else {
-        audioFiles.push(null);
+    let countVoices = 0;
+    for (let i = 0; i < shots.length; i++) {
+      const s = shots[i];
+      const shotId = s.id || `shot_${String(i + 1).padStart(2, '0')}`;
+      let vFile = path.join(epRenderDir, `${shotId}.mp4`);
+      if (!fs.existsSync(vFile)) {
+        vFile = path.join(config.RENDERS_DIR, `${shotId}.mp4`);
       }
 
-      const delaySec = (s.voice && typeof s.voice.voice_delay_sec === 'number')
-        ? s.voice.voice_delay_sec
-        : ((s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.3);
-      delays.push(delaySec);
+      let aFile = path.join(voiceDir, `voice_${shotId}.mp3`);
+      if (!fs.existsSync(aFile)) {
+        aFile = path.join(epAudioDir, `voice_${shotId}.mp3`);
+      }
+      if (!fs.existsSync(aFile)) {
+        aFile = path.join(config.AUDIO_DIR, baseName, `voice_${shotId}.mp3`);
+      }
 
-      timelines.push({
-        shotId,
-        duration: compositor.getDuration(vFile),
-        audioDuration: hasAudioFile ? compositor.getDuration(aFile) : 0
-      });
+      if (fs.existsSync(vFile)) {
+        videoFiles.push(vFile);
+
+        const hasSubOrVo = !!(s.vietnamese_subtitles || s.japanese_voiceover || s.voice || (s.audio && (s.audio.voiceover || s.audio.japanese_voiceover)));
+        const hasAudioFile = hasSubOrVo && fs.existsSync(aFile);
+
+        if (hasAudioFile) {
+          countVoices++;
+          audioFiles.push(aFile);
+        } else {
+          audioFiles.push(null);
+        }
+
+        const delaySec = (s.voice && typeof s.voice.voice_delay_sec === 'number')
+          ? s.voice.voice_delay_sec
+          : ((s.audio && typeof s.audio.voice_delay_sec === 'number') ? s.audio.voice_delay_sec : 0.3);
+        delays.push(delaySec);
+
+        timelines.push({
+          shotId,
+          duration: compositor.getDuration(vFile),
+          audioDuration: hasAudioFile ? compositor.getDuration(aFile) : 0
+        });
+      }
     }
+
+    if (videoFiles.length === 0) {
+      throw new Error(`Không tìm thấy video clips nào trong ${epRenderDir} hoặc renders/ để ghép nối!`);
+    }
+
+    // Phụ đề ASS
+    const assPath = path.join(epRenderDir, 'master_subtitles.ass');
+    subtitles.generateSubtitles(sb, timelines, assPath);
+    try {
+      fs.copyFileSync(assPath, path.join(config.RENDERS_DIR, 'master_subtitles.ass'));
+    } catch {}
+
+    const isShorts = (sb.aspect_ratio === '9:16') ||
+                     (sb.geometry && sb.geometry.aspect_ratio === '9:16') ||
+                     (sb.format === 'shorts_40s') ||
+                     (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
+    const noHardsub = sb.hardsub === false || (sb.subtitles && sb.subtitles.enabled === false) || (sb.project && sb.project.hardsub === false);
+
+    const effectiveAudioMix = audioMix || sb.audio_mix || {};
+    const voiceVolume = typeof effectiveAudioMix.voice_volume === 'number' ? effectiveAudioMix.voice_volume : 1.0;
+    const sfxVolume = typeof effectiveAudioMix.sfx_volume === 'number' ? effectiveAudioMix.sfx_volume : (typeof effectiveAudioMix.ambient_volume === 'number' ? effectiveAudioMix.ambient_volume : 0.25);
+    const bgmVolume = typeof effectiveAudioMix.bgm_volume === 'number' ? effectiveAudioMix.bgm_volume : 0.15;
+    const bgmPath = effectiveAudioMix.bgm_path || null;
+
+    masterOutput = path.join(config.OUTPUT_DIR, `${episodeName}_master_${resolution}.mp4`);
+    compositeRes = await compositor.compositeVideo({
+      videoFiles,
+      audioFiles,
+      assSubtitlePath: noHardsub ? null : assPath,
+      outputVideoPath: masterOutput,
+      ambientVolume: sfxVolume,
+      voiceVolume,
+      bgmVolume,
+      bgmPath,
+      delays,
+      aspectRatio: isShorts ? '9:16' : '16:9',
+      burnSubtitles: !noHardsub
+    });
+
+    console.log(`[✓] Master video hoàn tất: ${masterOutput} (${compositeRes.duration.toFixed(2)}s)`);
   }
-
-  if (videoFiles.length === 0) {
-    throw new Error(`Không tìm thấy video clips nào trong ${epRenderDir} hoặc renders/ để ghép nối!`);
-  }
-
-  // Phụ đề ASS
-  const assPath = path.join(epRenderDir, 'master_subtitles.ass');
-  subtitles.generateSubtitles(sb, timelines, assPath);
-  try {
-    fs.copyFileSync(assPath, path.join(config.RENDERS_DIR, 'master_subtitles.ass'));
-  } catch {}
-
-  const isShorts = (sb.aspect_ratio === '9:16') ||
-                   (sb.geometry && sb.geometry.aspect_ratio === '9:16') ||
-                   (sb.format === 'shorts_40s') ||
-                   (sb.project && (sb.project.mode === 'shorts' || sb.project.aspect_ratio === '9:16'));
-  const noHardsub = sb.hardsub === false || (sb.subtitles && sb.subtitles.enabled === false) || (sb.project && sb.project.hardsub === false);
-
-  const effectiveAudioMix = audioMix || sb.audio_mix || {};
-  const voiceVolume = typeof effectiveAudioMix.voice_volume === 'number' ? effectiveAudioMix.voice_volume : 1.0;
-  const sfxVolume = typeof effectiveAudioMix.sfx_volume === 'number' ? effectiveAudioMix.sfx_volume : (typeof effectiveAudioMix.ambient_volume === 'number' ? effectiveAudioMix.ambient_volume : 0.25);
-  const bgmVolume = typeof effectiveAudioMix.bgm_volume === 'number' ? effectiveAudioMix.bgm_volume : 0.15;
-  const bgmPath = effectiveAudioMix.bgm_path || null;
-
-  const masterOutput = path.join(config.OUTPUT_DIR, `${episodeName}_master_${resolution}.mp4`);
-  const compositeRes = await compositor.compositeVideo({
-    videoFiles,
-    audioFiles,
-    assSubtitlePath: noHardsub ? null : assPath,
-    outputVideoPath: masterOutput,
-    ambientVolume: sfxVolume,
-    voiceVolume,
-    bgmVolume,
-    bgmPath,
-    delays,
-    aspectRatio: isShorts ? '9:16' : '16:9',
-    burnSubtitles: !noHardsub
-  });
-
-  console.log(`[✓] Master video hoàn tất: ${masterOutput} (${compositeRes.duration.toFixed(2)}s)`);
 
   const artifactHash = fs.existsSync(masterOutput)
     ? crypto.createHash('sha256').update(fs.readFileSync(masterOutput)).digest('hex')
@@ -546,11 +540,12 @@ async function runLoop(storyboardPaths = [], options = {}) {
     draft = false,
     visibility = null,
     noUpload = false,
-    resolution = '1080p',
+    resolution = null,
     targetPlatform = 'both',
     skipBridge = false,
     skipRender = false,
     skipVoice = false,
+    force = false,
     channel = null,
     audioMix = null,
     delayMs = 5000,
@@ -571,7 +566,7 @@ async function runLoop(storyboardPaths = [], options = {}) {
   console.log(`\n============================================================`);
   console.log(`🔄 VIDEOGEN PRODUCTION LOOP: BẮT ĐẦU VÒNG LẶP SẢN XUẤT`);
   console.log(`   Tổng số tập trong hàng đợi: ${queue.length}`);
-  console.log(`   Độ phân giải: ${resolution.toUpperCase()} | Visibility: ${visibility || (draft ? 'PRIVATE' : 'METADATA')} | No-Upload: ${noUpload}`);
+  console.log(`   Độ phân giải: ${(resolution || 'AUTO').toUpperCase()} | Visibility: ${visibility || (draft ? 'PRIVATE' : 'METADATA')} | No-Upload: ${noUpload}`);
   console.log(`============================================================`);
 
   const completed = [];
@@ -593,6 +588,7 @@ async function runLoop(storyboardPaths = [], options = {}) {
         skipBridge,
         skipRender,
         skipVoice,
+        force,
         channel,
         audioMix
       });

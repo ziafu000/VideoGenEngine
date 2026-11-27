@@ -289,10 +289,11 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen bridge [status]` | **Bridge Health** | Checks or auto-spawns Windows Chrome & CDP proxy. |
 | `./videogen board <sb> [--open]` | **Director's Visual Board** | Generates an interactive HTML review board in `.lavish/board_<name>.html` with chronological micro-shot cards, prompts, narration clauses, palette badges, and live render previews. Supports instant human review via `lavish-axi`. |
 | `./videogen explainer <transcript.txt \| "text">` | **Explainer Storyboard** | Segments transcript into 1.5s–2.5s semantic visual clauses, assigns cognitive strategies (`LITERAL`, `METAPHOR`, `TITLE_CARD`, `SPLIT_SCREEN`, `POSE_CHURN`), and compiles a complete Nano Banana Pro storyboard. |
-| `./videogen render <sb> [shots...] [--720p]` | **Render Video** | Controls Google Flow: configures settings, attaches `@Character` chips, submits prompts, activates Cloud AI 1080p Super-Resolution (or `--720p` for fast draft). |
+| `./videogen character <sb> [--force]` | **Character Assets** | Automates character creation on Google Flow's `/character` route from `storyboard.characters` (Nano Banana Pro portrait + optional body). Skips exact-name matches unless `--force` is set. |
+| `./videogen render <sb> [shots...] [--720p] [--force]` | **Render Video** | Controls Google Flow: configures settings (including Video → Ingredients / `flow_mode: "ingredients"`), attaches exact `@Character` chips, submits prompts, and downloads 1080p (or `--720p`). Skips existing `ffprobe`-valid clips unless `--force` is set. |
 | `./videogen voice <sb> [shots...]` | **Voiceover** | Synthesizes dialogue via local VieNeu-TTS 48 kHz (default) or ElevenLabs CDP (`--provider elevenlabs`). |
 | `./videogen subs <sb>` | **Subtitles** | Generates Cinema Dual-Zone ASS subtitles or dynamic Shorts subtitles. |
-| `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. |
+| `./videogen assemble <sb>` | **Compositor** | Stitches clips, dynamically pads audio dialogue, balances audio, and burns hardsubs. For silent-cinema storyboards (`mode: "cinema_silent"` or `tts: false`), assembles with optional `xfade_duration`, BGM/SFX mix, and Unicode `title_card`/`closing_card` overlays. |
 | `./videogen verify <video> [ts...]` | **Visual QA** | Extracts high-res keyframes at specified timestamps for visual inspection. |
 | `./videogen shorts <sb> [video]` | **Shorts Clips** | Automatically extracts and renders viral 9:16 vertical teaser clips with **Option B (Cinematic Blur Overlay)** and high-impact CTA banners (0 Credit cost). |
 | `./videogen thumb <sb> [prompt]` | **Thumbnails** | Generates 4 cinematic 16:9 thumbnails via Google Flow image mode, upscales to 1080p, and syncs to drive. |
@@ -301,8 +302,8 @@ All production phases are orchestrated through the central `./videogen` CLI:
 | `./videogen facebook <sb> [video] [--draft] [--schedule "DD/MM/YYYY HH:mm"]` | **Facebook Reels** | Uploads and schedules master 9:16 video to Facebook Reels via CDP (0 API cost). Use `--draft` for review. |
 | `./videogen tiktok <sb | video.mp4> [thumbnail.jpg] ["caption"] [--schedule "DD/MM/YYYY HH:mm"]` | **TikTok Studio** | Uploads and schedules 9:16 Shorts to TikTok Studio via CDP (0 API cost). |
 | `./videogen podcast-short <clip_spec.json> [--style=both\|clean\|motion] [--voice=original\|dub] [--out-dir=dir]` | **9:16 Clip & Motion Overlay** | Cuts a 1080×1920 clip from a source video using the spec's framing crops, then renders a clean variant (ASS subtitles) and/or a HyperFrames motion-overlay variant. All overlay text, numbers, colors and timing come from `spec.scenes`; no scenes are added when it is empty. See below. |
-| **`./videogen run <sb> [--720p]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z!** |
-| **`./videogen loop [sbs...] [--draft] [--no-upload] [--720p]`** | **Batch Production Loop** | **Automates continuous batch production across multiple storyboards or all `storyboards/*.json`.** |
+| **`./videogen run <sb> [--720p] [--force]`** | **Full Pipeline** | **Executes the entire end-to-end pipeline autonomously from A to Z (auto-creates `characters[]` when defined, respects storyboard `resolution`, and skips TTS in silent-cinema mode).** |
+| **`./videogen loop [sbs...] [--draft] [--no-upload] [--720p] [--force]`** | **Batch Production Loop** | **Automates continuous batch production across multiple storyboards or all `storyboards/*.json`.** |
 
 ### 9:16 Clip & Motion Overlay (`./videogen podcast-short`)
 
@@ -518,6 +519,7 @@ npm test
 - `tests/test_facebook_uploader.js` — Unit tests for caption building, storyboard metadata extraction, and Meta Business Suite CDP status.
 - `tests/test_tiktok_uploader.js` — Unit tests for TikTok Studio module exports, parameter validation, and modal clearance.
 - `tests/test_clip_motion_and_flow_helpers.js` — Unit tests for the generic overlay components (empty-by-default scenes, custom scene rendering, escaping), the 9:16 framing/subtitle helpers, Flow credit/error helpers, and WSL upload path staging.
+- `tests/test_ingredients_and_cinema_mode.js` — Unit and synthetic FFmpeg integration tests for exact ingredient matching, Flow `/character` route/config resolution, download directory & `ffprobe` validation, silent-cinema filter graph & Unicode title/closing card assembly, and CLI `character` behavior.
 - `tests/test_pipeline_loop.js` — Full integration tests for storyboard discovery, multi-clip FFmpeg composition, dynamic audio padding, and batch queue error handling.
 
 ---

@@ -119,7 +119,49 @@ const ASSETS_DIR = path.join(PROJECT_DIR, 'assets');
   }
 });
 
-const WIN_DOWNLOADS_DIR = process.env.WIN_DOWNLOADS_DIR || (
+// Resolve candidate download directories (env override, D:\Downloads on WSL, C:\Users\<user>\Downloads, or native ~/Downloads)
+function resolveDownloadDirs(options = {}) {
+  const envDir = options.envDir !== undefined ? options.envDir : process.env.WIN_DOWNLOADS_DIR;
+  const platform = options.platform !== undefined ? options.platform : process.platform;
+  const homedir = options.homedir !== undefined ? options.homedir : os.homedir();
+  const winUser = options.winUser !== undefined ? options.winUser : WIN_USER;
+  const existsFn = typeof options.existsFn === 'function' ? options.existsFn : (p) => fs.existsSync(p);
+  const existingOnly = options.existingOnly !== false;
+
+  const rawCandidates = [];
+  if (envDir && String(envDir).trim()) {
+    rawCandidates.push(String(envDir).trim());
+  }
+
+  const isWslLike = platform !== 'win32' && platform !== 'darwin' && (existsFn('/mnt/c/Users') || existsFn('/mnt/d'));
+  if (isWslLike) {
+    rawCandidates.push('/mnt/d/Downloads');
+    if (winUser) {
+      rawCandidates.push(`/mnt/c/Users/${winUser}/Downloads`);
+    }
+  } else {
+    rawCandidates.push(path.join(homedir, 'Downloads'));
+  }
+
+  const seen = new Set();
+  const deduped = [];
+  for (const c of rawCandidates) {
+    const normalized = String(c).replace(/[\\/]+$/, '') || c;
+    if (!seen.has(normalized)) {
+      seen.add(normalized);
+      deduped.push(normalized);
+    }
+  }
+
+  if (!existingOnly) return deduped;
+  const existing = deduped.filter(d => {
+    try { return Boolean(existsFn(d)); } catch { return false; }
+  });
+  return existing.length > 0 ? existing : deduped.slice(0, 1);
+}
+
+const WIN_DOWNLOAD_CANDIDATE_DIRS = resolveDownloadDirs();
+const WIN_DOWNLOADS_DIR = WIN_DOWNLOAD_CANDIDATE_DIRS[0] || (
   (process.platform === 'win32' || process.platform === 'darwin' || !fs.existsSync('/mnt/c/Users'))
     ? path.join(os.homedir(), 'Downloads')
     : `/mnt/c/Users/${WIN_USER}/Downloads`
@@ -367,6 +409,8 @@ module.exports = {
   STORYBOARDS_DIR,
   ASSETS_DIR,
   WIN_DOWNLOADS_DIR,
+  WIN_DOWNLOAD_CANDIDATE_DIRS,
+  resolveDownloadDirs,
   DEST_ORIGINAL,
   DEST_FINAL,
   YOUTUBE_STUDIO_URL,
