@@ -99,12 +99,15 @@ assert.deepStrictEqual(nativeDirs, ['/Users/alice/Downloads']);
 
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vg-ing-cinema-test-'));
 try {
-  // Fake HTML login redirect saved as .mp4 must be rejected
+  // Fake HTML login redirect saved as .mp4 must be rejected by both flow & compositor shared probe
   const htmlFake = path.join(tmpDir, 'fake_login.mp4');
   fs.writeFileSync(htmlFake, '<!DOCTYPE html><html><body>Sign in</body></html>'.repeat(400), 'utf8');
   const htmlProbe = flow.verifyVideoFileWithFfprobe(htmlFake);
   assert.strictEqual(htmlProbe.valid, false, 'HTML redirect saved as .mp4 must fail validation');
   assert.strictEqual(htmlProbe.reason, 'html_redirect_or_text_response');
+  const compHtmlProbe = compositor.probeVideoStream(htmlFake);
+  assert.strictEqual(compHtmlProbe.valid, false);
+  assert.strictEqual(compHtmlProbe.reason, 'html_redirect_or_text_response');
 
   // Truncated/tiny file must be rejected
   const tinyFile = path.join(tmpDir, 'tiny.mp4');
@@ -235,9 +238,20 @@ try {
   assert.strictEqual(assembled.height, 720);
   assert.ok(assembled.duration >= 3.4 && assembled.duration <= 3.9, `Expected ~3.65s duration with 0.35s xfade, got ${assembled.duration}`);
 
-  // Verify CLI exposes character command
-  const cliSrc = fs.readFileSync(path.join(config.PROJECT_DIR, 'videogen'), 'utf8');
-  assert.ok(cliSrc.includes("case 'character':"), 'CLI must expose ./videogen character');
+  const cliPath = path.join(config.PROJECT_DIR, 'videogen');
+  const helpOut = execFileSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' });
+  assert.ok(helpOut.includes('./videogen character <storyboard.json> [--force]'), 'CLI --help must document character command');
+
+  let charExitCode = 0;
+  let charStderr = '';
+  try {
+    execFileSync(process.execPath, [cliPath, 'character'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    charExitCode = err.status;
+    charStderr = String(err.stderr || '');
+  }
+  assert.strictEqual(charExitCode, 1, 'CLI character without storyboard argument must exit with status 1');
+  assert.ok(charStderr.includes('./videogen character <storyboard.json>'), 'CLI character missing-argument error must report usage');
   assert.strictEqual(typeof flow.createCharacterAssets, 'function');
   assert.strictEqual(typeof pipelineLoop.runPipelineForStoryboard, 'function');
   console.log('  [PASS] End-to-end synthetic silent-cinema assembly verified.\n');

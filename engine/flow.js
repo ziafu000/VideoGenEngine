@@ -5,6 +5,7 @@ const { execFileSync } = require('child_process');
 const { getClientForPage, sleep } = require('./cdp');
 const config = require('./config');
 const jev = require('./jev');
+const { probeVideoStream } = require('./compositor');
 
 async function getFlowClient(existingCdp = null) {
   if (existingCdp && typeof existingCdp.isOpen === 'function' && existingCdp.isOpen()) {
@@ -186,46 +187,60 @@ function matchExactIngredientOption(options, targetName) {
   return null;
 }
 
+async function tryClickExactOverlayOption(cdp, charName) {
+  const descriptors = await cdp.evaluate(`(() => {
+    const panes = Array.from(document.querySelectorAll('.cdk-overlay-pane'));
+    const allOptions = panes.flatMap(p => Array.from(p.querySelectorAll('[role="option"], button[role="option"]')));
+    const pool = allOptions.length > 0
+      ? allOptions
+      : panes.flatMap(p => Array.from(p.querySelectorAll('.asset-item, .character-tile-container, button')));
+    return pool.map((el, index) => ({
+      index,
+      role: el.getAttribute('role') || '',
+      text: el.innerText || el.textContent || '',
+      ariaLabel: el.getAttribute('aria-label') || ''
+    }));
+  })()`);
+
+  const hit = matchExactIngredientOption(descriptors, charName);
+  if (!hit || typeof hit.index !== 'number') return false;
+
+  return await cdp.evaluate(`((targetIndex) => {
+    const panes = Array.from(document.querySelectorAll('.cdk-overlay-pane'));
+    const allOptions = panes.flatMap(p => Array.from(p.querySelectorAll('[role="option"], button[role="option"]')));
+    const pool = allOptions.length > 0
+      ? allOptions
+      : panes.flatMap(p => Array.from(p.querySelectorAll('.asset-item, .character-tile-container, button')));
+    const el = pool[targetIndex];
+    if (!el) return false;
+    el.scrollIntoView({ block: 'center' });
+    el.click();
+    return true;
+  })(${hit.index})`);
+}
+
 // 3a. Attach an ingredient via Flow's Ingredients picker ("Thêm thành phần vào ô nhập câu lệnh") with exact matching
 async function addIngredient(charName, options = {}) {
   const cdp = await getFlowClient(options.cdp);
   try {
-    const res = await cdp.evaluate(`(async (rawTargetName) => {
-      const norm = (s) => String(s || '').replace(/^@/, '').replace(/\\s+/g, ' ').trim().toLowerCase();
-      const cleanTarget = norm(rawTargetName);
-      const exactWithType = new Set([cleanTarget + ' nhân vật', cleanTarget + ' character']);
-      const exactBare = cleanTarget;
-
-      const findExactOption = () => {
-        const panes = Array.from(document.querySelectorAll('.cdk-overlay-pane'));
-        const allOptions = panes.flatMap(p => Array.from(p.querySelectorAll('[role="option"], button[role="option"]')));
-        const pool = allOptions.length > 0
-          ? allOptions
-          : panes.flatMap(p => Array.from(p.querySelectorAll('.asset-item, .character-tile-container, button')));
-        const getLabels = (el) => [
-          norm(el.innerText || el.textContent || ''),
-          norm(el.getAttribute('aria-label') || '')
-        ];
-        let hit = pool.find(el => getLabels(el).some(l => exactWithType.has(l)));
-        if (!hit) {
-          hit = pool.find(el => getLabels(el).some(l => l === exactBare));
-        }
-        return { hit, count: pool.length };
-      };
-
+    const opened = await cdp.evaluate(`(() => {
       const addBtn = document.querySelector(
         'button[aria-label="Thêm thành phần vào ô nhập câu lệnh"], button[aria-label="Add ingredient to prompt"], button[aria-label="Add ingredients to prompt"], button.add-menu-trigger'
       );
-      if (!addBtn) {
-        return { fallbackToMention: true };
-      }
-
+      if (!addBtn) return { fallbackToMention: true };
       addBtn.click();
-      await new Promise(r => setTimeout(r, 700));
+      return { opened: true };
+    })()`);
 
-      let { hit } = findExactOption();
-      if (!hit) {
-        // Click Nhân vật tab inside picker if present
+    if (opened && opened.fallbackToMention) {
+      return await addCharacter(charName, { ...options, cdp, skipIngredientPicker: true });
+    }
+    await sleep(700);
+
+    let clicked = await tryClickExactOverlayOption(cdp, charName);
+    if (!clicked) {
+      const switchedTab = await cdp.evaluate(`(() => {
+        const norm = (s) => String(s || '').replace(/^@/, '').replace(/\\s+/g, ' ').trim().toLowerCase();
         const tabCandidates = Array.from(document.querySelectorAll('.cdk-overlay-pane [role="tab"], .cdk-overlay-pane button, .cdk-overlay-pane mat-list-item'));
         const charTab = tabCandidates.find(el => {
           const t = norm(el.innerText || '');
@@ -233,32 +248,41 @@ async function addIngredient(charName, options = {}) {
         });
         if (charTab) {
           charTab.click();
-          await new Promise(r => setTimeout(r, 600));
-          ({ hit } = findExactOption());
+          return true;
         }
+        return false;
+      })()`);
+      if (switchedTab) {
+        await sleep(600);
+        clicked = await tryClickExactOverlayOption(cdp, charName);
       }
+    }
 
-      if (!hit) {
+    if (!clicked) {
+      const searched = await cdp.evaluate(`((query) => {
         const searchInput = document.querySelector('.cdk-overlay-pane input[placeholder*="Tìm kiếm"], .cdk-overlay-pane input[placeholder*="Search"], .cdk-overlay-pane input');
-        if (searchInput) {
-          searchInput.focus();
-          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (setter) setter.call(searchInput, rawTargetName.replace(/^@/, ''));
-          else searchInput.value = rawTargetName.replace(/^@/, '');
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 500));
-          ({ hit } = findExactOption());
-        }
+        if (!searchInput) return false;
+        searchInput.focus();
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(searchInput, query);
+        else searchInput.value = query;
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })(${JSON.stringify(String(charName || '').replace(/^@/, ''))})`);
+      if (searched) {
+        await sleep(500);
+        clicked = await tryClickExactOverlayOption(cdp, charName);
       }
+    }
 
-      if (!hit) {
-        return { error: 'Không tìm thấy chính xác thành phần "' + rawTargetName + '" trong menu Thành phần' };
-      }
+    if (!clicked) {
+      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, text: '' }).catch(() => {});
+      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, text: '' }).catch(() => {});
+      throw new Error('Không tìm thấy chính xác thành phần "' + charName + '" trong menu Thành phần');
+    }
 
-      hit.scrollIntoView({ block: 'center' });
-      hit.click();
-      await new Promise(r => setTimeout(r, 550));
-
+    await sleep(550);
+    const res = await cdp.evaluate(`(async (rawTargetName) => {
       const insertBtn = Array.from(document.querySelectorAll('.cdk-overlay-pane button, button')).find(b => {
         const t = (b.innerText || '').trim();
         return t.includes('Thêm vào câu lệnh') || t.includes('Add to prompt');
@@ -273,15 +297,6 @@ async function addIngredient(charName, options = {}) {
       return { ok: true, character: rawTargetName, chips };
     })(${JSON.stringify(charName)})`);
 
-    if (res && res.fallbackToMention) {
-      return await addCharacter(charName, { ...options, cdp, skipIngredientPicker: true });
-    }
-    if (res && res.error) {
-      // Dismiss lingering overlay cleanly
-      await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', windowsVirtualKeyCode: 27, text: '' }).catch(() => {});
-      await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', windowsVirtualKeyCode: 27, text: '' }).catch(() => {});
-      throw new Error(res.error);
-    }
     // Dismiss overlay if still open
     await cdp.evaluate(`(() => {
       const hasAddBtn = Array.from(document.querySelectorAll('.cdk-overlay-pane button')).some(b => (b.innerText || '').includes('Thêm vào câu lệnh') || (b.innerText || '').includes('Add to prompt'));
@@ -310,7 +325,7 @@ async function addCharacter(charName, options = {}) {
       }
     }
 
-    const res = await cdp.evaluate(`(async () => {
+    const prepRes = await cdp.evaluate(`(async () => {
       const pm = document.querySelector('.ProseMirror');
       if (!pm) return { error: 'Không tìm thấy ô nhập prompt .ProseMirror' };
 
@@ -336,29 +351,36 @@ async function addCharacter(charName, options = {}) {
         charTab.click();
         await new Promise(r => setTimeout(r, 750));
       }
+      return { ok: true };
+    })()`);
+    if (prepRes && prepRes.error) {
+      throw new Error(prepRes.error);
+    }
 
-      const norm = (s) => String(s || '').replace(/^@/, '').replace(/\\s+/g, ' ').trim().toLowerCase();
-      const cleanName = norm(${JSON.stringify(charName)});
-      const exactSet = new Set([cleanName + ' nhân vật', cleanName + ' character', cleanName]);
-      const pickExact = (els) => els.find(o => exactSet.has(norm(o.innerText)) || exactSet.has(norm(o.getAttribute('aria-label'))));
-
-      let options = Array.from(document.querySelectorAll('.cdk-overlay-pane [role="option"], .cdk-overlay-pane button, .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
-      let target = pickExact(options);
-      if (!target) {
+    let clicked = await tryClickExactOverlayOption(cdp, charName);
+    if (!clicked) {
+      const searched = await cdp.evaluate(`((query) => {
         const searchInput = document.querySelector('.cdk-overlay-pane input[placeholder*="Tìm kiếm"], .cdk-overlay-pane input[placeholder*="Search"], .cdk-overlay-pane input');
-        if (searchInput) {
-          searchInput.focus();
-          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (setter) setter.call(searchInput, ${JSON.stringify(charName.replace(/^@/, ''))});
-          else searchInput.value = ${JSON.stringify(charName.replace(/^@/, ''))};
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          await new Promise(r => setTimeout(r, 450));
-          options = Array.from(document.querySelectorAll('.cdk-overlay-pane [role="option"], .cdk-overlay-pane button, .cdk-overlay-pane .asset-item, .cdk-overlay-pane .character-tile-container'));
-          target = pickExact(options);
-        }
+        if (!searchInput) return false;
+        searchInput.focus();
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+        if (setter) setter.call(searchInput, query);
+        else searchInput.value = query;
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })(${JSON.stringify(String(charName || '').replace(/^@/, ''))})`);
+      if (searched) {
+        await sleep(450);
+        clicked = await tryClickExactOverlayOption(cdp, charName);
       }
-      if (!target) return { error: 'Không tìm thấy chính xác nhân vật ' + ${JSON.stringify(charName)} + ' trong menu' };
-      target.click();
+    }
+    if (!clicked) {
+      throw new Error('Không tìm thấy chính xác nhân vật ' + charName + ' trong menu');
+    }
+
+    const res = await cdp.evaluate(`(async (rawTargetName) => {
+      const norm = (s) => String(s || '').replace(/^@/, '').replace(/\\s+/g, ' ').trim().toLowerCase();
+      const cleanName = norm(rawTargetName);
 
       await new Promise(r => setTimeout(r, 650));
       const insertBtn = Array.from(document.querySelectorAll('button')).find(b => (b.innerText || '').includes('Thêm vào câu lệnh') || (b.innerText || '').includes('Add to prompt'));
@@ -374,11 +396,8 @@ async function addCharacter(charName, options = {}) {
 
       const chips = Array.from(document.querySelectorAll('.ProseMirror .mention-chip')).map(c => c.innerText.trim());
       const ingCount = document.querySelectorAll('flow-character-ingredient-chip').length;
-      return { ok: true, character: ${JSON.stringify(charName)}, chipsInPrompt: chips, ingCount };
-    })()`);
-    if (res && res.error) {
-      throw new Error(res.error);
-    }
+      return { ok: true, character: rawTargetName, chipsInPrompt: chips, ingCount };
+    })(${JSON.stringify(charName)})`);
     return res;
   } finally {
     cdp.close();
@@ -565,61 +584,7 @@ async function waitForRender(timeoutSec = 240, options = {}) {
 
 // Helper: verify downloaded or cached MP4 using ffprobe (codec_type=video), rejecting HTML redirects & truncated files
 function verifyVideoFileWithFfprobe(filePath, options = {}) {
-  const minBytes = typeof options.minBytes === 'number' ? options.minBytes : 10000;
-  const execFn = typeof options.execFn === 'function' ? options.execFn : execFileSync;
-
-  if (!filePath || !fs.existsSync(filePath)) {
-    return { valid: false, reason: 'file_not_found' };
-  }
-  const stat = fs.statSync(filePath);
-  if (stat.size < minBytes) {
-    return { valid: false, reason: 'file_too_small', size: stat.size };
-  }
-
-  // Reject HTML login redirects or text error responses saved with .mp4 extension
-  try {
-    const fd = fs.openSync(filePath, 'r');
-    const headBuf = Buffer.alloc(64);
-    const bytesRead = fs.readSync(fd, headBuf, 0, 64, 0);
-    fs.closeSync(fd);
-    const headStr = headBuf.slice(0, bytesRead).toString('utf8').trim().toLowerCase();
-    if (headStr.startsWith('<!doctype') || headStr.startsWith('<html') || headStr.startsWith('<?xml')) {
-      return { valid: false, reason: 'html_redirect_or_text_response', size: stat.size };
-    }
-  } catch (err) {
-    return { valid: false, reason: `read_header_failed: ${err.message}` };
-  }
-
-  try {
-    const target = config.toWinPath(filePath);
-    const out = execFn('ffprobe', [
-      '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream=codec_type,codec_name,width,height',
-      '-show_entries', 'format=duration',
-      '-of', 'json',
-      target
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 15000 });
-    const parsed = JSON.parse(out || '{}');
-    const vStream = (parsed.streams || []).find(s => s.codec_type === 'video');
-    const duration = parseFloat(parsed.format && parsed.format.duration);
-    if (!vStream) {
-      return { valid: false, reason: 'no_video_stream', size: stat.size };
-    }
-    if (!Number.isFinite(duration) || duration <= 0) {
-      return { valid: false, reason: 'invalid_duration', size: stat.size };
-    }
-    return {
-      valid: true,
-      codec: vStream.codec_name || 'unknown',
-      width: Number(vStream.width) || 0,
-      height: Number(vStream.height) || 0,
-      duration,
-      size: stat.size
-    };
-  } catch (err) {
-    return { valid: false, reason: `ffprobe_failed: ${err.message}`, size: stat.size };
-  }
+  return probeVideoStream(filePath, { minBytes: 10000, ...options });
 }
 
 // Helper: get candidate download directories to monitor for Chrome downloads
@@ -1138,6 +1103,7 @@ async function openFlowProject(projectUrl, options = {}) {
     const currentNorm = String(currentUrl || '').split('?')[0].replace(/\/+$/, '');
     if (currentNorm !== targetBase) {
       console.log(`    [-] Mở dự án Google Flow chỉ định: ${targetBase}`);
+      cdp._verifiedFlowSettings = null;
       await cdp.send('Page.navigate', { url: targetBase });
       const start = Date.now();
       while (Date.now() - start < 25000) {
@@ -1203,37 +1169,54 @@ async function selectCharacterModelNanoBananaPro(cdp) {
   })()`);
 }
 
+async function getCharacterGenerationSnapshot(cdp) {
+  return await cdp.evaluate(`(() => {
+    const busyEl = document.querySelector('[aria-busy="true"]');
+    const dlBtns = Array.from(document.querySelectorAll('button, a')).filter(el => {
+      const t = (el.innerText || el.getAttribute('aria-label') || '').trim();
+      return t.includes('Tải hình ảnh xuống') || t.includes('Download image');
+    });
+    const imgSrcs = Array.from(document.querySelectorAll('img[src]'))
+      .map(img => img.src || '')
+      .filter(src => src.startsWith('http') || src.startsWith('blob:') || src.startsWith('data:'));
+    const logContainers = Array.from(document.querySelectorAll('[aria-label*="Nhật ký"], [aria-label*="History"], aside, section, flow-pending-tile'));
+    let hasPercent = false;
+    for (const c of logContainers) {
+      const txt = c.innerText || '';
+      if ((txt.includes('Nhật ký') || txt.includes('History') || c.tagName === 'FLOW-PENDING-TILE') && /\\b\\d{1,2}%/.test(txt)) {
+        hasPercent = true;
+        break;
+      }
+    }
+    const pendingTile = !!document.querySelector('flow-pending-tile, mat-progress-spinner');
+    return {
+      isBusy: Boolean(busyEl) || pendingTile,
+      downloadBtnCount: dlBtns.length,
+      imageSrcs: Array.from(new Set(imgSrcs)),
+      hasPercent
+    };
+  })()`);
+}
+
 // Helper: wait for /character portrait or body generation completion
 // Completion criteria: !aria-busy, "Tải hình ảnh xuống" present, and no "%" progress in "Nhật ký"
-async function waitForCharacterGeneration(cdp, timeoutSec = 120) {
+async function waitForCharacterGeneration(cdp, timeoutSec = 120, options = {}) {
+  const baseline = options.baseline || { downloadBtnCount: 0, imageSrcs: [] };
+  const baselineSrcSet = new Set(Array.isArray(baseline.imageSrcs) ? baseline.imageSrcs : []);
+  let sawBusy = false;
   const start = Date.now();
   while ((Date.now() - start) < timeoutSec * 1000) {
     await sleep(2000);
-    const state = await cdp.evaluate(`(() => {
-      const busyEl = document.querySelector('[aria-busy="true"]');
-      const dlBtn = Array.from(document.querySelectorAll('button, a')).find(el => {
-        const t = (el.innerText || el.getAttribute('aria-label') || '').trim();
-        return t.includes('Tải hình ảnh xuống') || t.includes('Download image');
-      });
-      // Check Nhật ký (History/Log) panel or pending tiles for active % progress
-      const logContainers = Array.from(document.querySelectorAll('[aria-label*="Nhật ký"], [aria-label*="History"], aside, section, flow-pending-tile'));
-      let hasPercent = false;
-      for (const c of logContainers) {
-        const txt = c.innerText || '';
-        if ((txt.includes('Nhật ký') || txt.includes('History') || c.tagName === 'FLOW-PENDING-TILE') && /\\b\\d{1,2}%/.test(txt)) {
-          hasPercent = true;
-          break;
-        }
-      }
-      const pendingTile = !!document.querySelector('flow-pending-tile, mat-progress-spinner');
-      return {
-        isBusy: Boolean(busyEl) || pendingTile,
-        hasDownloadBtn: Boolean(dlBtn),
-        hasPercent
-      };
-    })()`);
+    const state = await getCharacterGenerationSnapshot(cdp);
+    if (!state) continue;
 
-    if (state && !state.isBusy && state.hasDownloadBtn && !state.hasPercent) {
+    if (state.isBusy || state.hasPercent) {
+      sawBusy = true;
+    }
+    const hasMoreDownloadBtns = state.downloadBtnCount > (baseline.downloadBtnCount || 0);
+    const hasNewImageSrc = Array.isArray(state.imageSrcs) && state.imageSrcs.some(src => !baselineSrcSet.has(src));
+
+    if (!state.isBusy && !state.hasPercent && state.downloadBtnCount > 0 && (sawBusy || hasMoreDownloadBtns || hasNewImageSrc)) {
       return true;
     }
   }
@@ -1283,6 +1266,7 @@ async function createCharacterAssets(sb, options = {}) {
       }
 
       console.log(`\n>>> [${i + 1}/${characters.length}] Tạo tài sản nhân vật trên Flow /character: "${ch.name}"`);
+      cdp._verifiedFlowSettings = null;
       await cdp.send('Page.navigate', { url: charRouteUrl });
       const navStart = Date.now();
       while (Date.now() - navStart < 20000) {
@@ -1303,8 +1287,12 @@ async function createCharacterAssets(sb, options = {}) {
 
       // Submit portrait prompt
       console.log(`    [-] Gửi portrait_prompt (Nano Banana Pro)...`);
-      await submitPrompt(ch.portrait_prompt, { cdp });
-      await waitForCharacterGeneration(cdp, 120);
+      const portraitBaseline = await getCharacterGenerationSnapshot(cdp);
+      const portraitSubmit = await submitPrompt(ch.portrait_prompt, { cdp });
+      if (!portraitSubmit || portraitSubmit.error || !portraitSubmit.submitted) {
+        throw new Error(`Không thể gửi portrait_prompt cho "${ch.name}": ${(portraitSubmit && (portraitSubmit.error || portraitSubmit.reason)) || 'submit failed'}`);
+      }
+      await waitForCharacterGeneration(cdp, 120, { baseline: portraitBaseline });
 
       // Fill Tên nhân vật & Tính cách của nhân vật
       await cdp.evaluate(`((nameVal, descVal) => {
@@ -1356,8 +1344,12 @@ async function createCharacterAssets(sb, options = {}) {
         // Flow resets to Nano Banana 2.1 after portrait creation — explicitly re-select Nano Banana Pro
         await selectCharacterModelNanoBananaPro(cdp);
         await clearCharacters({ cdp });
-        await submitPrompt(ch.body_prompt, { cdp });
-        await waitForCharacterGeneration(cdp, 120);
+        const bodyBaseline = await getCharacterGenerationSnapshot(cdp);
+        const bodySubmit = await submitPrompt(ch.body_prompt, { cdp });
+        if (!bodySubmit || bodySubmit.error || !bodySubmit.submitted) {
+          throw new Error(`Không thể gửi body_prompt cho "${ch.name}": ${(bodySubmit && (bodySubmit.error || bodySubmit.reason)) || 'submit failed'}`);
+        }
+        await waitForCharacterGeneration(cdp, 120, { baseline: bodyBaseline });
       }
 
       // Click Xong / Done to save character asset
@@ -2001,7 +1993,10 @@ async function renderStoryboard(sb, options = {}) {
                 await addIngredient(ingName, { cdp: sharedCdp });
               }
               console.log(`    [-] Gửi câu lệnh (lần ${attempt}/${maxAttempts}): "${activePrompt.slice(0, 50)}..."`);
-              await submitPrompt(activePrompt, { cdp: sharedCdp });
+              const submitRes = await submitPrompt(activePrompt, { cdp: sharedCdp });
+              if (!submitRes || submitRes.error || !submitRes.submitted) {
+                throw new Error(`Không thể gửi câu lệnh cho ${shotId}: ${(submitRes && (submitRes.error || submitRes.reason)) || 'submit failed'}`);
+              }
               await waitForRender(240, { cdp: sharedCdp });
               await downloadLatest(outFile, { resolution, cdp: sharedCdp });
 
@@ -2052,6 +2047,7 @@ async function renderStoryboard(sb, options = {}) {
 
                 console.log('    [-] Đang reload lại tab Google Flow (Page.reload) và chờ 18s...');
                 try {
+                  sharedCdp._verifiedFlowSettings = null;
                   await sharedCdp.send('Page.reload');
                 } catch {}
                 await sleep(18000);
@@ -2073,6 +2069,9 @@ async function renderStoryboard(sb, options = {}) {
         }
       } catch (err) {
         console.error(`    [!] Lỗi khi xử lý ${shotId}: ${err.message}`);
+        if (classifyFlowShotError(err.message) === 'insufficient_credits') {
+          throw err;
+        }
       }
     }
   } finally {

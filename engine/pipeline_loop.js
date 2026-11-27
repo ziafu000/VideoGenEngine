@@ -540,11 +540,12 @@ async function runLoop(storyboardPaths = [], options = {}) {
     draft = false,
     visibility = null,
     noUpload = false,
-    resolution = '1080p',
+    resolution = null,
     targetPlatform = 'both',
     skipBridge = false,
     skipRender = false,
     skipVoice = false,
+    force = false,
     channel = null,
     audioMix = null,
     delayMs = 5000,
@@ -565,7 +566,7 @@ async function runLoop(storyboardPaths = [], options = {}) {
   console.log(`\n============================================================`);
   console.log(`🔄 VIDEOGEN PRODUCTION LOOP: BẮT ĐẦU VÒNG LẶP SẢN XUẤT`);
   console.log(`   Tổng số tập trong hàng đợi: ${queue.length}`);
-  console.log(`   Độ phân giải: ${resolution.toUpperCase()} | Visibility: ${visibility || (draft ? 'PRIVATE' : 'METADATA')} | No-Upload: ${noUpload}`);
+  console.log(`   Độ phân giải: ${(resolution || 'AUTO').toUpperCase()} | Visibility: ${visibility || (draft ? 'PRIVATE' : 'METADATA')} | No-Upload: ${noUpload}`);
   console.log(`============================================================`);
 
   const completed = [];
@@ -587,6 +588,7 @@ async function runLoop(storyboardPaths = [], options = {}) {
         skipBridge,
         skipRender,
         skipVoice,
+        force,
         channel,
         audioMix
       });

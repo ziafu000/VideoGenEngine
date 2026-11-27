@@ -43,14 +43,34 @@ function hasAudioStream(filePath) {
   }
 }
 
-function probeVideoStream(filePath, execFn = execFileSync) {
+function probeVideoStream(filePath, optionsOrExecFn = {}) {
+  const opts = typeof optionsOrExecFn === 'function'
+    ? { execFn: optionsOrExecFn }
+    : (optionsOrExecFn || {});
+  const minBytes = typeof opts.minBytes === 'number' ? opts.minBytes : 1024;
+  const execFn = typeof opts.execFn === 'function' ? opts.execFn : execFileSync;
+
   if (!filePath || !fs.existsSync(filePath)) {
     return { valid: false, reason: 'file_not_found' };
   }
   const size = fs.statSync(filePath).size;
-  if (size < 1024) {
+  if (size < minBytes) {
     return { valid: false, reason: 'file_too_small', size };
   }
+
+  try {
+    const fd = fs.openSync(filePath, 'r');
+    const headBuf = Buffer.alloc(64);
+    const bytesRead = fs.readSync(fd, headBuf, 0, 64, 0);
+    fs.closeSync(fd);
+    const headStr = headBuf.slice(0, bytesRead).toString('utf8').trim().toLowerCase();
+    if (headStr.startsWith('<!doctype') || headStr.startsWith('<html') || headStr.startsWith('<?xml')) {
+      return { valid: false, reason: 'html_redirect_or_text_response', size };
+    }
+  } catch (err) {
+    return { valid: false, reason: `read_header_failed: ${err.message}` };
+  }
+
   try {
     const winPath = config.toWinPath(filePath);
     const raw = execFn('ffprobe', [
@@ -64,8 +84,11 @@ function probeVideoStream(filePath, execFn = execFileSync) {
     const parsed = JSON.parse(raw || '{}');
     const vStream = (parsed.streams || []).find(s => s.codec_type === 'video');
     const duration = parseFloat(parsed.format && parsed.format.duration);
-    if (!vStream || !Number.isFinite(duration) || duration <= 0) {
-      return { valid: false, reason: 'missing_video_stream_or_duration' };
+    if (!vStream) {
+      return { valid: false, reason: 'no_video_stream', size };
+    }
+    if (!Number.isFinite(duration) || duration <= 0) {
+      return { valid: false, reason: 'invalid_duration', size };
     }
     return {
       valid: true,
@@ -76,7 +99,7 @@ function probeVideoStream(filePath, execFn = execFileSync) {
       size
     };
   } catch (err) {
-    return { valid: false, reason: err.message || 'ffprobe_failed' };
+    return { valid: false, reason: `ffprobe_failed: ${err.message}`, size };
   }
 }
 
@@ -1182,7 +1205,7 @@ async function assembleStoryboard(sb, options = {}) {
     const safeTitle = config.sanitizeIdentifier(rawTitle, 'master');
     const masterOutput = path.join(config.OUTPUT_DIR, `${safeTitle}_Master.mp4`);
 
-    return await compositeSilentCinema({
+    const res = await compositeSilentCinema({
       videoFiles: cinemaVideoFiles,
       outputVideoPath: masterOutput,
       width: targetW,
@@ -1198,6 +1221,14 @@ async function assembleStoryboard(sb, options = {}) {
       titleCard: sb.title_card || null,
       closingCard: sb.closing_card || null
     });
+
+    const lowercaseAlias = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
+    try {
+      if (fs.existsSync(masterOutput) && masterOutput !== lowercaseAlias) {
+        fs.copyFileSync(masterOutput, lowercaseAlias);
+      }
+    } catch {}
+    return res;
   }
 
   // 2. Video Clips Concat mode
