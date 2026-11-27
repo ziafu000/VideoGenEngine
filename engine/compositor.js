@@ -103,6 +103,40 @@ function probeVideoStream(filePath, optionsOrExecFn = {}) {
   }
 }
 
+function safeCopyAlias(srcPath, destPath, options = {}) {
+  const platform = options.platform || process.platform;
+  const existsFn = typeof options.existsFn === 'function' ? options.existsFn : fs.existsSync;
+  const statFn = typeof options.statFn === 'function' ? options.statFn : fs.statSync;
+  const copyFn = typeof options.copyFn === 'function' ? options.copyFn : fs.copyFileSync;
+
+  if (!srcPath || !destPath || !existsFn(srcPath)) return false;
+  const resolvedSrc = path.resolve(srcPath);
+  const resolvedDest = path.resolve(destPath);
+  if (resolvedSrc === resolvedDest) return false;
+
+  const sameCaseInsensitivePath = resolvedSrc.toLowerCase() === resolvedDest.toLowerCase();
+  if ((platform === 'win32' || platform === 'darwin') && sameCaseInsensitivePath) {
+    return false;
+  }
+
+  if (existsFn(resolvedDest)) {
+    try {
+      const srcStat = statFn(resolvedSrc);
+      const destStat = statFn(resolvedDest);
+      if (srcStat && destStat && srcStat.dev === destStat.dev) {
+        if ((srcStat.ino !== 0 && srcStat.ino === destStat.ino) || (sameCaseInsensitivePath && srcStat.ino === 0 && destStat.ino === 0)) {
+          return false;
+        }
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  copyFn(resolvedSrc, resolvedDest);
+  return true;
+}
+
 /**
  * Detect whether a storyboard uses Silent-Cinema / Music-Driven mode (no TTS voiceover).
  */
@@ -1224,9 +1258,7 @@ async function assembleStoryboard(sb, options = {}) {
 
     const lowercaseAlias = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
     try {
-      if (fs.existsSync(masterOutput) && masterOutput !== lowercaseAlias) {
-        fs.copyFileSync(masterOutput, lowercaseAlias);
-      }
+      safeCopyAlias(masterOutput, lowercaseAlias);
     } catch {}
     return res;
   }
@@ -1350,9 +1382,7 @@ async function assembleStoryboard(sb, options = {}) {
   // Also keep a canonical alias ${safeTitle}_master.mp4 for backward compatibility
   const legacyAlias = path.join(config.OUTPUT_DIR, `${safeTitle}_master.mp4`);
   try {
-    if (fs.existsSync(masterOutput) && masterOutput !== legacyAlias) {
-      fs.copyFileSync(masterOutput, legacyAlias);
-    }
+    safeCopyAlias(masterOutput, legacyAlias);
   } catch {}
   return res;
 }
@@ -1361,6 +1391,7 @@ module.exports = {
   getDuration,
   hasAudioStream,
   probeVideoStream,
+  safeCopyAlias,
   isSilentCinemaStoryboard,
   resolveUnicodeFont,
   wrapCardText,

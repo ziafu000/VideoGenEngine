@@ -238,6 +238,37 @@ try {
   assert.strictEqual(assembled.height, 720);
   assert.ok(assembled.duration >= 3.4 && assembled.duration <= 3.9, `Expected ~3.65s duration with 0.35s xfade, got ${assembled.duration}`);
 
+  let copiedOnWin = false;
+  assert.strictEqual(
+    compositor.safeCopyAlias('/tmp/Film_Master.mp4', '/tmp/Film_master.mp4', {
+      platform: 'win32',
+      existsFn: () => true,
+      copyFn: () => { copiedOnWin = true; }
+    }),
+    false,
+    'safeCopyAlias must skip case-only copy on win32'
+  );
+  assert.strictEqual(copiedOnWin, false);
+
+  let copiedOnSameInode = false;
+  assert.strictEqual(
+    compositor.safeCopyAlias('/mnt/d/Film_Master.mp4', '/mnt/d/Film_master.mp4', {
+      platform: 'linux',
+      existsFn: () => true,
+      statFn: () => ({ dev: 42, ino: 9999 }),
+      copyFn: () => { copiedOnSameInode = true; }
+    }),
+    false,
+    'safeCopyAlias must skip copy when source and destination share dev+ino on case-insensitive mount'
+  );
+  assert.strictEqual(copiedOnSameInode, false);
+
+  const distinctSrc = path.join(tmpDir, 'Clip_Master.mp4');
+  const distinctDest = path.join(tmpDir, 'Clip_master.mp4');
+  fs.writeFileSync(distinctSrc, 'master-bytes', 'utf8');
+  assert.strictEqual(compositor.safeCopyAlias(distinctSrc, distinctDest), true, 'safeCopyAlias must copy when destination is distinct on case-sensitive FS');
+  assert.strictEqual(fs.readFileSync(distinctDest, 'utf8'), 'master-bytes');
+
   const cliPath = path.join(config.PROJECT_DIR, 'videogen');
   const helpOut = execFileSync(process.execPath, [cliPath, '--help'], { encoding: 'utf8' });
   assert.ok(helpOut.includes('./videogen character <storyboard.json> [--force]'), 'CLI --help must document character command');
