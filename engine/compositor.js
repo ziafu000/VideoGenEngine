@@ -304,7 +304,7 @@ function buildFadeAlphaExpr(start, end, fade) {
  * - Normalizes every clip to uniform resolution/fps/yuv420p
  * - Joins clips via configurable xfade cross-dissolve (default 0.35s) + acrossfade, or clean concat when xfadeDuration === 0
  * - Mixes diegetic Flow SFX with continuous BGM + smooth fade-in/out matched to exact total video duration
- * - Optionally overlays Unicode-safe title_card and closing_card with smooth fade-in/out
+ * - Optionally overlays Unicode-safe title_card (with optional transparent PNG logo and translucent scrim) and closing_card with smooth fade-in/out
  */
 function buildSilentCinemaFilterGraph({
   clips,
